@@ -39,6 +39,7 @@ function App() {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [selectedPath, setSelectedPath] = useState("");
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
+  const [imageLoadError, setImageLoadError] = useState("");
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
   const [error, setError] = useState("");
@@ -80,20 +81,31 @@ function App() {
   useEffect(() => {
     if (!selectedImage) {
       setLoadedImage(null);
+      setImageLoadError("");
       return;
     }
 
     let cancelled = false;
     const image = new Image();
+    setLoadedImage(null);
+    setImageLoadError("");
+
     image.onload = () => {
       if (!cancelled) {
         setLoadedImage(image);
+      }
+    };
+    image.onerror = () => {
+      if (!cancelled) {
+        setImageLoadError(`图片加载失败：${selectedImage.name}`);
       }
     };
     image.src = imageFileSrc(selectedImage.path);
 
     return () => {
       cancelled = true;
+      image.onload = null;
+      image.onerror = null;
     };
   }, [selectedImage]);
 
@@ -340,7 +352,11 @@ function App() {
 
         <div className="min-h-0 flex-1 overflow-auto p-2">
           {images.length === 0 ? (
-            <p className="p-2 text-sm text-slate-400">请选择包含 jpg/png/bmp 的文件夹。</p>
+            <p className="p-2 text-sm text-slate-400">
+              {folderPath
+                ? "没有找到可加载的 jpg/png/bmp 图片；空文件或损坏图片会被跳过。"
+                : "请选择包含 jpg/png/bmp 的文件夹。"}
+            </p>
           ) : (
             images.map((image) => (
               <button
@@ -405,7 +421,10 @@ function App() {
           </Stage>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">
-            {selectedImage ? "正在加载图片..." : "选择文件夹后，在这里预览图片。"}
+            {selectedImage
+              ? imageLoadError ||
+                (loadedImage ? "画布区域尺寸异常，无法显示图片。" : "正在加载图片...")
+              : "选择文件夹后，在这里预览图片。"}
           </div>
         )}
       </div>
