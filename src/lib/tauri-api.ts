@@ -1,9 +1,19 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import type { AnnotationShape, LabelConfig } from "../types/annotation";
 
 export interface ImageFile {
   path: string;
   name: string;
+}
+
+export interface AnnotationExportImage extends ImageFile {
+  annotations: AnnotationShape[];
+}
+
+export interface AnnotationExport {
+  labels: LabelConfig[];
+  images: AnnotationExportImage[];
 }
 
 export async function selectImageFolder(): Promise<string | null> {
@@ -17,4 +27,16 @@ export function listImageFiles(folderPath: string): Promise<ImageFile[]> {
 
 export function imageFileSrc(path: string): string {
   return convertFileSrc(path);
+}
+
+export async function selectExportJsonPath(): Promise<string | null> {
+  const path = await save({
+    defaultPath: "annotations.json",
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  return typeof path === "string" ? path : null;
+}
+
+export function exportAnnotationsJson(outputPath: string, data: AnnotationExport): Promise<void> {
+  return invoke("export_annotations_json", { outputPath, data });
 }
