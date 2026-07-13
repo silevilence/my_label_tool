@@ -7,7 +7,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::list_image_files,
-            commands::export_annotations_json
+            commands::export_annotations_json,
+            commands::load_label_configs,
+            commands::save_label_configs,
+            commands::load_label_templates,
+            commands::save_label_templates
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

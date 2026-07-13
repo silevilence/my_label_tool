@@ -3,17 +3,22 @@ import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konv
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
-import { DEFAULT_LABELS } from "./lib/defaults/labels";
+import { LabelSettings } from "./components/settings/LabelSettings";
+import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
 import {
   exportAnnotationsJson,
   imageFileSrc,
   type ImageFile,
   listImageFiles,
+  loadLabelConfigs,
+  loadLabelTemplates,
+  saveLabelConfigs,
+  saveLabelTemplates,
   selectExportJsonPath,
   selectImageFolder,
 } from "./lib/tauri-api";
 import { useAnnotationStore } from "./store/useAnnotationStore";
-import type { AnnotationShape, LabelConfig } from "./types/annotation";
+import type { AnnotationShape, LabelConfig, LabelTemplate } from "./types/annotation";
 import "./App.css";
 
 interface ImageLayout {
@@ -42,17 +47,34 @@ function App() {
   const [imageLoadError, setImageLoadError] = useState("");
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
+  const [labels, setLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
+  const [savedLabels, setSavedLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
+  const [templates, setTemplates] = useState<LabelTemplate[]>(DEFAULT_LABEL_TEMPLATES);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(DEFAULT_LABEL_TEMPLATES[0].id);
+  const [currentLabelId, setCurrentLabelId] = useState(DEFAULT_LABELS[0].id);
+  const [isLabelDirty, setIsLabelDirty] = useState(false);
   const [error, setError] = useState("");
 
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
   const selectedShapeId = useAnnotationStore((state) => state.selectedShapeId);
   const addAnnotation = useAnnotationStore((state) => state.addAnnotation);
   const updateAnnotation = useAnnotationStore((state) => state.updateAnnotation);
+  const replaceLabel = useAnnotationStore((state) => state.replaceLabel);
   const selectShape = useAnnotationStore((state) => state.selectShape);
   const annotations = annotationsByImage[selectedPath] ?? [];
   const selectedShape = annotations.find((annotation) => annotation.id === selectedShapeId) ?? null;
 
-  const labelById = useMemo(() => new Map(DEFAULT_LABELS.map((label) => [label.id, label])), []);
+  const labelById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
+  const usedLabelIds = useMemo(
+    () =>
+      new Set(
+        Object.values(annotationsByImage)
+          .flat()
+          .map((annotation) => annotation.labelId),
+      ),
+    [annotationsByImage],
+  );
+  const currentLabel = labelById.get(currentLabelId) ?? labels[0];
 
   const selectedImage = useMemo(
     () => images.find((image) => image.path === selectedPath) ?? null,
@@ -77,6 +99,45 @@ function App() {
     observer.observe(host);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([loadLabelConfigs(), loadLabelTemplates()])
+      .then(([savedLabels, savedTemplates]) => {
+        const nextTemplates = [
+          ...DEFAULT_LABEL_TEMPLATES,
+          ...savedTemplates.filter(
+            (template) => !DEFAULT_LABEL_TEMPLATES.some((item) => item.id === template.id),
+          ),
+        ];
+        const nextLabels = savedLabels.length > 0 ? savedLabels : DEFAULT_LABELS;
+
+        if (!cancelled && savedLabels.length > 0) {
+          setLabels(nextLabels);
+          setSavedLabels(nextLabels);
+          setCurrentLabelId(nextLabels[0].id);
+        }
+        if (!cancelled) {
+          setTemplates(nextTemplates);
+        }
+      })
+      .catch((caughtError: unknown) => {
+        if (!cancelled) {
+          setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!labelById.has(currentLabelId)) {
+      setCurrentLabelId(labels[0].id);
+    }
+  }, [currentLabelId, labelById, labels]);
 
   useEffect(() => {
     if (!selectedImage) {
@@ -123,6 +184,30 @@ function App() {
     transformer.nodes(selectedShape && selectedRectRef.current ? [selectedRectRef.current] : []);
     transformer.getLayer()?.batchDraw();
   }, [selectedShape]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        isEditableTarget(event.target)
+      ) {
+        return;
+      }
+
+      const label = labels.find((item) => item.shortcut === event.key.toLowerCase());
+      if (!label) {
+        return;
+      }
+
+      event.preventDefault();
+      selectCurrentLabel(label.id);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [labels, selectCurrentLabel]);
 
   const imageLayout = useMemo<ImageLayout | null>(() => {
     if (!loadedImage || canvasSize.width === 0 || canvasSize.height === 0) {
@@ -173,7 +258,7 @@ function App() {
       }
 
       await exportAnnotationsJson(outputPath, {
-        labels: DEFAULT_LABELS,
+        labels,
         images: images.map((image) => ({
           ...image,
           annotations: annotationsByImage[image.path] ?? [],
@@ -185,6 +270,10 @@ function App() {
   }
 
   function handleStageMouseDown(event: KonvaEventObject<MouseEvent>) {
+    if (event.evt.button !== 0) {
+      return;
+    }
+
     if (!imageLayout || !loadedImage || !selectedPath) {
       return;
     }
@@ -233,13 +322,14 @@ function App() {
     addAnnotation(selectedPath, {
       id: newAnnotationId(),
       type: "rect",
-      labelId: DEFAULT_LABELS[0].id,
+      labelId: currentLabel.id,
       points,
       frameIndex: 0,
     });
   }
 
-  function updateSelectedLabel(labelId: string) {
+  function selectCurrentLabel(labelId: string) {
+    setCurrentLabelId(labelId);
     if (selectedShape) {
       updateAnnotation(selectedPath, selectedShape.id, { labelId });
     }
@@ -290,6 +380,133 @@ function App() {
     });
   }
 
+  function updateLabels(nextLabels: LabelConfig[]) {
+    const safeLabels = nextLabels.length > 0 ? nextLabels : DEFAULT_LABELS;
+    setLabels(safeLabels);
+    if (!safeLabels.some((label) => label.id === currentLabelId)) {
+      setCurrentLabelId(safeLabels[0].id);
+    }
+    setIsLabelDirty(true);
+  }
+
+  function selectTemplate(templateId: string) {
+    if (isLabelDirty && !window.confirm("放弃当前未保存的标签修改？")) {
+      return;
+    }
+
+    const template = templates.find((item) => item.id === templateId);
+    if (!template) {
+      return;
+    }
+
+    applySavedLabels(template.labels);
+    setSelectedTemplateId(template.id);
+  }
+
+  function newTemplate() {
+    const name = window.prompt("新模板名称");
+    if (!name?.trim()) {
+      return;
+    }
+
+    const template: LabelTemplate = {
+      id: newTemplateId(templates, name),
+      name: name.trim(),
+      labels,
+    };
+
+    const nextTemplates = [...templates, template];
+    setTemplates(nextTemplates);
+    setSelectedTemplateId(template.id);
+    persistUserTemplates(nextTemplates);
+    applySavedLabels(template.labels);
+  }
+
+  function saveTemplate() {
+    if (!isUserTemplate(selectedTemplateId)) {
+      saveTemplateAs();
+      return;
+    }
+
+    const nextTemplates = templates.map((template) =>
+      template.id === selectedTemplateId ? { ...template, labels } : template,
+    );
+    setTemplates(nextTemplates);
+    persistUserTemplates(nextTemplates);
+    applySavedLabels(labels);
+  }
+
+  function cancelLabelChanges() {
+    applySavedLabels(savedLabels);
+  }
+
+  function saveTemplateAs() {
+    const name = window.prompt("另存为模板名称");
+    if (!name?.trim()) {
+      return;
+    }
+
+    const template: LabelTemplate = {
+      id: newTemplateId(templates, name),
+      name: name.trim(),
+      labels,
+    };
+    const nextTemplates = [...templates, template];
+
+    setTemplates(nextTemplates);
+    setSelectedTemplateId(template.id);
+    persistUserTemplates(nextTemplates);
+    applySavedLabels(labels);
+  }
+
+  function deleteTemplate() {
+    if (!isUserTemplate(selectedTemplateId)) {
+      return;
+    }
+
+    const template = templates.find((item) => item.id === selectedTemplateId);
+    if (!template || !window.confirm(`删除模板「${template.name}」？`)) {
+      return;
+    }
+
+    const nextTemplates = templates.filter((item) => item.id !== selectedTemplateId);
+    const nextTemplate = nextTemplates[0] ?? DEFAULT_LABEL_TEMPLATES[0];
+    setTemplates(nextTemplates);
+    setSelectedTemplateId(nextTemplate.id);
+    persistUserTemplates(nextTemplates);
+    applySavedLabels(nextTemplate.labels);
+  }
+
+  function applySavedLabels(nextLabels: LabelConfig[]) {
+    replaceMissingAnnotationLabels(nextLabels);
+    setLabels(nextLabels);
+    setSavedLabels(nextLabels);
+    setCurrentLabelId(nextLabels[0]?.id ?? DEFAULT_LABELS[0].id);
+    setIsLabelDirty(false);
+    saveLabelConfigs(nextLabels).catch(reportError);
+  }
+
+  function replaceMissingAnnotationLabels(nextLabels: LabelConfig[]) {
+    const safeIds = new Set(nextLabels.map((label) => label.id));
+    const fallbackLabelId = nextLabels[0]?.id ?? DEFAULT_LABELS[0].id;
+
+    for (const labelId of usedLabelIds) {
+      if (!safeIds.has(labelId)) {
+        replaceLabel(labelId, fallbackLabelId);
+      }
+    }
+  }
+
+  function persistUserTemplates(nextTemplates: LabelTemplate[]) {
+    saveLabelTemplates(nextTemplates.filter((template) => isUserTemplate(template.id))).catch(
+      reportError,
+    );
+  }
+
+  function reportError(caughtError: unknown) {
+    setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+  }
+
   const draftRect =
     drawingRect && imageLayout ? toCanvasRect(normalizeRectPoints(drawingRect), imageLayout) : null;
 
@@ -321,33 +538,43 @@ function App() {
           {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
         </div>
 
+        <LabelSettings
+          canSaveTemplate={isUserTemplate(selectedTemplateId)}
+          canDeleteTemplate={isUserTemplate(selectedTemplateId)}
+          isDirty={isLabelDirty}
+          labels={labels}
+          selectedTemplateId={selectedTemplateId}
+          templates={templates}
+          usedLabelIds={usedLabelIds}
+          onCancelChanges={cancelLabelChanges}
+          onChangeLabels={updateLabels}
+          onDeleteTemplate={deleteTemplate}
+          onNewTemplate={newTemplate}
+          onSaveTemplate={saveTemplate}
+          onSaveTemplateAs={saveTemplateAs}
+          onSelectTemplate={selectTemplate}
+        />
+
         <section className="border-b border-slate-800 p-4">
-          <h2 className="text-sm font-medium text-slate-200">标签</h2>
-          <div className="mt-3 space-y-2">
-            {DEFAULT_LABELS.map((label) => (
-              <div className="flex items-center gap-2 text-sm text-slate-300" key={label.id}>
-                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: label.color }} />
-                <span>{label.name}</span>
-                <span className="text-xs text-slate-500">{label.shortcut}</span>
-              </div>
-            ))}
+          <label className="block text-sm text-slate-300">
+            当前标签（新框使用）
+            <select
+              className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
+              value={currentLabel.id}
+              onChange={(event) => selectCurrentLabel(event.target.value)}
+            >
+              {labels.map((label) => (
+                <option key={label.id} value={label.id}>
+                  {label.shortcut ? `${label.name} (${label.shortcut})` : label.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="mt-3 flex items-center gap-2 rounded border border-slate-800 bg-slate-950 px-3 py-2 text-sm">
+            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: currentLabel.color }} />
+            <span>{currentLabel.name}</span>
+            {currentLabel.shortcut && <span className="text-xs text-slate-500">快捷键 {currentLabel.shortcut}</span>}
           </div>
-          {selectedShape && (
-            <label className="mt-4 block text-sm text-slate-300">
-              选中矩形标签
-              <select
-                className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
-                value={selectedShape.labelId}
-                onChange={(event) => updateSelectedLabel(event.target.value)}
-              >
-                {DEFAULT_LABELS.map((label) => (
-                  <option key={label.id} value={label.id}>
-                    {label.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
         </section>
 
         <div className="min-h-0 flex-1 overflow-auto p-2">
@@ -385,6 +612,7 @@ function App() {
             onMouseDown={handleStageMouseDown}
             onMouseMove={handleStageMouseMove}
             onMouseUp={handleStageMouseUp}
+            onContextMenu={(event) => event.evt.preventDefault()}
           >
             <Layer>
               <KonvaImage
@@ -401,7 +629,7 @@ function App() {
                   imageLayout={imageLayout}
                   isSelected={annotation.id === selectedShapeId}
                   key={annotation.id}
-                  label={labelById.get(annotation.labelId) ?? DEFAULT_LABELS[0]}
+                  label={labelById.get(annotation.labelId) ?? labels[0]}
                   rectRef={selectedRectRef}
                   onDragEnd={handleDragEnd}
                   onSelect={selectShape}
@@ -412,7 +640,7 @@ function App() {
                 <Rect
                   {...draftRect}
                   dash={[6, 4]}
-                  stroke={DEFAULT_LABELS[0].color}
+                  stroke={currentLabel.color}
                   strokeWidth={2}
                 />
               )}
@@ -525,6 +753,36 @@ function clampRect(
     width,
     height,
   };
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
+function isUserTemplate(templateId: string): boolean {
+  return !DEFAULT_LABEL_TEMPLATES.some((template) => template.id === templateId);
+}
+
+function newTemplateId(templates: LabelTemplate[], name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const prefix = base || "template";
+  let id = prefix;
+  let suffix = 2;
+
+  while (templates.some((template) => template.id === id)) {
+    id = `${prefix}-${suffix}`;
+    suffix += 1;
+  }
+
+  return id;
 }
 
 function newAnnotationId(): string {

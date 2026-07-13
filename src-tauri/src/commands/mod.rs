@@ -5,8 +5,9 @@ use std::{
 };
 
 use serde::Serialize;
+use tauri::Manager;
 
-use crate::models::annotation::AnnotationExport;
+use crate::models::annotation::{AnnotationExport, LabelConfig, LabelTemplate};
 
 #[derive(Serialize)]
 pub struct ImageFile {
@@ -90,11 +91,81 @@ pub fn export_annotations_json(output_path: PathBuf, data: AnnotationExport) -> 
     fs::write(output_path, json).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub fn load_label_configs(app: tauri::AppHandle) -> Result<Vec<LabelConfig>, String> {
+    let path = label_configs_path(&app)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    read_label_configs(&path)
+}
+
+#[tauri::command]
+pub fn save_label_configs(app: tauri::AppHandle, labels: Vec<LabelConfig>) -> Result<(), String> {
+    let path = label_configs_path(&app)?;
+    write_label_configs(&path, &labels)
+}
+
+#[tauri::command]
+pub fn load_label_templates(app: tauri::AppHandle) -> Result<Vec<LabelTemplate>, String> {
+    let path = label_templates_path(&app)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    read_label_templates(&path)
+}
+
+#[tauri::command]
+pub fn save_label_templates(
+    app: tauri::AppHandle,
+    templates: Vec<LabelTemplate>,
+) -> Result<(), String> {
+    let path = label_templates_path(&app)?;
+    write_label_templates(&path, &templates)
+}
+
+fn label_configs_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    Ok(dir.join("labels.json"))
+}
+
+fn label_templates_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    Ok(dir.join("label-templates.json"))
+}
+
+fn read_label_configs(path: &Path) -> Result<Vec<LabelConfig>, String> {
+    let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    serde_json::from_str(&json).map_err(|error| error.to_string())
+}
+
+fn write_label_configs(path: &Path, labels: &[LabelConfig]) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(labels).map_err(|error| error.to_string())?;
+    fs::write(path, json).map_err(|error| error.to_string())
+}
+
+fn read_label_templates(path: &Path) -> Result<Vec<LabelTemplate>, String> {
+    let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    serde_json::from_str(&json).map_err(|error| error.to_string())
+}
+
+fn write_label_templates(path: &Path, templates: &[LabelTemplate]) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(templates).map_err(|error| error.to_string())?;
+    fs::write(path, json).map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{export_annotations_json, is_loadable_image, is_supported_image, list_image_files};
+    use super::{
+        export_annotations_json, is_loadable_image, is_supported_image, list_image_files,
+        read_label_configs, read_label_templates, write_label_configs, write_label_templates,
+    };
     use crate::models::annotation::{
-        AnnotationExport, AnnotationShape, ImageAnnotations, LabelConfig,
+        AnnotationExport, AnnotationShape, ImageAnnotations, LabelConfig, LabelTemplate,
     };
     use std::{fs, path::Path};
 
@@ -173,6 +244,56 @@ mod tests {
         let exported = fs::read_to_string(&path).unwrap();
         assert!(exported.contains("\"labelId\": \"person\""));
         assert!(exported.contains("\"points\": ["));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn saves_and_loads_label_configs() {
+        let path = std::env::temp_dir().join(format!(
+            "my_label_tool_labels_{}.json",
+            std::process::id()
+        ));
+        let labels = vec![LabelConfig {
+            id: "person".to_string(),
+            name: "人".to_string(),
+            color: "#38bdf8".to_string(),
+            shortcut: Some("1".to_string()),
+            shape_type: "rect".to_string(),
+        }];
+
+        write_label_configs(&path, &labels).unwrap();
+        let loaded = read_label_configs(&path).unwrap();
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, "person");
+        assert_eq!(loaded[0].shortcut.as_deref(), Some("1"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn saves_and_loads_label_templates() {
+        let path = std::env::temp_dir().join(format!(
+            "my_label_tool_label_templates_{}.json",
+            std::process::id()
+        ));
+        let templates = vec![LabelTemplate {
+            id: "custom".to_string(),
+            name: "自定义".to_string(),
+            labels: vec![LabelConfig {
+                id: "person".to_string(),
+                name: "人".to_string(),
+                color: "#38bdf8".to_string(),
+                shortcut: Some("1".to_string()),
+                shape_type: "rect".to_string(),
+            }],
+        }];
+
+        write_label_templates(&path, &templates).unwrap();
+        let loaded = read_label_templates(&path).unwrap();
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "自定义");
+        assert_eq!(loaded[0].labels[0].id, "person");
         let _ = fs::remove_file(path);
     }
 }

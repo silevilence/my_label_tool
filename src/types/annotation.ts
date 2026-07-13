@@ -19,3 +19,9 @@ export interface LabelConfig {
   shortcut?: string;
   shapeType: AnnotationShape["type"];
 }
+
+export interface LabelTemplate {
+  id: string;
+  name: string;
+  labels: LabelConfig[];
+}

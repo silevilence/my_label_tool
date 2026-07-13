@@ -37,3 +37,11 @@ pub struct LabelConfig {
     pub shortcut: Option<String>,
     pub shape_type: String,
 }
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelTemplate {
+    pub id: String,
+    pub name: String,
+    pub labels: Vec<LabelConfig>,
+}
