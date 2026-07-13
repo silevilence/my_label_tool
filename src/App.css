@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 .logo.vite:hover {
   filter: drop-shadow(0 0 2em #747bff);
 }
@@ -21,7 +25,7 @@
   -webkit-text-size-adjust: 100%;
 }
 
-.container {
+.app-container {
   margin: 0;
   padding-top: 10vh;
   display: flex;

@@ -12,7 +12,7 @@ function App() {
   }
 
   return (
-    <main className="container">
+    <main className="app-container min-h-screen">
       <h1>Welcome to Tauri + React</h1>
 
       <div className="row">

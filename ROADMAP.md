@@ -4,11 +4,6 @@
 
 ## 🚧 开发中 (In Progress)
 
-- [ ] **接入 Tailwind CSS 与 Zustand 状态管理**
-  - [ ] 安装 Tailwind 及其 PostCSS 依赖，配置 `tailwind.config.js` 的 content 路径覆盖 `src/**/*.{ts,tsx}`
-  - [ ] 在 `App.tsx` 中写一个测试用的 Tailwind class，确认样式生效后移除
-  - [ ] 安装 `zustand`，在 `src/store/` 下创建一个空的示例 store（如 `useAppStore.ts`），验证跨组件读写状态可用后可保留或删除
-
 - [ ] **定义标注数据核心类型**
   - [ ] 在 `src/types/annotation.ts` 中定义 `AnnotationShape`、`LabelConfig`（先只用到 `rect` 类型，图形字段随后续任务逐步扩展）
   - [ ] 明确并在类型文件顶部注释写清楚坐标系约定（归一化坐标 or 原图像素坐标），此约定后续不再更改
@@ -178,6 +173,11 @@
   - [ ] 实现对应导出逻辑并验证
 
 ## ✅ 已完成 (Completed)
+
+- [x] **接入 Tailwind CSS 与 Zustand 状态管理**
+  - [x] 安装 Tailwind 及其 PostCSS 依赖，配置 `tailwind.config.js` 的 content 路径覆盖 `src/**/*.{ts,tsx}`
+  - [x] 在 `App.tsx` 中写一个测试用的 Tailwind class，确认样式生效后移除
+  - [x] 安装 `zustand`，在 `src/store/` 下创建一个空的示例 store（如 `useAppStore.ts`），验证跨组件读写状态可用后可保留或删除
 
 - [x] **接入基础开发工具链（Lint/格式化/静态检查）**
   - [x] 安装并配置 ESLint + TypeScript 规则（禁止 `any`，与项目编码规范对齐）
