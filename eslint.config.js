@@ -11,6 +11,10 @@ export default [
       globals: {
         document: "readonly",
         HTMLElement: "readonly",
+        HTMLImageElement: "readonly",
+        Image: "readonly",
+        ResizeObserver: "readonly",
+        window: "readonly",
       },
     },
     rules: {
