@@ -13,5 +13,8 @@ export default [
         HTMLElement: "readonly",
       },
     },
+    rules: {
+      "@typescript-eslint/no-explicit-any": "error",
+    },
   },
 ];

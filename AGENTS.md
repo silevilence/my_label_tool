@@ -9,6 +9,7 @@
 一个可离线运行、Windows 下双击即用的图片/视频标注桌面工具，用于替代 Label Studio（部署重）、DarkLabel（不可扩展）、Labelme（功能过简）等现有方案。
 
 **核心诉求（优先级从高到低）：**
+
 1. 本地离线运行，无需网络、无需安装依赖
 2. 启动快、体积小
 3. 标签体系与导出格式可配置（预置常用模板，同时支持自定义）
@@ -19,15 +20,15 @@
 
 ## 2. 技术栈
 
-| 层 | 技术 | 说明 |
-|---|---|---|
-| 应用框架 | **Tauri 2.x** | Rust 后端 + Web 前端，产出原生级体积/启动速度的 Windows 桌面程序 |
-| 前端框架 | **React 18 + TypeScript** | 严禁使用纯 JS 新建文件 |
-| 状态管理 | **Zustand** | 轻量、无 boilerplate，适合标注状态（图片列表/标注框/标签配置）管理 |
-| 画布/图形层 | **Konva.js + react-konva** | 处理矩形框、多边形、关键点的绘制、拖拽、变换 |
-| 样式 | **Tailwind CSS** | 禁止裸写大段自定义 CSS，优先 utility class |
-| 后端逻辑（Rust） | **Tauri commands** | 负责文件系统读写、导出格式序列化、视频抽帧（后期，通过 `ffmpeg` sidecar 或 crate） |
-| 配置持久化 | 本地 JSON/TOML 文件（标签模板、快捷键配置、导出模板） | 不引入数据库，保持轻量 |
+| 层               | 技术                                                  | 说明                                                                               |
+| ---------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 应用框架         | **Tauri 2.x**                                         | Rust 后端 + Web 前端，产出原生级体积/启动速度的 Windows 桌面程序                   |
+| 前端框架         | **React 18 + TypeScript**                             | 严禁使用纯 JS 新建文件                                                             |
+| 状态管理         | **Zustand**                                           | 轻量、无 boilerplate，适合标注状态（图片列表/标注框/标签配置）管理                 |
+| 画布/图形层      | **Konva.js + react-konva**                            | 处理矩形框、多边形、关键点的绘制、拖拽、变换                                       |
+| 样式             | **Tailwind CSS**                                      | 禁止裸写大段自定义 CSS，优先 utility class                                         |
+| 后端逻辑（Rust） | **Tauri commands**                                    | 负责文件系统读写、导出格式序列化、视频抽帧（后期，通过 `ffmpeg` sidecar 或 crate） |
+| 配置持久化       | 本地 JSON/TOML 文件（标签模板、快捷键配置、导出模板） | 不引入数据库，保持轻量                                                             |
 
 **明确不使用：** Python 相关打包工具（PyInstaller/Nuitka）、Electron（体积/启动速度不达标）、任何需要联网才能运行的组件。
 
@@ -108,10 +109,10 @@ annotool/
 interface AnnotationShape {
   id: string;
   type: "rect" | "polygon" | "point" | "polyline";
-  labelId: string;          // 关联 LabelConfig.id
-  points: number[];         // 归一化坐标 [0,1] 或原图像素坐标，需在实现时统一约定并写入文档
+  labelId: string; // 关联 LabelConfig.id
+  points: number[]; // 归一化坐标 [0,1] 或原图像素坐标，需在实现时统一约定并写入文档
   attributes?: Record<string, string | number | boolean>; // 扩展属性（如遮挡、难例标记）
-  frameIndex?: number;      // 视频标注预留字段，图片标注阶段恒为 0 或省略
+  frameIndex?: number; // 视频标注预留字段，图片标注阶段恒为 0 或省略
 }
 
 // 标签配置（可自定义 + 预置模板）
@@ -119,22 +120,22 @@ interface LabelConfig {
   id: string;
   name: string;
   color: string;
-  shortcut?: string;        // 单键快捷键，如 "1" "q"
+  shortcut?: string; // 单键快捷键，如 "1" "q"
   shapeType: AnnotationShape["type"];
 }
 
 // 导出模板配置
 interface ExportTemplate {
   id: string;
-  name: string;              // 如 "COCO" "VOC" "YOLO" "自定义CSV"
+  name: string; // 如 "COCO" "VOC" "YOLO" "自定义CSV"
   format: "coco" | "voc" | "yolo" | "custom";
   customSchema?: Record<string, unknown>; // format=custom 时的字段映射配置
 }
 
 // 快捷键配置（用户可自由改绑）
 interface ShortcutConfig {
-  action: string;            // 如 "zoom_in" "next_image" "select_label_1"
-  key: string;                // 如 "ctrl+=" "d" "1"
+  action: string; // 如 "zoom_in" "next_image" "select_label_1"
+  key: string; // 如 "ctrl+=" "d" "1"
 }
 ```
 
@@ -145,17 +146,20 @@ interface ShortcutConfig {
 ## 6. 编码规范
 
 ### 前端（React/TypeScript）
+
 - 组件用函数组件 + Hooks，禁止 class component。
 - 禁止 `any`，确需动态类型时用 `unknown` 并做类型收窄。
 - 所有 Tauri command 调用必须封装在 `lib/tauri-api.ts`，组件内不得直接 `invoke(...)`。
 - 画布相关状态（当前缩放级别、选中图形、绘制中的临时图形）与业务数据状态（标注列表、标签配置）分开存放在不同 store 中。
 
 ### Rust
+
 - 所有 `#[tauri::command]` 函数返回 `Result<T, String>`（或自定义 Error 类型 + `impl Serialize`），禁止 `unwrap()`/`expect()` 出现在 command 函数体内，必须走错误处理。
 - 文件路径处理统一用 `std::path::PathBuf`，不手动拼接字符串路径。
 - 图像/视频处理逻辑（后期）独立成 `src-tauri/src/media/` 模块，不要塞进 `commands/` 里。
 
 ### 通用
+
 - 快捷键、标签、导出模板的默认值放在 `src/lib/defaults/` 或对应 Rust 端常量文件中，禁止散落在组件代码里硬编码。
 - 所有用户可见文案（按钮、提示）先留出 i18n 结构（哪怕暂时只有中文一种语言），避免后期国际化时大改。
 
@@ -188,7 +192,6 @@ interface ShortcutConfig {
 
 ## 9. Git 提交规范
 
-
 ### 格式
 
 ```
@@ -208,17 +211,17 @@ interface ShortcutConfig {
 
 ### Emoji 对照表
 
-| Type | Emoji | 含义 |
-|---|---|---|
-| `feat` | ✨ | 新功能 |
-| `fix` | 🐛 | Bug 修复 |
-| `refactor` | ♻️ | 代码重构 |
-| `docs` | 📚 | 文档变更 |
-| `test` | 🧪 | 测试相关 |
-| `chore` | 🔧 | 工程化/依赖/配置 |
-| `style` | 🎨 | 代码格式/样式 |
-| `perf` | ⚡ | 性能优化 |
-| `wip` | 🚧 | 进行中（仅临时使用，合并前必须 squash） |
+| Type       | Emoji | 含义                                    |
+| ---------- | ----- | --------------------------------------- |
+| `feat`     | ✨    | 新功能                                  |
+| `fix`      | 🐛    | Bug 修复                                |
+| `refactor` | ♻️    | 代码重构                                |
+| `docs`     | 📚    | 文档变更                                |
+| `test`     | 🧪    | 测试相关                                |
+| `chore`    | 🔧    | 工程化/依赖/配置                        |
+| `style`    | 🎨    | 代码格式/样式                           |
+| `perf`     | ⚡    | 性能优化                                |
+| `wip`      | 🚧    | 进行中（仅临时使用，合并前必须 squash） |
 
 ### 示例
 
