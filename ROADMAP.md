@@ -4,10 +4,6 @@
 
 ## 🚧 开发中 (In Progress)
 
-- [ ] **定义标注数据核心类型**
-  - [ ] 在 `src/types/annotation.ts` 中定义 `AnnotationShape`、`LabelConfig`（先只用到 `rect` 类型，图形字段随后续任务逐步扩展）
-  - [ ] 明确并在类型文件顶部注释写清楚坐标系约定（归一化坐标 or 原图像素坐标），此约定后续不再更改
-
 - [ ] **实现图片文件夹选择与列表加载**
   - [ ] Rust 端新增 command：读取指定文件夹下所有图片文件路径（支持 jpg/png/bmp）
   - [ ] 前端调用该 command，展示图片文件名列表（先用简单列表，不做美化）
@@ -173,6 +169,10 @@
   - [ ] 实现对应导出逻辑并验证
 
 ## ✅ 已完成 (Completed)
+
+- [x] **定义标注数据核心类型**
+  - [x] 在 `src/types/annotation.ts` 中定义 `AnnotationShape`、`LabelConfig`（先只用到 `rect` 类型，图形字段随后续任务逐步扩展）
+  - [x] 明确并在类型文件顶部注释写清楚坐标系约定（归一化坐标 or 原图像素坐标），此约定后续不再更改
 
 - [x] **接入 Tailwind CSS 与 Zustand 状态管理**
   - [x] 安装 Tailwind 及其 PostCSS 依赖，配置 `tailwind.config.js` 的 content 路径覆盖 `src/**/*.{ts,tsx}`
