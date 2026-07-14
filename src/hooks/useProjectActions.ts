@@ -18,6 +18,7 @@ import {
   parseProjectConfig,
   parseVocImport,
   parseYoloImport,
+  projectConfigTemplate,
   type ImportedAnnotations,
   type ProjectConfig,
   type TextImportFile,
@@ -46,7 +47,6 @@ interface UseProjectActionsParams {
   labels: LabelConfig[];
   selectedExportFormatId: ExportFormatId;
   applyProjectTemplate: (template: ProjectConfig["template"], labels: LabelConfig[]) => void;
-  currentTemplateSnapshot: () => ProjectConfig["template"];
   replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
   setActiveProjectConfig: (config: ProjectConfig) => void;
   setActiveProjectConfigPath: (path: string) => void;
@@ -65,7 +65,6 @@ export function useProjectActions({
   labels,
   selectedExportFormatId,
   applyProjectTemplate,
-  currentTemplateSnapshot,
   replaceAnnotations,
   setActiveProjectConfig,
   setActiveProjectConfigPath,
@@ -179,7 +178,7 @@ export function useProjectActions({
       exportedAt: new Date().toISOString(),
       imageFolder: folderPath,
       labels,
-      template: currentTemplateSnapshot(),
+      template: projectConfigTemplate(),
       exportOptions: { format },
     };
 
@@ -229,7 +228,7 @@ export function useProjectActions({
       return null;
     }
 
-    const config = parseProjectConfig(await readTextFile(configPath));
+    const config = withProjectTemplate(parseProjectConfig(await readTextFile(configPath)));
     const imported =
       config.format === "json"
         ? parseNativeJsonImport(await readTextFile(config.annotationPath))
@@ -321,6 +320,10 @@ export function useProjectActions({
     );
 
     return { labels, images: exportImages };
+  }
+
+  function withProjectTemplate(config: ProjectConfig): ProjectConfig {
+    return { ...config, template: projectConfigTemplate() };
   }
 
   return {

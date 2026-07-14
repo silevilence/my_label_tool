@@ -127,7 +127,6 @@ function App() {
   const {
     applyProjectTemplate,
     cancelLabelChanges,
-    currentTemplateSnapshot,
     deleteTemplate,
     newTemplate,
     saveTemplate,
@@ -171,7 +170,6 @@ function App() {
       labels,
       selectedExportFormatId,
       applyProjectTemplate,
-      currentTemplateSnapshot,
       replaceAnnotations,
       setActiveProjectConfig,
       setActiveProjectConfigPath,

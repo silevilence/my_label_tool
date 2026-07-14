@@ -98,14 +98,6 @@ export function useLabelActions({
     setSelectedTemplateId(template.id);
   }
 
-  function currentTemplateSnapshot(): ProjectConfig["template"] {
-    const template = templates.find((item) => item.id === selectedTemplateId);
-    return {
-      id: template?.id ?? selectedTemplateId,
-      name: template?.name ?? "当前模板",
-    };
-  }
-
   function newTemplate() {
     const name = window.prompt("新模板名称");
     if (!name?.trim()) {
@@ -247,7 +239,6 @@ export function useLabelActions({
   return {
     applyProjectTemplate,
     cancelLabelChanges,
-    currentTemplateSnapshot,
     deleteTemplate,
     newTemplate,
     saveTemplate,

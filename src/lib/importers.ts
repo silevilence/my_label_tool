@@ -4,6 +4,8 @@ import type { AnnotationShape, LabelConfig } from "../types/annotation";
 import type { ExportFormatId } from "../types/export";
 
 export const PROJECT_CONFIG_NAME = "my-label-tool.project.json";
+export const PROJECT_TEMPLATE_ID = "project-config";
+export const PROJECT_TEMPLATE_NAME = "项目临时配置";
 
 export type ImportFormatId = Exclude<ExportFormatId, "custom">;
 
@@ -21,6 +23,10 @@ export interface ProjectConfig {
   exportOptions: {
     format: ExportFormatId;
   };
+}
+
+export function projectConfigTemplate(): ProjectConfig["template"] {
+  return { id: PROJECT_TEMPLATE_ID, name: PROJECT_TEMPLATE_NAME };
 }
 
 export interface ImportedImageAnnotations {
@@ -377,12 +383,12 @@ function parseAttributes(value: unknown): AnnotationShape["attributes"] {
 
 function parseTemplate(value: unknown): ProjectConfig["template"] {
   if (!isRecord(value)) {
-    return { id: "project-import", name: "导入项目模板" };
+    return projectConfigTemplate();
   }
 
   return {
-    id: typeof value.id === "string" && value.id ? value.id : "project-import",
-    name: typeof value.name === "string" && value.name ? value.name : "导入项目模板",
+    id: typeof value.id === "string" && value.id ? value.id : PROJECT_TEMPLATE_ID,
+    name: typeof value.name === "string" && value.name ? value.name : PROJECT_TEMPLATE_NAME,
   };
 }
 
