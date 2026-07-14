@@ -82,6 +82,26 @@ interface PanState {
   layoutY: number;
 }
 
+type InteractionMode = "default" | "select" | "annotate";
+
+const INTERACTION_MODE_HELP: Record<
+  InteractionMode,
+  { title: string; tips: string[] }
+> = {
+  default: {
+    title: "默认模式",
+    tips: ["左键：点框选择，空白处绘制", "右键：打开菜单", "滚轮：缩放"],
+  },
+  select: {
+    title: "选择模式（Shift）",
+    tips: ["左键：选择/取消选择", "右键：打开菜单", "滚轮：循环高亮重叠框"],
+  },
+  annotate: {
+    title: "标注模式（Ctrl）",
+    tips: ["左键：绘制新框", "右键：平移画布", "滚轮：缩放"],
+  },
+};
+
 function App() {
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const selectedImageButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -100,6 +120,8 @@ function App() {
   const [isPanning, setIsPanning] = useState(false);
   const [annotationToDelete, setAnnotationToDelete] = useState<AnnotationShape | null>(null);
   const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>("default");
+  const [highlightedShapeId, setHighlightedShapeId] = useState<string | null>(null);
   const [labels, setLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
   const [savedLabels, setSavedLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
   const [templates, setTemplates] = useState<LabelTemplate[]>(DEFAULT_LABEL_TEMPLATES);
@@ -270,7 +292,40 @@ function App() {
   useEffect(() => {
     selectShape(null);
     setDrawingRect(null);
+    setHighlightedShapeId(null);
   }, [selectShape, selectedPath]);
+
+  useEffect(() => {
+    function updateMode(event: KeyboardEvent) {
+      setInteractionMode(getInteractionMode(event.ctrlKey, event.shiftKey));
+    }
+
+    function resetMode() {
+      setInteractionMode("default");
+    }
+
+    window.addEventListener("keydown", updateMode);
+    window.addEventListener("keyup", updateMode);
+    window.addEventListener("blur", resetMode);
+    return () => {
+      window.removeEventListener("keydown", updateMode);
+      window.removeEventListener("keyup", updateMode);
+      window.removeEventListener("blur", resetMode);
+    };
+  }, []);
+
+  useEffect(() => {
+    setDrawingRect(null);
+    if (interactionMode !== "select") {
+      setHighlightedShapeId(null);
+    }
+  }, [interactionMode]);
+
+  useEffect(() => {
+    if (highlightedShapeId && !annotations.some((annotation) => annotation.id === highlightedShapeId)) {
+      setHighlightedShapeId(null);
+    }
+  }, [annotations, highlightedShapeId]);
 
   useEffect(() => {
     selectedImageButtonRef.current?.scrollIntoView({ block: "nearest" });
@@ -799,6 +854,43 @@ function App() {
     )?.id;
   }
 
+  function findAnnotationCandidatesAtPointer(
+    pointer: { x: number; y: number },
+    tolerance = 8,
+  ): string[] {
+    if (!imageLayout) {
+      return [];
+    }
+
+    return annotations
+      .map((annotation, index) => {
+        const [, , width, height] = annotation.points;
+        return {
+          annotation,
+          area: width * height,
+          index,
+          rect: toCanvasRect(annotation.points, imageLayout),
+        };
+      })
+      .filter((item) => isPointNearCanvasRect(pointer, item.rect, tolerance))
+      .sort((a, b) => a.area - b.area || b.index - a.index)
+      .map((item) => item.annotation.id);
+  }
+
+  function cycleHighlightedCandidate(pointer: { x: number; y: number }, direction: 1 | -1) {
+    const candidates = findAnnotationCandidatesAtPointer(pointer);
+    if (candidates.length === 0) {
+      setHighlightedShapeId(null);
+      return;
+    }
+
+    setHighlightedShapeId((currentId) => {
+      const baseId = currentId ?? selectedShapeId;
+      const index = baseId ? candidates.indexOf(baseId) : -1;
+      return candidates[(index + direction + candidates.length) % candidates.length];
+    });
+  }
+
   function handleStageWheel(event: KonvaEventObject<WheelEvent>) {
     event.evt.preventDefault();
 
@@ -815,6 +907,11 @@ function App() {
         pointer.x > imageLayout.x + imageLayout.width ||
         pointer.y > imageLayout.y + imageLayout.height)
     ) {
+      return;
+    }
+
+    if (getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey) === "select") {
+      cycleHighlightedCandidate(pointer, event.evt.deltaY > 0 ? 1 : -1);
       return;
     }
 
@@ -844,9 +941,23 @@ function App() {
       return;
     }
 
+    const mode = getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey);
+    if (mode === "select") {
+      const pointer = event.target.getStage()?.getPointerPosition();
+      const candidates = pointer ? findAnnotationCandidatesAtPointer(pointer) : [];
+      const nextId =
+        highlightedShapeId && candidates.includes(highlightedShapeId)
+          ? highlightedShapeId
+          : (candidates[0] ?? null);
+      selectShape(nextId);
+      setHighlightedShapeId(nextId);
+      setDrawingRect(null);
+      return;
+    }
+
     const isBackground =
       event.target === event.target.getStage() || event.target.name() === "image";
-    if (!isBackground) {
+    if (mode !== "annotate" && !isBackground) {
       return;
     }
 
@@ -1289,49 +1400,59 @@ function App() {
 
       <div
         ref={canvasHostRef}
-        className={`h-full min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : ""}`}
+        className={`relative h-full min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : ""}`}
       >
         {selectedImage && loadedImage && imageLayout ? (
-          <Stage
-            width={canvasSize.width}
-            height={canvasSize.height}
-            onMouseDown={handleStageMouseDown}
-            onMouseMove={handleStageMouseMove}
-            onMouseUp={handleStageMouseUp}
-            onWheel={handleStageWheel}
-            onContextMenu={openContextMenu}
-          >
-            <Layer>
-              <KonvaImage
-                height={imageLayout.height}
-                image={loadedImage}
-                name="image"
-                width={imageLayout.width}
-                x={imageLayout.x}
-                y={imageLayout.y}
-              />
-              {annotations.map((annotation) => (
-                <AnnotationRect
-                  annotation={annotation}
-                  imageLayout={imageLayout}
-                  isSelected={annotation.id === selectedShapeId}
-                  isPanning={isPanning}
-                  key={annotation.id}
-                  label={labelById.get(annotation.labelId) ?? labels[0]}
-                  rectRef={selectedRectRef}
-                  onContextMenu={openContextMenu}
-                  onDragEnd={handleDragEnd}
-                  onPanStart={startPanning}
-                  onSelect={selectShape}
-                  onTransformEnd={handleTransformEnd}
+          <>
+            <Stage
+              width={canvasSize.width}
+              height={canvasSize.height}
+              onMouseDown={handleStageMouseDown}
+              onMouseMove={handleStageMouseMove}
+              onMouseUp={handleStageMouseUp}
+              onWheel={handleStageWheel}
+              onContextMenu={openContextMenu}
+            >
+              <Layer>
+                <KonvaImage
+                  height={imageLayout.height}
+                  image={loadedImage}
+                  name="image"
+                  width={imageLayout.width}
+                  x={imageLayout.x}
+                  y={imageLayout.y}
                 />
-              ))}
-              {draftRect && (
-                <Rect {...draftRect} dash={[6, 4]} stroke={currentLabel.color} strokeWidth={2} />
-              )}
-              <Transformer ref={transformerRef} rotateEnabled={false} />
-            </Layer>
-          </Stage>
+                {annotations.map((annotation) => (
+                  <AnnotationRect
+                    annotation={annotation}
+                    imageLayout={imageLayout}
+                    interactionMode={interactionMode}
+                    isHighlighted={annotation.id === highlightedShapeId}
+                    isSelected={annotation.id === selectedShapeId}
+                    isPanning={isPanning}
+                    key={annotation.id}
+                    label={labelById.get(annotation.labelId) ?? labels[0]}
+                    rectRef={selectedRectRef}
+                    onContextMenu={openContextMenu}
+                    onDragEnd={handleDragEnd}
+                    onPanStart={startPanning}
+                    onSelect={selectShape}
+                    onTransformEnd={handleTransformEnd}
+                  />
+                ))}
+                {draftRect && (
+                  <Rect {...draftRect} dash={[6, 4]} stroke={currentLabel.color} strokeWidth={2} />
+                )}
+                <Transformer
+                  ref={transformerRef}
+                  listening={interactionMode === "default"}
+                  rotateEnabled={false}
+                  visible={interactionMode === "default"}
+                />
+              </Layer>
+            </Stage>
+            <ModeHelpOverlay mode={interactionMode} />
+          </>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">
             {selectedImage
@@ -1413,6 +1534,19 @@ interface DeleteAnnotationDialogProps {
   labelName: string;
   onCancel: () => void;
   onConfirm: () => void;
+}
+
+function ModeHelpOverlay({ mode }: { mode: InteractionMode }) {
+  const help = INTERACTION_MODE_HELP[mode];
+
+  return (
+    <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg">
+      <div className="font-medium text-sky-200">{help.title}</div>
+      {help.tips.map((tip) => (
+        <div key={tip}>{tip}</div>
+      ))}
+    </div>
+  );
 }
 
 function DeleteAnnotationDialog({ labelName, onCancel, onConfirm }: DeleteAnnotationDialogProps) {
@@ -1609,6 +1743,8 @@ function ContextMenuButton({
 interface AnnotationRectProps {
   annotation: AnnotationShape;
   imageLayout: ImageLayout;
+  interactionMode: InteractionMode;
+  isHighlighted: boolean;
   isPanning: boolean;
   isSelected: boolean;
   label: LabelConfig;
@@ -1623,6 +1759,8 @@ interface AnnotationRectProps {
 function AnnotationRect({
   annotation,
   imageLayout,
+  interactionMode,
+  isHighlighted,
   isPanning,
   isSelected,
   label,
@@ -1644,10 +1782,17 @@ function AnnotationRect({
         }
       }}
       fill={`${label.color}22`}
-      stroke={label.color}
-      strokeWidth={isSelected ? 3 : 2}
-      draggable={!isPanning}
-      onClick={() => onSelect(annotation.id)}
+      shadowBlur={isHighlighted ? 10 : 0}
+      shadowColor="#facc15"
+      stroke={isHighlighted ? "#facc15" : label.color}
+      strokeWidth={isHighlighted || isSelected ? 3 : 2}
+      draggable={!isPanning && interactionMode === "default"}
+      onClick={(event) => {
+        if (interactionMode !== "default" || event.evt.ctrlKey || event.evt.shiftKey) {
+          return;
+        }
+        onSelect(annotation.id);
+      }}
       onContextMenu={(event) => {
         event.cancelBubble = true;
         onContextMenu(event, annotation.id);
@@ -1665,6 +1810,9 @@ function AnnotationRect({
           return;
         }
         if (event.evt.button !== 0) {
+          return;
+        }
+        if (event.evt.ctrlKey || event.evt.shiftKey) {
           return;
         }
         event.cancelBubble = true;
@@ -1756,6 +1904,16 @@ function getFitScale(image: HTMLImageElement, canvasSize: { width: number; heigh
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function getInteractionMode(ctrlKey: boolean, shiftKey: boolean): InteractionMode {
+  if (ctrlKey) {
+    return "annotate";
+  }
+  if (shiftKey) {
+    return "select";
+  }
+  return "default";
 }
 
 function clampContextMenuPosition(
