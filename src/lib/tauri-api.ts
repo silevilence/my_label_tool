@@ -1,6 +1,7 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
+import type { TextExportFile } from "../types/export";
 
 export interface ImageFile {
   path: string;
@@ -37,8 +38,25 @@ export async function selectExportJsonPath(): Promise<string | null> {
   return typeof path === "string" ? path : null;
 }
 
-export function exportAnnotationsJson(outputPath: string, data: AnnotationExport): Promise<void> {
+export async function selectExportPath(defaultPath: string): Promise<string | null> {
+  const path = await save({
+    defaultPath,
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  return typeof path === "string" ? path : null;
+}
+
+export async function selectExportFolder(): Promise<string | null> {
+  const path = await open({ directory: true, multiple: false });
+  return typeof path === "string" ? path : null;
+}
+
+export function exportAnnotationsJson(outputPath: string, data: unknown): Promise<void> {
   return invoke("export_annotations_json", { outputPath, data });
+}
+
+export function exportTextFiles(outputDir: string, files: TextExportFile[]): Promise<void> {
+  return invoke("export_text_files", { outputDir, files });
 }
 
 export function loadLabelConfigs(): Promise<LabelConfig[]> {

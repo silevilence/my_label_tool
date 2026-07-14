@@ -3,6 +3,7 @@ use serde_json::Value;
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct AnnotationExport {
     pub labels: Vec<LabelConfig>,
     pub images: Vec<ImageAnnotations>,
@@ -10,6 +11,7 @@ pub struct AnnotationExport {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct ImageAnnotations {
     pub path: String,
     pub name: String,
@@ -18,6 +20,7 @@ pub struct ImageAnnotations {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct AnnotationShape {
     pub id: String,
     #[serde(rename = "type")]

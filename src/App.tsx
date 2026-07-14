@@ -3,10 +3,17 @@ import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konv
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
+import { ExportPanel } from "./components/settings/ExportPanel";
 import { LabelSettings } from "./components/settings/LabelSettings";
+import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
+import { exportCoco } from "./lib/exporters/coco";
+import { exportCustom } from "./lib/exporters/custom";
+import { exportVoc } from "./lib/exporters/voc";
+import { exportYolo } from "./lib/exporters/yolo";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
 import {
   exportAnnotationsJson,
+  exportTextFiles,
   imageFileSrc,
   type ImageFile,
   listImageFiles,
@@ -14,11 +21,14 @@ import {
   loadLabelTemplates,
   saveLabelConfigs,
   saveLabelTemplates,
+  selectExportFolder,
   selectExportJsonPath,
+  selectExportPath,
   selectImageFolder,
 } from "./lib/tauri-api";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "./types/annotation";
+import type { CustomExportMapping, ExportData, ExportFormatId } from "./types/export";
 import "./App.css";
 
 interface ImageLayout {
@@ -53,6 +63,10 @@ function App() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(DEFAULT_LABEL_TEMPLATES[0].id);
   const [currentLabelId, setCurrentLabelId] = useState(DEFAULT_LABELS[0].id);
   const [isLabelDirty, setIsLabelDirty] = useState(false);
+  const [selectedExportFormatId, setSelectedExportFormatId] = useState<ExportFormatId>("json");
+  const [customMappingText, setCustomMappingText] = useState(
+    JSON.stringify(DEFAULT_CUSTOM_EXPORT_MAPPING, null, 2),
+  );
   const [error, setError] = useState("");
 
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
@@ -248,25 +262,57 @@ function App() {
     }
   }
 
-  async function exportJson() {
+  async function exportSelectedFormat() {
     setError("");
 
     try {
-      const outputPath = await selectExportJsonPath();
-      if (!outputPath) {
-        return;
+      if (selectedExportFormatId === "json") {
+        const outputPath = await selectExportJsonPath();
+        if (!outputPath) {
+          return;
+        }
+        await exportAnnotationsJson(outputPath, await buildExportData());
+      } else if (selectedExportFormatId === "coco") {
+        const outputPath = await selectExportPath("annotations.coco.json");
+        if (!outputPath) {
+          return;
+        }
+        await exportAnnotationsJson(outputPath, exportCoco(await buildExportData()));
+      } else if (selectedExportFormatId === "voc") {
+        const outputDir = await selectExportFolder();
+        if (!outputDir) {
+          return;
+        }
+        await exportTextFiles(outputDir, exportVoc(await buildExportData()));
+      } else if (selectedExportFormatId === "yolo") {
+        const outputDir = await selectExportFolder();
+        if (!outputDir) {
+          return;
+        }
+        await exportTextFiles(outputDir, exportYolo(await buildExportData()));
+      } else {
+        const mapping = parseCustomMapping(customMappingText);
+        const outputPath = await selectExportPath("annotations.custom.json");
+        if (!outputPath) {
+          return;
+        }
+        await exportAnnotationsJson(outputPath, exportCustom(await buildExportData(), mapping));
       }
-
-      await exportAnnotationsJson(outputPath, {
-        labels,
-        images: images.map((image) => ({
-          ...image,
-          annotations: annotationsByImage[image.path] ?? [],
-        })),
-      });
     } catch (caughtError: unknown) {
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
     }
+  }
+
+  async function buildExportData(): Promise<ExportData> {
+    const exportImages = await Promise.all(
+      images.map(async (image) => ({
+        ...image,
+        ...(await loadImageSize(image.path)),
+        annotations: annotationsByImage[image.path] ?? [],
+      })),
+    );
+
+    return { labels, images: exportImages };
   }
 
   function handleStageMouseDown(event: KonvaEventObject<MouseEvent>) {
@@ -522,14 +568,6 @@ function App() {
           >
             打开图片文件夹
           </button>
-          <button
-            className="mt-2 w-full rounded bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
-            type="button"
-            disabled={images.length === 0}
-            onClick={exportJson}
-          >
-            导出 JSON
-          </button>
           {folderPath && (
             <p className="mt-3 truncate text-xs text-slate-400" title={folderPath}>
               {folderPath}
@@ -537,6 +575,15 @@ function App() {
           )}
           {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
         </div>
+
+        <ExportPanel
+          customMappingText={customMappingText}
+          disabled={images.length === 0}
+          selectedFormatId={selectedExportFormatId}
+          onChangeCustomMappingText={setCustomMappingText}
+          onChangeFormat={setSelectedExportFormatId}
+          onExport={exportSelectedFormat}
+        />
 
         <LabelSettings
           canSaveTemplate={isUserTemplate(selectedTemplateId)}
@@ -753,6 +800,40 @@ function clampRect(
     width,
     height,
   };
+}
+
+function loadImageSize(path: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => reject(new Error(`图片尺寸读取失败：${path}`));
+    image.src = imageFileSrc(path);
+  });
+}
+
+function parseCustomMapping(text: string): Required<CustomExportMapping> {
+  const parsed: unknown = JSON.parse(text);
+  if (!isRecord(parsed)) {
+    throw new Error("自定义导出字段映射必须是 JSON 对象");
+  }
+
+  const mapping = { ...DEFAULT_CUSTOM_EXPORT_MAPPING };
+  for (const key of Object.keys(mapping) as Array<keyof Required<CustomExportMapping>>) {
+    const value = parsed[key];
+    if (value === undefined) {
+      continue;
+    }
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new Error(`自定义导出字段 ${key} 必须是非空字符串`);
+    }
+    mapping[key] = value;
+  }
+
+  return mapping;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

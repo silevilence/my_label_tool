@@ -1,18 +1,26 @@
 use std::{
     fs,
     io::Read,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::Manager;
 
-use crate::models::annotation::{AnnotationExport, LabelConfig, LabelTemplate};
+use crate::models::annotation::{LabelConfig, LabelTemplate};
 
 #[derive(Serialize)]
 pub struct ImageFile {
     path: String,
     name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextExportFile {
+    path: PathBuf,
+    content: String,
 }
 
 #[tauri::command]
@@ -86,9 +94,35 @@ fn is_loadable_image(path: &Path) -> bool {
 }
 
 #[tauri::command]
-pub fn export_annotations_json(output_path: PathBuf, data: AnnotationExport) -> Result<(), String> {
+pub fn export_annotations_json(output_path: PathBuf, data: Value) -> Result<(), String> {
     let json = serde_json::to_string_pretty(&data).map_err(|error| error.to_string())?;
     fs::write(output_path, json).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn export_text_files(output_dir: PathBuf, files: Vec<TextExportFile>) -> Result<(), String> {
+    if !output_dir.is_dir() {
+        return Err("请选择一个有效的导出文件夹".to_string());
+    }
+
+    for file in files {
+        if !is_safe_relative_path(&file.path) {
+            return Err(format!("导出文件路径不安全: {}", file.path.display()));
+        }
+
+        let path = output_dir.join(&file.path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        fs::write(path, file.content).map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn is_safe_relative_path(path: &Path) -> bool {
+    !path.as_os_str().is_empty()
+        && path.components().all(|component| matches!(component, Component::Normal(_)))
 }
 
 #[tauri::command]
@@ -161,13 +195,17 @@ fn write_label_templates(path: &Path, templates: &[LabelTemplate]) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::{
-        export_annotations_json, is_loadable_image, is_supported_image, list_image_files,
-        read_label_configs, read_label_templates, write_label_configs, write_label_templates,
+        export_annotations_json, export_text_files, is_loadable_image, is_supported_image,
+        list_image_files, read_label_configs, read_label_templates, write_label_configs,
+        write_label_templates, TextExportFile,
     };
     use crate::models::annotation::{
         AnnotationExport, AnnotationShape, ImageAnnotations, LabelConfig, LabelTemplate,
     };
-    use std::{fs, path::Path};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
 
     #[test]
     fn detects_supported_image_extensions() {
@@ -217,7 +255,7 @@ mod tests {
 
         export_annotations_json(
             path.clone(),
-            AnnotationExport {
+            serde_json::to_value(AnnotationExport {
                 labels: vec![LabelConfig {
                     id: "person".to_string(),
                     name: "人".to_string(),
@@ -237,7 +275,8 @@ mod tests {
                         frame_index: Some(0),
                     }],
                 }],
-            },
+            })
+            .unwrap(),
         )
         .unwrap();
 
@@ -245,6 +284,40 @@ mod tests {
         assert!(exported.contains("\"labelId\": \"person\""));
         assert!(exported.contains("\"points\": ["));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn exports_text_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "my_label_tool_text_export_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+
+        export_text_files(
+            dir.clone(),
+            vec![TextExportFile {
+                path: PathBuf::from("a.txt"),
+                content: "ok".to_string(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(fs::read_to_string(dir.join("a.txt")).unwrap(), "ok");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_unsafe_text_export_paths() {
+        let result = export_text_files(
+            std::env::temp_dir(),
+            vec![TextExportFile {
+                path: PathBuf::from("../a.txt"),
+                content: "bad".to_string(),
+            }],
+        );
+
+        assert!(result.is_err());
     }
 
     #[test]

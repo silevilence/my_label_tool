@@ -8,6 +8,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_image_files,
             commands::export_annotations_json,
+            commands::export_text_files,
             commands::load_label_configs,
             commands::save_label_configs,
             commands::load_label_templates,
