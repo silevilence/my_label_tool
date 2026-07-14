@@ -1,5 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import type { TextExportFile } from "../types/export";
 import type { ShortcutMap } from "./defaults/shortcuts";
@@ -26,6 +26,10 @@ export interface AnnotationExport {
 export async function selectImageFolder(): Promise<string | null> {
   const path = await open({ directory: true, multiple: false });
   return typeof path === "string" ? path : null;
+}
+
+export function confirmAction(message: string): Promise<boolean> {
+  return confirm(message, { title: "请确认", kind: "warning" });
 }
 
 export function listImageFiles(folderPath: string): Promise<ImageFile[]> {

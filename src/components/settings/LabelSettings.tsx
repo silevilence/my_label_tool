@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { DEFAULT_LABEL_COLORS } from "../../lib/defaults/labels";
+import { confirmAction } from "../../lib/tauri-api";
 import type { LabelConfig, LabelTemplate } from "../../types/annotation";
 
 interface LabelSettingsProps {
@@ -80,7 +81,7 @@ export function LabelSettings({
     patchLabel(labelId, { shortcut });
   }
 
-  function deleteLabel(label: LabelConfig) {
+  async function deleteLabel(label: LabelConfig) {
     if (labels.length === 1) {
       window.alert("至少需要保留一个标签。");
       return;
@@ -88,7 +89,9 @@ export function LabelSettings({
 
     if (
       usedLabelIds.has(label.id) &&
-      !window.confirm(`「${label.name}」已被矩形框使用，删除后这些框会改为第一个可用标签。`)
+      !(await confirmAction(
+        `「${label.name}」已被矩形框使用，删除后这些框会改为第一个可用标签。`,
+      ))
     ) {
       return;
     }

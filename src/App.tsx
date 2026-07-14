@@ -30,6 +30,7 @@ import {
 } from "./lib/importers";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
 import {
+  confirmAction,
   exportAnnotationsJson,
   exportTextFiles,
   imageFileSrc,
@@ -144,9 +145,14 @@ function App() {
   const addAnnotation = useAnnotationStore((state) => state.addAnnotation);
   const updateAnnotation = useAnnotationStore((state) => state.updateAnnotation);
   const deleteAnnotation = useAnnotationStore((state) => state.deleteAnnotation);
+  const clearImageAnnotations = useAnnotationStore((state) => state.clearImageAnnotations);
+  const undo = useAnnotationStore((state) => state.undo);
+  const redo = useAnnotationStore((state) => state.redo);
   const replaceAnnotations = useAnnotationStore((state) => state.replaceAnnotations);
   const replaceLabel = useAnnotationStore((state) => state.replaceLabel);
   const selectShape = useAnnotationStore((state) => state.selectShape);
+  const canUndo = useAnnotationStore((state) => state.canUndo);
+  const canRedo = useAnnotationStore((state) => state.canRedo);
   const annotations = annotationsByImage[selectedPath] ?? [];
   const selectedShape = annotations.find((annotation) => annotation.id === selectedShapeId) ?? null;
 
@@ -343,11 +349,35 @@ function App() {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.ctrlKey || event.altKey || event.metaKey || isEditableTarget(event.target)) {
+      if (isEditableTarget(event.target)) {
         return;
       }
 
       const key = normalizeShortcutKey(event.key);
+      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+        if (key === "z") {
+          event.preventDefault();
+          undo();
+          return;
+        }
+        if (key === "y") {
+          event.preventDefault();
+          redo();
+          return;
+        }
+      }
+
+      if (event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+
+      if (key === "Delete" && selectedPath && selectedShapeId) {
+        event.preventDefault();
+        deleteAnnotation(selectedPath, selectedShapeId);
+        setDrawingRect(null);
+        return;
+      }
+
       if (key === shortcuts.previousImage) {
         event.preventDefault();
         selectAdjacentImage(-1);
@@ -380,7 +410,17 @@ function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [labels, shortcuts, selectedPath, images, imageView, selectedShapeId]);
+  }, [
+    deleteAnnotation,
+    images,
+    imageView,
+    labels,
+    redo,
+    selectedPath,
+    selectedShapeId,
+    shortcuts,
+    undo,
+  ]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -655,7 +695,7 @@ function App() {
         throw new Error("请先打开图片文件夹");
       }
 
-      if (!confirmReplaceCurrentAnnotations(images)) {
+      if (!(await confirmReplaceCurrentAnnotations(images))) {
         return;
       }
 
@@ -684,7 +724,7 @@ function App() {
     currentImages: ImageFile[],
     confirmReplace: boolean,
   ): Promise<ProjectConfig | null> {
-    if (confirmReplace && !confirmReplaceCurrentAnnotations(currentImages)) {
+    if (confirmReplace && !(await confirmReplaceCurrentAnnotations(currentImages))) {
       return null;
     }
 
@@ -828,6 +868,18 @@ function App() {
     if (annotationToDelete) {
       deleteAnnotation(selectedPath, annotationToDelete.id);
       setAnnotationToDelete(null);
+    }
+  }
+
+  async function clearCurrentImageAnnotations() {
+    if (
+      selectedPath &&
+      annotations.length > 0 &&
+      (await confirmAction(`清空当前图片的 ${annotations.length} 个标注？可用 Ctrl+Z 撤销。`))
+    ) {
+      clearImageAnnotations(selectedPath);
+      setDrawingRect(null);
+      setContextMenu(null);
     }
   }
 
@@ -1099,8 +1151,8 @@ function App() {
     setIsLabelDirty(true);
   }
 
-  function selectTemplate(templateId: string) {
-    if (isLabelDirty && !window.confirm("放弃当前未保存的标签修改？")) {
+  async function selectTemplate(templateId: string) {
+    if (isLabelDirty && !(await confirmAction("放弃当前未保存的标签修改？"))) {
       return;
     }
 
@@ -1192,13 +1244,13 @@ function App() {
     applySavedLabels(labels);
   }
 
-  function deleteTemplate() {
+  async function deleteTemplate() {
     if (!isUserTemplate(selectedTemplateId) || selectedTemplateId === projectTemplateId) {
       return;
     }
 
     const template = templates.find((item) => item.id === selectedTemplateId);
-    if (!template || !window.confirm(`删除模板「${template.name}」？`)) {
+    if (!template || !(await confirmAction(`删除模板「${template.name}」？`))) {
       return;
     }
 
@@ -1289,6 +1341,24 @@ function App() {
           >
             快捷键配置
           </button>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              className="rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canUndo}
+              type="button"
+              onClick={undo}
+            >
+              撤销
+            </button>
+            <button
+              className="rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canRedo}
+              type="button"
+              onClick={redo}
+            >
+              重做
+            </button>
+          </div>
           {folderPath && (
             <p className="mt-3 truncate text-xs text-slate-400" title={folderPath}>
               {folderPath}
@@ -1357,6 +1427,14 @@ function App() {
                 <span className="text-xs text-slate-500">快捷键 {currentLabel.shortcut}</span>
               )}
             </div>
+            <button
+              className="mt-3 w-full rounded border border-red-500/60 px-3 py-2 text-sm font-medium text-red-200 hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={annotations.length === 0}
+              type="button"
+              onClick={clearCurrentImageAnnotations}
+            >
+              清空当前图片标注
+            </button>
           </section>
         </div>
 
@@ -1417,7 +1495,9 @@ function App() {
                 <KonvaImage
                   height={imageLayout.height}
                   image={loadedImage}
+                  imageSmoothingEnabled={!isLargeImage(loadedImage)}
                   name="image"
+                  perfectDrawEnabled={false}
                   width={imageLayout.width}
                   x={imageLayout.x}
                   y={imageLayout.y}
@@ -1554,7 +1634,9 @@ function DeleteAnnotationDialog({ labelName, onCancel, onConfirm }: DeleteAnnota
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4">
       <section className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
         <h2 className="text-base font-semibold text-slate-100">确认删除标注？</h2>
-        <p className="mt-2 text-sm text-slate-400">将删除「{labelName}」标注，此操作无法撤销。</p>
+        <p className="mt-2 text-sm text-slate-400">
+          将删除「{labelName}」标注，可用 Ctrl+Z 撤销。
+        </p>
         <div className="mt-5 flex justify-end gap-2">
           <button
             className="rounded border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
@@ -1784,6 +1866,8 @@ function AnnotationRect({
       fill={`${label.color}22`}
       shadowBlur={isHighlighted ? 10 : 0}
       shadowColor="#facc15"
+      perfectDrawEnabled={false}
+      shadowForStrokeEnabled={false}
       stroke={isHighlighted ? "#facc15" : label.color}
       strokeWidth={isHighlighted || isSelected ? 3 : 2}
       draggable={!isPanning && interactionMode === "default"}
@@ -1902,6 +1986,10 @@ function getFitScale(image: HTMLImageElement, canvasSize: { width: number; heigh
   return Math.min(canvasSize.width / image.naturalWidth, canvasSize.height / image.naturalHeight);
 }
 
+function isLargeImage(image: HTMLImageElement): boolean {
+  return image.naturalWidth * image.naturalHeight >= 3840 * 2160;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -1951,13 +2039,13 @@ function loadImageSize(path: string): Promise<{ width: number; height: number }>
   });
 }
 
-function confirmReplaceCurrentAnnotations(images: ImageFile[]): boolean {
+async function confirmReplaceCurrentAnnotations(images: ImageFile[]): Promise<boolean> {
   const annotationsByImage = useAnnotationStore.getState().annotationsByImage;
   const count = images.reduce(
     (total, image) => total + (annotationsByImage[image.path]?.length ?? 0),
     0,
   );
-  return count === 0 || window.confirm("当前图片目录已有标注，导入后会覆盖，是否继续？");
+  return count === 0 || confirmAction("当前图片目录已有标注，导入后会覆盖，是否继续？");
 }
 
 function matchImportedImages(imported: ImportedAnnotations, currentImages: ImageFile[]) {
