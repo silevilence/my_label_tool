@@ -73,34 +73,14 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ```
 my_label_tool/
 ├── src/                            # React 前端
-│   ├── App.tsx                     # 主组件（画布 + 侧边栏 + 标注逻辑，当前所有 UI 集中在此）
-│   ├── main.tsx                    # 入口
-│   ├── components/
-│   │   ├── canvas/                 # 画布组件（待实现，当前为空 .gitkeep）
-│   │   ├── toolbar/                # 工具栏（待实现，当前为空 .gitkeep）
-│   │   ├── sidebar/                # 图片列表面板（待实现，当前为空 .gitkeep）
-│   │   └── settings/
-│   │       └── LabelSettings.tsx   # 标签配置面板（已实现）
-│   ├── store/
-│   │   ├── useAnnotationStore.ts   # 标注数据状态（Zustand）
-│   │   └── useAppStore.ts          # 应用全局状态（Zustand）
-│   ├── types/
-│   │   └── annotation.ts           # 核心类型定义
-│   ├── lib/
-│   │   ├── tauri-api.ts            # Tauri command 调用封装
-│   │   ├── defaults/
-│   │   │   └── labels.ts           # 内置标签模板与默认颜色
-│   │   └── exporters/              # 导出格式实现（待实现，当前为空 .gitkeep）
-│   └── hooks/                      # 自定义 hooks（待实现，当前为空 .gitkeep）
+│   ├── components/                 # UI 组件（布局、画布、设置面板、侧边栏、工具栏）
+│   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态）
+│   ├── types/                      # 核心类型（annotation、export）
+│   ├── lib/                        # tauri-api 封装、导入、工具函数、defaults、exporters
+│   └── hooks/                      # useLabelActions、useProjectActions
 ├── src-tauri/                      # Rust 后端
-│   ├── src/
-│   │   ├── main.rs                 # 入口
-│   │   ├── lib.rs                  # Tauri Builder 配置
-│   │   ├── commands/
-│   │   │   └── mod.rs              # Tauri commands（list_image_files、export_annotations_json、标签 CRUD）
-│   │   └── models/
-│   │       ├── annotation.rs       # Rust 端数据结构（AnnotationExport、LabelConfig 等）
-│   │       └── mod.rs
+│   ├── src/                        # 入口、commands、models
+│   ├── capabilities/               # Tauri 权限（core:default + dialog:default）
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── docs/                           # 文档（待补充）
@@ -110,6 +90,19 @@ my_label_tool/
 ```
 
 **原则**：标注数据结构（`AnnotationShape`、`LabelConfig`、`LabelTemplate` 等）必须在 `src/types/` 中先定义清楚，Rust 端 `models/` 保持字段一一对应，避免前后端数据结构漂移。
+
+**Tauri 命令清单**（`src-tauri/src/commands/mod.rs`，前端经 `lib/tauri-api.ts` 调用，组件内禁止直接 `invoke`）：
+
+| 命令 | 作用 |
+| --- | --- |
+| `list_image_files` | 列出文件夹下可加载图片（校验扩展名 + 文件头签名，跳过空文件） |
+| `export_annotations_json` | 将标注数据写入指定 JSON 文件 |
+| `export_text_files` | 批量写入文本文件（VOC XML / YOLO txt），路径需为相对安全路径 |
+| `read_text_file` | 读取单个文本文件内容（导入用） |
+| `list_text_files` | 按扩展名列出文件夹下文本文件（导入用） |
+| `load_label_configs` / `save_label_configs` | 标签配置持久化（app data 目录 `labels.json`） |
+| `load_label_templates` / `save_label_templates` | 标签模板持久化（`label-templates.json`） |
+| `load_shortcuts` / `save_shortcuts` | 快捷键配置持久化（`shortcuts.json`） |
 
 ---
 
@@ -181,26 +174,27 @@ interface LabelTemplate {
 
 - ✅ = 已完成　◐ = 部分完成　○ = 未开始
 
-1. **M1 最小可用** ◐
+1. **M1 最小可用** ✅
    - ✅ 打开图片文件夹（JPG/PNG/BMP）
    - ✅ 画矩形框（绘制、选中、拖拽、缩放）
    - ✅ 绑定标签（标签配置面板 + 快捷键切标签）
    - ✅ 导出 JSON
-2. **M2 配置系统** ◐
+2. **M2 配置系统** ✅
    - ✅ 标签配置面板（增删改标签/颜色/快捷键）
    - ✅ 标签模板管理（内置模板 + 自定义模板 CRUD）
-   - ○ 导出模板选择（COCO/VOC/YOLO/自定义格式）—— `src/lib/exporters/` 目录为空
-3. **M3 交互打磨** ○
-   - ○ 鼠标滚轮缩放（以鼠标位置为中心）、Ctrl+滚轮微调
-   - ○ 方向键切图
-   - ○ 删除标注框（Delete 键 + 批量清空）
-   - ○ 撤销/重做栈
-   - ○ 通用快捷键配置面板
-4. **M4 打包验证** ○
+   - ✅ 导出模板选择（COCO/VOC/YOLO/自定义格式）-- `src/lib/exporters/` 已实现
+3. **M3 交互打磨** ✅
+   - ✅ 鼠标滚轮缩放（以鼠标位置为中心）、Ctrl+滚轮微调
+   - ✅ 方向键切图
+   - ✅ 删除标注框（Delete 键 + 批量清空）
+   - ✅ 撤销/重做栈
+   - ✅ 通用快捷键配置面板
+   - ✅ 标注导入（原生 JSON/COCO/VOC/YOLO + 项目配置自动加载）
+4. **M4 打包验证** ◐
    - ○ `tauri build` 产出 Windows exe
    - ○ 在无开发环境的机器上验证
-5. **M5 图形扩展** ○ — 多边形、关键点标注
-6. **M6 视频标注** ○ — 视频抽帧、时间轴 UI
+5. **M5 图形扩展** ○ - 多边形、关键点标注
+6. **M6 视频标注** ○ - 视频抽帧、时间轴 UI
 
 新功能开发前，先确认属于哪个里程碑，不要跳跃式实现 M4 之前的内容还未稳定就开始做 M5/M6。
 
@@ -208,7 +202,7 @@ interface LabelTemplate {
 
 ## 8. 测试要求
 
-- **当前状态**：项目尚无任何自动化测试。以下为测试规范目标。
+- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/mod.rs` 的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举等）。前端尚无自动化测试。
 - Rust 端：核心导出逻辑（`exporters` 对应的 Rust 序列化部分）必须有单元测试，覆盖至少一个真实标注样例的输入输出。
 - 前端：标注数据的增删改（store actions）需要有基本的单元测试（Vitest），画布交互允许暂缓自动化测试，但需手动验证清单（见下）。
 - **手动验证清单**（每次涉及画布交互改动后必须过一遍）：
