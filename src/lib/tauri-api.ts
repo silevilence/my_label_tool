@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import type { TextExportFile } from "../types/export";
+import type { ShortcutMap } from "./defaults/shortcuts";
 
 export interface ImageFile {
   path: string;
@@ -97,4 +98,12 @@ export function loadLabelTemplates(): Promise<LabelTemplate[]> {
 
 export function saveLabelTemplates(templates: LabelTemplate[]): Promise<void> {
   return invoke("save_label_templates", { templates });
+}
+
+export function loadShortcuts(): Promise<Record<string, string>> {
+  return invoke<Record<string, string>>("load_shortcuts");
+}
+
+export function saveShortcuts(shortcuts: ShortcutMap): Promise<void> {
+  return invoke("save_shortcuts", { shortcuts });
 }

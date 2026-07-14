@@ -14,7 +14,9 @@ pub fn run() {
             commands::load_label_configs,
             commands::save_label_configs,
             commands::load_label_templates,
-            commands::save_label_templates
+            commands::save_label_templates,
+            commands::load_shortcuts,
+            commands::save_shortcuts
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

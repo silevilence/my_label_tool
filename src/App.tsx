@@ -1,15 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { ExportPanel } from "./components/settings/ExportPanel";
 import { LabelSettings } from "./components/settings/LabelSettings";
+import { ShortcutSettings, normalizeShortcutKey } from "./components/settings/ShortcutSettings";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { exportCoco } from "./lib/exporters/coco";
 import { exportCustom } from "./lib/exporters/custom";
 import { exportVoc } from "./lib/exporters/voc";
 import { exportYolo } from "./lib/exporters/yolo";
+import {
+  DEFAULT_SHORTCUTS,
+  SHORTCUT_ACTIONS,
+  type ShortcutActionId,
+  type ShortcutMap,
+} from "./lib/defaults/shortcuts";
 import {
   PROJECT_CONFIG_NAME,
   parseCocoImport,
@@ -30,10 +37,12 @@ import {
   listImageFiles,
   loadLabelConfigs,
   loadLabelTemplates,
+  loadShortcuts,
   listTextFiles,
   readTextFile,
   saveLabelConfigs,
   saveLabelTemplates,
+  saveShortcuts,
   selectExportFolder,
   selectExportJsonPath,
   selectExportPath,
@@ -60,16 +69,36 @@ interface DrawingRect {
   currentY: number;
 }
 
+interface CanvasContextMenu {
+  x: number;
+  y: number;
+  annotationId?: string;
+}
+
+interface PanState {
+  startX: number;
+  startY: number;
+  layoutX: number;
+  layoutY: number;
+}
+
 function App() {
   const canvasHostRef = useRef<HTMLDivElement>(null);
+  const selectedImageButtonRef = useRef<HTMLButtonElement | null>(null);
   const selectedRectRef = useRef<KonvaRect | null>(null);
   const transformerRef = useRef<KonvaTransformer | null>(null);
+  const panStateRef = useRef<PanState | null>(null);
+  const suppressContextMenuRef = useRef(false);
   const [folderPath, setFolderPath] = useState("");
   const [images, setImages] = useState<ImageFile[]>([]);
   const [selectedPath, setSelectedPath] = useState("");
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
   const [imageLoadError, setImageLoadError] = useState("");
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [imageView, setImageView] = useState<ImageLayout | null>(null);
+  const [contextMenu, setContextMenu] = useState<CanvasContextMenu | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [annotationToDelete, setAnnotationToDelete] = useState<AnnotationShape | null>(null);
   const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
   const [labels, setLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
   const [savedLabels, setSavedLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
@@ -84,12 +113,15 @@ function App() {
   const [customMappingText, setCustomMappingText] = useState(
     JSON.stringify(DEFAULT_CUSTOM_EXPORT_MAPPING, null, 2),
   );
+  const [shortcuts, setShortcuts] = useState<ShortcutMap>(DEFAULT_SHORTCUTS);
+  const [isShortcutSettingsOpen, setIsShortcutSettingsOpen] = useState(false);
   const [error, setError] = useState("");
 
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
   const selectedShapeId = useAnnotationStore((state) => state.selectedShapeId);
   const addAnnotation = useAnnotationStore((state) => state.addAnnotation);
   const updateAnnotation = useAnnotationStore((state) => state.updateAnnotation);
+  const deleteAnnotation = useAnnotationStore((state) => state.deleteAnnotation);
   const replaceAnnotations = useAnnotationStore((state) => state.replaceAnnotations);
   const replaceLabel = useAnnotationStore((state) => state.replaceLabel);
   const selectShape = useAnnotationStore((state) => state.selectShape);
@@ -97,6 +129,10 @@ function App() {
   const selectedShape = annotations.find((annotation) => annotation.id === selectedShapeId) ?? null;
 
   const labelById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
+  const labelShortcuts = useMemo(
+    () => labels.flatMap((label) => (label.shortcut ? [normalizeShortcutKey(label.shortcut)] : [])),
+    [labels],
+  );
   const usedLabelIds = useMemo(
     () =>
       new Set(
@@ -166,6 +202,26 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    loadShortcuts()
+      .then((savedShortcuts) => {
+        if (!cancelled) {
+          setShortcuts(mergeShortcuts(savedShortcuts));
+        }
+      })
+      .catch((caughtError: unknown) => {
+        if (!cancelled) {
+          setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!labelById.has(currentLabelId)) {
       setCurrentLabelId(labels[0].id);
     }
@@ -203,9 +259,22 @@ function App() {
   }, [selectedImage]);
 
   useEffect(() => {
+    if (!loadedImage || canvasSize.width === 0 || canvasSize.height === 0) {
+      setImageView(null);
+      return;
+    }
+
+    setImageView(fitImageLayout(loadedImage, canvasSize));
+  }, [canvasSize, loadedImage]);
+
+  useEffect(() => {
     selectShape(null);
     setDrawingRect(null);
   }, [selectShape, selectedPath]);
+
+  useEffect(() => {
+    selectedImageButtonRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedPath]);
 
   useEffect(() => {
     const transformer = transformerRef.current;
@@ -223,7 +292,29 @@ function App() {
         return;
       }
 
-      const label = labels.find((item) => item.shortcut === event.key.toLowerCase());
+      const key = normalizeShortcutKey(event.key);
+      if (key === shortcuts.previousImage) {
+        event.preventDefault();
+        selectAdjacentImage(-1);
+        return;
+      }
+      if (key === shortcuts.nextImage) {
+        event.preventDefault();
+        selectAdjacentImage(1);
+        return;
+      }
+      if (key === shortcuts.zoomIn) {
+        event.preventDefault();
+        zoomFromKeyboard(1);
+        return;
+      }
+      if (key === shortcuts.zoomOut) {
+        event.preventDefault();
+        zoomFromKeyboard(-1);
+        return;
+      }
+
+      const label = labels.find((item) => item.shortcut === key);
       if (!label) {
         return;
       }
@@ -234,28 +325,55 @@ function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [labels, selectCurrentLabel]);
+  }, [labels, shortcuts, selectedPath, images, imageView, selectedShapeId]);
 
-  const imageLayout = useMemo<ImageLayout | null>(() => {
-    if (!loadedImage || canvasSize.width === 0 || canvasSize.height === 0) {
-      return null;
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
     }
 
-    const scale = Math.min(
-      canvasSize.width / loadedImage.naturalWidth,
-      canvasSize.height / loadedImage.naturalHeight,
-    );
-    const width = loadedImage.naturalWidth * scale;
-    const height = loadedImage.naturalHeight * scale;
+    function closeOnMouseDown(event: MouseEvent) {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest('[data-context-menu="true"]')
+      ) {
+        return;
+      }
+      setContextMenu(null);
+    }
 
-    return {
-      width,
-      height,
-      scale,
-      x: (canvasSize.width - width) / 2,
-      y: (canvasSize.height - height) / 2,
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setContextMenu(null);
+      }
+    }
+
+    window.addEventListener("mousedown", closeOnMouseDown);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", closeOnMouseDown);
+      window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [canvasSize, loadedImage]);
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!isPanning) {
+      return;
+    }
+
+    function stopPanning() {
+      panStateRef.current = null;
+      setIsPanning(false);
+      window.setTimeout(() => {
+        suppressContextMenuRef.current = false;
+      }, 250);
+    }
+
+    window.addEventListener("mouseup", stopPanning);
+    return () => window.removeEventListener("mouseup", stopPanning);
+  }, [isPanning]);
+
+  const imageLayout = imageView;
 
   async function openFolder() {
     setError("");
@@ -274,6 +392,93 @@ function App() {
     } catch (caughtError: unknown) {
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
     }
+  }
+
+  function selectAdjacentImage(delta: number) {
+    if (images.length === 0) {
+      return;
+    }
+
+    const index = Math.max(
+      0,
+      images.findIndex((image) => image.path === selectedPath),
+    );
+    const nextIndex = Math.min(images.length - 1, Math.max(0, index + delta));
+    if (nextIndex !== index) {
+      setSelectedPath(images[nextIndex].path);
+    }
+  }
+
+  function zoomFromKeyboard(delta: 1 | -1) {
+    zoomAt({ x: canvasSize.width / 2, y: canvasSize.height / 2 }, delta > 0 ? 1.12 : 1 / 1.12);
+  }
+
+  function setImageScale(scale: number) {
+    if (!loadedImage) {
+      return;
+    }
+
+    const width = loadedImage.naturalWidth * scale;
+    const height = loadedImage.naturalHeight * scale;
+    setImageView({
+      scale,
+      width,
+      height,
+      x: (canvasSize.width - width) / 2,
+      y: (canvasSize.height - height) / 2,
+    });
+  }
+
+  function fitImageWidth() {
+    if (loadedImage) {
+      setImageScale(canvasSize.width / loadedImage.naturalWidth);
+    }
+  }
+
+  function fitImageHeight() {
+    if (loadedImage) {
+      setImageScale(canvasSize.height / loadedImage.naturalHeight);
+    }
+  }
+
+  function resetZoom() {
+    if (loadedImage) {
+      setImageView(fitImageLayout(loadedImage, canvasSize));
+    }
+  }
+
+  function zoomAt(point: { x: number; y: number }, factor: number) {
+    if (!loadedImage) {
+      return;
+    }
+
+    setImageView((layout) => {
+      if (!layout) {
+        return layout;
+      }
+
+      const fitScale = getFitScale(loadedImage, canvasSize);
+      const nextScale = clamp(layout.scale * factor, fitScale * 0.25, fitScale * 8);
+      if (nextScale === layout.scale) {
+        return layout;
+      }
+
+      const imageX = (point.x - layout.x) / layout.scale;
+      const imageY = (point.y - layout.y) / layout.scale;
+      return {
+        scale: nextScale,
+        width: loadedImage.naturalWidth * nextScale,
+        height: loadedImage.naturalHeight * nextScale,
+        x: point.x - imageX * nextScale,
+        y: point.y - imageY * nextScale,
+      };
+    });
+  }
+
+  function updateShortcut(actionId: ShortcutActionId, shortcut: string) {
+    const nextShortcuts = { ...shortcuts, [actionId]: shortcut };
+    setShortcuts(nextShortcuts);
+    saveShortcuts(nextShortcuts).catch(reportError);
   }
 
   async function exportSelectedFormat() {
@@ -532,7 +737,105 @@ function App() {
     return { labels, images: exportImages };
   }
 
+  function openContextMenu(event: KonvaEventObject<MouseEvent>, annotationId?: string) {
+    event.evt.preventDefault();
+    if (event.evt.ctrlKey || suppressContextMenuRef.current) {
+      suppressContextMenuRef.current = false;
+      setContextMenu(null);
+      return;
+    }
+
+    const targetAnnotationId = annotationId ?? findAnnotationAtPointer(event);
+    if (targetAnnotationId) {
+      selectShape(targetAnnotationId);
+    }
+    setContextMenu({
+      ...clampContextMenuPosition(
+        event.evt.clientX,
+        event.evt.clientY,
+        Boolean(targetAnnotationId),
+      ),
+      annotationId: targetAnnotationId,
+    });
+  }
+
+  function changeAnnotationLabel(annotationId: string, labelId: string) {
+    updateAnnotation(selectedPath, annotationId, { labelId });
+    setContextMenu(null);
+  }
+
+  function deleteContextAnnotation(annotation: AnnotationShape) {
+    setAnnotationToDelete(annotation);
+    setContextMenu(null);
+  }
+
+  function confirmDeleteAnnotation() {
+    if (annotationToDelete) {
+      deleteAnnotation(selectedPath, annotationToDelete.id);
+      setAnnotationToDelete(null);
+    }
+  }
+
+  function findAnnotationAtPointer(event: KonvaEventObject<MouseEvent>): string | undefined {
+    if (!imageLayout) {
+      return undefined;
+    }
+
+    const pointer = event.target.getStage()?.getPointerPosition();
+    if (!pointer) {
+      return undefined;
+    }
+
+    const selected = annotations.find((annotation) => annotation.id === selectedShapeId);
+    if (
+      selected &&
+      isPointNearCanvasRect(pointer, toCanvasRect(selected.points, imageLayout), 16)
+    ) {
+      return selected.id;
+    }
+
+    return annotations.find((annotation) =>
+      isPointNearCanvasRect(pointer, toCanvasRect(annotation.points, imageLayout), 8),
+    )?.id;
+  }
+
+  function handleStageWheel(event: KonvaEventObject<WheelEvent>) {
+    event.evt.preventDefault();
+
+    const stage = event.target.getStage();
+    const pointer = stage?.getPointerPosition();
+    if (!pointer) {
+      return;
+    }
+
+    if (
+      imageLayout &&
+      (pointer.x < imageLayout.x ||
+        pointer.y < imageLayout.y ||
+        pointer.x > imageLayout.x + imageLayout.width ||
+        pointer.y > imageLayout.y + imageLayout.height)
+    ) {
+      return;
+    }
+
+    const step = event.evt.ctrlKey ? 1.04 : 1.12;
+    zoomAt(pointer, event.evt.deltaY < 0 ? step : 1 / step);
+  }
+
   function handleStageMouseDown(event: KonvaEventObject<MouseEvent>) {
+    setContextMenu(null);
+
+    if (event.evt.button === 1) {
+      event.evt.preventDefault();
+      setDrawingRect(null);
+      return;
+    }
+
+    if (event.evt.button === 2 && event.evt.ctrlKey) {
+      startPanning(event);
+      return;
+    }
+
     if (event.evt.button !== 0) {
       return;
     }
@@ -558,6 +861,16 @@ function App() {
   }
 
   function handleStageMouseMove(event: KonvaEventObject<MouseEvent>) {
+    const panState = panStateRef.current;
+    if (panState) {
+      const deltaX = event.evt.clientX - panState.startX;
+      const deltaY = event.evt.clientY - panState.startY;
+      setImageView((layout) =>
+        layout ? { ...layout, x: panState.layoutX + deltaX, y: panState.layoutY + deltaY } : layout,
+      );
+      return;
+    }
+
     if (!drawingRect || !imageLayout || !loadedImage) {
       return;
     }
@@ -571,6 +884,12 @@ function App() {
   }
 
   function handleStageMouseUp() {
+    if (panStateRef.current) {
+      panStateRef.current = null;
+      setIsPanning(false);
+      return;
+    }
+
     if (!drawingRect || !selectedPath) {
       return;
     }
@@ -591,10 +910,27 @@ function App() {
     });
   }
 
+  function startPanning(event: KonvaEventObject<MouseEvent>) {
+    event.evt.preventDefault();
+    suppressContextMenuRef.current = true;
+    if (!imageLayout) {
+      return;
+    }
+
+    panStateRef.current = {
+      startX: event.evt.clientX,
+      startY: event.evt.clientY,
+      layoutX: imageLayout.x,
+      layoutY: imageLayout.y,
+    };
+    setDrawingRect(null);
+    setIsPanning(true);
+  }
+
   function selectCurrentLabel(labelId: string) {
     setCurrentLabelId(labelId);
-    if (selectedShape) {
-      updateAnnotation(selectedPath, selectedShape.id, { labelId });
+    if (selectedShapeId) {
+      updateAnnotation(selectedPath, selectedShapeId, { labelId });
     }
   }
 
@@ -810,6 +1146,10 @@ function App() {
 
   const draftRect =
     drawingRect && imageLayout ? toCanvasRect(normalizeRectPoints(drawingRect), imageLayout) : null;
+  const contextAnnotation =
+    contextMenu?.annotationId === undefined
+      ? null
+      : (annotations.find((annotation) => annotation.id === contextMenu.annotationId) ?? null);
 
   return (
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
@@ -830,6 +1170,13 @@ function App() {
             onClick={importAnnotations}
           >
             导入标注
+          </button>
+          <button
+            className="mt-2 w-full rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800"
+            type="button"
+            onClick={() => setIsShortcutSettingsOpen(true)}
+          >
+            快捷键配置
           </button>
           {folderPath && (
             <p className="mt-3 truncate text-xs text-slate-400" title={folderPath}>
@@ -923,6 +1270,11 @@ function App() {
                       : "text-slate-300 hover:bg-slate-800"
                   }`}
                   key={image.path}
+                  ref={(node) => {
+                    if (image.path === selectedPath) {
+                      selectedImageButtonRef.current = node;
+                    }
+                  }}
                   title={image.path}
                   type="button"
                   onClick={() => setSelectedPath(image.path)}
@@ -935,7 +1287,10 @@ function App() {
         </section>
       </aside>
 
-      <div ref={canvasHostRef} className="h-full min-w-0 flex-1 overflow-hidden bg-slate-950">
+      <div
+        ref={canvasHostRef}
+        className={`h-full min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : ""}`}
+      >
         {selectedImage && loadedImage && imageLayout ? (
           <Stage
             width={canvasSize.width}
@@ -943,7 +1298,8 @@ function App() {
             onMouseDown={handleStageMouseDown}
             onMouseMove={handleStageMouseMove}
             onMouseUp={handleStageMouseUp}
-            onContextMenu={(event) => event.evt.preventDefault()}
+            onWheel={handleStageWheel}
+            onContextMenu={openContextMenu}
           >
             <Layer>
               <KonvaImage
@@ -959,10 +1315,13 @@ function App() {
                   annotation={annotation}
                   imageLayout={imageLayout}
                   isSelected={annotation.id === selectedShapeId}
+                  isPanning={isPanning}
                   key={annotation.id}
                   label={labelById.get(annotation.labelId) ?? labels[0]}
                   rectRef={selectedRectRef}
+                  onContextMenu={openContextMenu}
                   onDragEnd={handleDragEnd}
+                  onPanStart={startPanning}
                   onSelect={selectShape}
                   onTransformEnd={handleTransformEnd}
                 />
@@ -982,17 +1341,281 @@ function App() {
           </div>
         )}
       </div>
+
+      {isShortcutSettingsOpen && (
+        <ShortcutSettings
+          labelShortcuts={labelShortcuts}
+          shortcuts={shortcuts}
+          onChangeShortcut={updateShortcut}
+          onClose={() => setIsShortcutSettingsOpen(false)}
+        />
+      )}
+
+      {contextMenu && (
+        <CanvasContextMenu
+          annotation={contextAnnotation}
+          canNextImage={
+            images.findIndex((image) => image.path === selectedPath) < images.length - 1
+          }
+          canPreviousImage={images.findIndex((image) => image.path === selectedPath) > 0}
+          labels={labels}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onChangeLabel={changeAnnotationLabel}
+          onDeleteAnnotation={deleteContextAnnotation}
+          onFitHeight={() => {
+            fitImageHeight();
+            setContextMenu(null);
+          }}
+          onFitWidth={() => {
+            fitImageWidth();
+            setContextMenu(null);
+          }}
+          onNextImage={() => {
+            selectAdjacentImage(1);
+            setContextMenu(null);
+          }}
+          onOriginalSize={() => {
+            setImageScale(1);
+            setContextMenu(null);
+          }}
+          onPreviousImage={() => {
+            selectAdjacentImage(-1);
+            setContextMenu(null);
+          }}
+          onResetZoom={() => {
+            resetZoom();
+            setContextMenu(null);
+          }}
+          onZoomIn={() => {
+            zoomFromKeyboard(1);
+            setContextMenu(null);
+          }}
+          onZoomOut={() => {
+            zoomFromKeyboard(-1);
+            setContextMenu(null);
+          }}
+        />
+      )}
+
+      {annotationToDelete && (
+        <DeleteAnnotationDialog
+          labelName={labelById.get(annotationToDelete.labelId)?.name ?? "当前标注"}
+          onCancel={() => setAnnotationToDelete(null)}
+          onConfirm={confirmDeleteAnnotation}
+        />
+      )}
     </main>
+  );
+}
+
+interface DeleteAnnotationDialogProps {
+  labelName: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+function DeleteAnnotationDialog({ labelName, onCancel, onConfirm }: DeleteAnnotationDialogProps) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4">
+      <section className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+        <h2 className="text-base font-semibold text-slate-100">确认删除标注？</h2>
+        <p className="mt-2 text-sm text-slate-400">将删除「{labelName}」标注，此操作无法撤销。</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            className="rounded border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+            type="button"
+            onClick={onCancel}
+          >
+            取消
+          </button>
+          <button
+            className="rounded bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-400"
+            type="button"
+            onClick={onConfirm}
+          >
+            删除
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+interface CanvasContextMenuProps {
+  annotation: AnnotationShape | null;
+  canNextImage: boolean;
+  canPreviousImage: boolean;
+  labels: LabelConfig[];
+  x: number;
+  y: number;
+  onChangeLabel: (annotationId: string, labelId: string) => void;
+  onDeleteAnnotation: (annotation: AnnotationShape) => void;
+  onFitHeight: () => void;
+  onFitWidth: () => void;
+  onNextImage: () => void;
+  onOriginalSize: () => void;
+  onPreviousImage: () => void;
+  onResetZoom: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+}
+
+function CanvasContextMenu({
+  annotation,
+  canNextImage,
+  canPreviousImage,
+  labels,
+  x,
+  y,
+  onChangeLabel,
+  onDeleteAnnotation,
+  onFitHeight,
+  onFitWidth,
+  onNextImage,
+  onOriginalSize,
+  onPreviousImage,
+  onResetZoom,
+  onZoomIn,
+  onZoomOut,
+}: CanvasContextMenuProps) {
+  const openSubmenusUp = y > window.innerHeight / 2;
+
+  return (
+    <div
+      className="fixed z-50 max-h-[calc(100vh-1rem)] w-44 overflow-visible rounded-lg border border-slate-700 bg-slate-900 py-1 text-sm text-slate-100 shadow-2xl"
+      data-context-menu="true"
+      style={{ left: x, top: y }}
+    >
+      <ContextMenuGroup title="缩放操作">
+        <ContextMenuButton onClick={onZoomIn}>放大</ContextMenuButton>
+        <ContextMenuButton onClick={onZoomOut}>缩小</ContextMenuButton>
+        <ContextSubMenu label="更多缩放" openUp={openSubmenusUp}>
+          <ContextMenuButton onClick={onFitWidth}>适应宽度</ContextMenuButton>
+          <ContextMenuButton onClick={onFitHeight}>适应高度</ContextMenuButton>
+          <ContextMenuButton onClick={onOriginalSize}>原图大小</ContextMenuButton>
+          <ContextMenuButton onClick={onResetZoom}>重置缩放</ContextMenuButton>
+        </ContextSubMenu>
+      </ContextMenuGroup>
+
+      <ContextMenuGroup title="图片操作">
+        <ContextMenuButton disabled={!canPreviousImage} onClick={onPreviousImage}>
+          上一张
+        </ContextMenuButton>
+        <ContextMenuButton disabled={!canNextImage} onClick={onNextImage}>
+          下一张
+        </ContextMenuButton>
+      </ContextMenuGroup>
+
+      {annotation && (
+        <ContextMenuGroup title="标签操作">
+          <ContextSubMenu label="修改" openUp={openSubmenusUp}>
+            <div className="max-h-72 overflow-y-auto py-1">
+              {labels.map((label) => (
+                <button
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800 ${
+                    label.id === annotation.labelId ? "text-sky-300" : ""
+                  }`}
+                  key={label.id}
+                  type="button"
+                  onClick={() => onChangeLabel(annotation.id, label.id)}
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: label.color }}
+                  />
+                  <span className="truncate">{label.name}</span>
+                </button>
+              ))}
+            </div>
+          </ContextSubMenu>
+          <ContextMenuButton danger onClick={() => onDeleteAnnotation(annotation)}>
+            删除
+          </ContextMenuButton>
+        </ContextMenuGroup>
+      )}
+    </div>
+  );
+}
+
+interface ContextMenuGroupProps {
+  children: ReactNode;
+  title: string;
+}
+
+interface ContextSubMenuProps {
+  children: ReactNode;
+  label: string;
+  openUp: boolean;
+}
+
+function ContextSubMenu({ children, label, openUp }: ContextSubMenuProps) {
+  return (
+    <div className="group relative">
+      <button
+        className="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-slate-800"
+        type="button"
+      >
+        <span>{label}</span>
+        <span className="text-slate-500">›</span>
+      </button>
+      <div
+        className={`invisible absolute left-full w-40 rounded-lg border border-slate-700 bg-slate-900 py-1 opacity-0 shadow-2xl group-hover:visible group-hover:opacity-100 ${
+          openUp ? "bottom-0" : "top-0"
+        }`}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ContextMenuGroup({ children, title }: ContextMenuGroupProps) {
+  return (
+    <div className="border-b border-slate-800 py-1 last:border-b-0">
+      <div className="px-3 py-1 text-xs text-slate-500">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+interface ContextMenuButtonProps {
+  children: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}
+
+function ContextMenuButton({
+  children,
+  danger = false,
+  disabled = false,
+  onClick,
+}: ContextMenuButtonProps) {
+  return (
+    <button
+      className={`block w-full px-3 py-1.5 text-left hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-600 ${
+        danger ? "text-red-300 hover:bg-red-500 hover:text-white" : ""
+      }`}
+      disabled={disabled}
+      type="button"
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }
 
 interface AnnotationRectProps {
   annotation: AnnotationShape;
   imageLayout: ImageLayout;
+  isPanning: boolean;
   isSelected: boolean;
   label: LabelConfig;
   rectRef: MutableRefObject<KonvaRect | null>;
+  onContextMenu: (event: KonvaEventObject<MouseEvent>, annotationId: string) => void;
   onDragEnd: (annotation: AnnotationShape, event: KonvaEventObject<DragEvent>) => void;
+  onPanStart: (event: KonvaEventObject<MouseEvent>) => void;
   onSelect: (annotationId: string) => void;
   onTransformEnd: (annotation: AnnotationShape) => void;
 }
@@ -1000,10 +1623,13 @@ interface AnnotationRectProps {
 function AnnotationRect({
   annotation,
   imageLayout,
+  isPanning,
   isSelected,
   label,
   rectRef,
+  onContextMenu,
   onDragEnd,
+  onPanStart,
   onSelect,
   onTransformEnd,
 }: AnnotationRectProps) {
@@ -1017,13 +1643,30 @@ function AnnotationRect({
           rectRef.current = node;
         }
       }}
-      draggable
       fill={`${label.color}22`}
       stroke={label.color}
       strokeWidth={isSelected ? 3 : 2}
+      draggable={!isPanning}
       onClick={() => onSelect(annotation.id)}
+      onContextMenu={(event) => {
+        event.cancelBubble = true;
+        onContextMenu(event, annotation.id);
+      }}
       onDragEnd={(event) => onDragEnd(annotation, event)}
       onMouseDown={(event) => {
+        if (event.evt.button === 1) {
+          event.evt.preventDefault();
+          event.cancelBubble = true;
+          return;
+        }
+        if (event.evt.button === 2 && event.evt.ctrlKey) {
+          event.cancelBubble = true;
+          onPanStart(event);
+          return;
+        }
+        if (event.evt.button !== 0) {
+          return;
+        }
         event.cancelBubble = true;
         onSelect(annotation.id);
       }}
@@ -1067,6 +1710,19 @@ function toCanvasRect(points: number[], layout: ImageLayout) {
   };
 }
 
+function isPointNearCanvasRect(
+  point: { x: number; y: number },
+  rect: { x: number; y: number; width: number; height: number },
+  tolerance: number,
+): boolean {
+  return (
+    point.x >= rect.x - tolerance &&
+    point.x <= rect.x + rect.width + tolerance &&
+    point.y >= rect.y - tolerance &&
+    point.y <= rect.y + rect.height + tolerance
+  );
+}
+
 function clampRect(
   rect: { x: number; y: number; width: number; height: number },
   image: HTMLImageElement,
@@ -1079,6 +1735,53 @@ function clampRect(
     width,
     height,
   };
+}
+
+function fitImageLayout(image: HTMLImageElement, canvasSize: { width: number; height: number }) {
+  const scale = getFitScale(image, canvasSize);
+  const width = image.naturalWidth * scale;
+  const height = image.naturalHeight * scale;
+  return {
+    width,
+    height,
+    scale,
+    x: (canvasSize.width - width) / 2,
+    y: (canvasSize.height - height) / 2,
+  };
+}
+
+function getFitScale(image: HTMLImageElement, canvasSize: { width: number; height: number }) {
+  return Math.min(canvasSize.width / image.naturalWidth, canvasSize.height / image.naturalHeight);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function clampContextMenuPosition(
+  x: number,
+  y: number,
+  hasAnnotationActions: boolean,
+): { x: number; y: number } {
+  const estimatedWidth = 360;
+  const estimatedHeight = hasAnnotationActions ? 340 : 250;
+  const maxX = Math.max(8, window.innerWidth - estimatedWidth);
+  const maxY = Math.max(8, window.innerHeight - estimatedHeight);
+  return {
+    x: clamp(x, 8, maxX),
+    y: clamp(y, 8, maxY),
+  };
+}
+
+function mergeShortcuts(savedShortcuts: Record<string, string>): ShortcutMap {
+  const nextShortcuts = { ...DEFAULT_SHORTCUTS };
+  for (const action of SHORTCUT_ACTIONS) {
+    const shortcut = savedShortcuts[action.id];
+    if (typeof shortcut === "string" && shortcut.trim()) {
+      nextShortcuts[action.id] = normalizeShortcutKey(shortcut);
+    }
+  }
+  return nextShortcuts;
 }
 
 function loadImageSize(path: string): Promise<{ width: number; height: number }> {

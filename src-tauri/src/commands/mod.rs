@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     io::Read,
     path::{Component, Path, PathBuf},
@@ -215,6 +216,25 @@ pub fn save_label_templates(
     write_label_templates(&path, &templates)
 }
 
+#[tauri::command]
+pub fn load_shortcuts(app: tauri::AppHandle) -> Result<HashMap<String, String>, String> {
+    let path = shortcuts_path(&app)?;
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    read_shortcuts(&path)
+}
+
+#[tauri::command]
+pub fn save_shortcuts(
+    app: tauri::AppHandle,
+    shortcuts: HashMap<String, String>,
+) -> Result<(), String> {
+    let path = shortcuts_path(&app)?;
+    write_shortcuts(&path, &shortcuts)
+}
+
 fn label_configs_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -231,6 +251,15 @@ fn label_templates_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| error.to_string())?;
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     Ok(dir.join("label-templates.json"))
+}
+
+fn shortcuts_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    Ok(dir.join("shortcuts.json"))
 }
 
 fn read_label_configs(path: &Path) -> Result<Vec<LabelConfig>, String> {
@@ -253,17 +282,29 @@ fn write_label_templates(path: &Path, templates: &[LabelTemplate]) -> Result<(),
     fs::write(path, json).map_err(|error| error.to_string())
 }
 
+fn read_shortcuts(path: &Path) -> Result<HashMap<String, String>, String> {
+    let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    serde_json::from_str(&json).map_err(|error| error.to_string())
+}
+
+fn write_shortcuts(path: &Path, shortcuts: &HashMap<String, String>) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(shortcuts).map_err(|error| error.to_string())?;
+    fs::write(path, json).map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         export_annotations_json, export_text_files, is_loadable_image, is_supported_image,
         list_image_files, list_text_files, read_label_configs, read_label_templates,
-        read_text_file, write_label_configs, write_label_templates, TextExportFile,
+        read_shortcuts, read_text_file, write_label_configs, write_label_templates,
+        write_shortcuts, TextExportFile,
     };
     use crate::models::annotation::{
         AnnotationExport, AnnotationShape, ImageAnnotations, LabelConfig, LabelTemplate,
     };
     use std::{
+        collections::HashMap,
         fs,
         path::{Path, PathBuf},
     };
@@ -439,6 +480,31 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].name, "自定义");
         assert_eq!(loaded[0].labels[0].id, "person");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn saves_and_loads_shortcuts() {
+        let path = std::env::temp_dir().join(format!(
+            "my_label_tool_shortcuts_{}.json",
+            std::process::id()
+        ));
+        let shortcuts = HashMap::from([
+            ("previousImage".to_string(), "ArrowLeft".to_string()),
+            ("nextImage".to_string(), "ArrowRight".to_string()),
+        ]);
+
+        write_shortcuts(&path, &shortcuts).unwrap();
+        let loaded = read_shortcuts(&path).unwrap();
+
+        assert_eq!(
+            loaded.get("previousImage").map(String::as_str),
+            Some("ArrowLeft")
+        );
+        assert_eq!(
+            loaded.get("nextImage").map(String::as_str),
+            Some("ArrowRight")
+        );
         let _ = fs::remove_file(path);
     }
 }
