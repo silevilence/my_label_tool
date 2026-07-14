@@ -10,6 +10,17 @@ import { exportCoco } from "./lib/exporters/coco";
 import { exportCustom } from "./lib/exporters/custom";
 import { exportVoc } from "./lib/exporters/voc";
 import { exportYolo } from "./lib/exporters/yolo";
+import {
+  PROJECT_CONFIG_NAME,
+  parseCocoImport,
+  parseNativeJsonImport,
+  parseProjectConfig,
+  parseVocImport,
+  parseYoloImport,
+  type ImportedAnnotations,
+  type ProjectConfig,
+  type TextImportFile,
+} from "./lib/importers";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
 import {
   exportAnnotationsJson,
@@ -19,12 +30,15 @@ import {
   listImageFiles,
   loadLabelConfigs,
   loadLabelTemplates,
+  listTextFiles,
+  readTextFile,
   saveLabelConfigs,
   saveLabelTemplates,
   selectExportFolder,
   selectExportJsonPath,
   selectExportPath,
   selectImageFolder,
+  selectJsonFile,
 } from "./lib/tauri-api";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "./types/annotation";
@@ -61,6 +75,9 @@ function App() {
   const [savedLabels, setSavedLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
   const [templates, setTemplates] = useState<LabelTemplate[]>(DEFAULT_LABEL_TEMPLATES);
   const [selectedTemplateId, setSelectedTemplateId] = useState(DEFAULT_LABEL_TEMPLATES[0].id);
+  const [projectTemplateId, setProjectTemplateId] = useState("");
+  const [activeProjectConfigPath, setActiveProjectConfigPath] = useState("");
+  const [activeProjectConfig, setActiveProjectConfig] = useState<ProjectConfig | null>(null);
   const [currentLabelId, setCurrentLabelId] = useState(DEFAULT_LABELS[0].id);
   const [isLabelDirty, setIsLabelDirty] = useState(false);
   const [selectedExportFormatId, setSelectedExportFormatId] = useState<ExportFormatId>("json");
@@ -73,6 +90,7 @@ function App() {
   const selectedShapeId = useAnnotationStore((state) => state.selectedShapeId);
   const addAnnotation = useAnnotationStore((state) => state.addAnnotation);
   const updateAnnotation = useAnnotationStore((state) => state.updateAnnotation);
+  const replaceAnnotations = useAnnotationStore((state) => state.replaceAnnotations);
   const replaceLabel = useAnnotationStore((state) => state.replaceLabel);
   const selectShape = useAnnotationStore((state) => state.selectShape);
   const annotations = annotationsByImage[selectedPath] ?? [];
@@ -201,12 +219,7 @@ function App() {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (
-        event.ctrlKey ||
-        event.altKey ||
-        event.metaKey ||
-        isEditableTarget(event.target)
-      ) {
+      if (event.ctrlKey || event.altKey || event.metaKey || isEditableTarget(event.target)) {
         return;
       }
 
@@ -257,6 +270,7 @@ function App() {
       setFolderPath(path);
       setImages(nextImages);
       setSelectedPath(nextImages[0]?.path ?? "");
+      await maybeLoadProjectConfig(path, nextImages);
     } catch (caughtError: unknown) {
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
     }
@@ -266,41 +280,244 @@ function App() {
     setError("");
 
     try {
-      if (selectedExportFormatId === "json") {
-        const outputPath = await selectExportJsonPath();
-        if (!outputPath) {
-          return;
-        }
-        await exportAnnotationsJson(outputPath, await buildExportData());
-      } else if (selectedExportFormatId === "coco") {
-        const outputPath = await selectExportPath("annotations.coco.json");
-        if (!outputPath) {
-          return;
-        }
-        await exportAnnotationsJson(outputPath, exportCoco(await buildExportData()));
-      } else if (selectedExportFormatId === "voc") {
-        const outputDir = await selectExportFolder();
-        if (!outputDir) {
-          return;
-        }
-        await exportTextFiles(outputDir, exportVoc(await buildExportData()));
-      } else if (selectedExportFormatId === "yolo") {
-        const outputDir = await selectExportFolder();
-        if (!outputDir) {
-          return;
-        }
-        await exportTextFiles(outputDir, exportYolo(await buildExportData()));
-      } else {
-        const mapping = parseCustomMapping(customMappingText);
-        const outputPath = await selectExportPath("annotations.custom.json");
-        if (!outputPath) {
-          return;
-        }
-        await exportAnnotationsJson(outputPath, exportCustom(await buildExportData(), mapping));
+      const savedPath = await exportSelectedFormatAs();
+      if (savedPath && selectedExportFormatId !== "custom") {
+        await updateProjectConfig(selectedExportFormatId, savedPath);
       }
     } catch (caughtError: unknown) {
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
     }
+  }
+
+  async function exportSelectedFormatAs(): Promise<string | null> {
+    const exportData = await buildExportData();
+
+    if (selectedExportFormatId === "json") {
+      const outputPath = await selectExportJsonPath();
+      if (!outputPath) {
+        return null;
+      }
+      await exportAnnotationsJson(outputPath, exportData);
+      return outputPath;
+    }
+
+    if (selectedExportFormatId === "coco") {
+      const outputPath = await selectExportPath("annotations.coco.json");
+      if (!outputPath) {
+        return null;
+      }
+      await exportAnnotationsJson(outputPath, exportCoco(exportData));
+      return outputPath;
+    }
+
+    if (selectedExportFormatId === "voc") {
+      const outputDir = await selectExportFolder();
+      if (!outputDir) {
+        return null;
+      }
+      await exportTextFiles(outputDir, exportVoc(exportData));
+      return outputDir;
+    }
+
+    if (selectedExportFormatId === "yolo") {
+      const outputDir = await selectExportFolder();
+      if (!outputDir) {
+        return null;
+      }
+      await exportTextFiles(outputDir, exportYolo(exportData));
+      return outputDir;
+    }
+
+    const mapping = parseCustomMapping(customMappingText);
+    const outputPath = await selectExportPath("annotations.custom.json");
+    if (!outputPath) {
+      return null;
+    }
+    await exportAnnotationsJson(outputPath, exportCustom(exportData, mapping));
+    return outputPath;
+  }
+
+  async function saveProjectExport() {
+    setError("");
+
+    try {
+      if (!activeProjectConfig) {
+        throw new Error("当前没有可保存的项目配置，请先导入或另存为。");
+      }
+      if (selectedExportFormatId !== activeProjectConfig.format) {
+        throw new Error("当前导出格式与项目配置不一致，请先另存为。");
+      }
+
+      await exportToProjectConfig(activeProjectConfig);
+      await updateProjectConfig(activeProjectConfig.format, activeProjectConfig.annotationPath);
+    } catch (caughtError: unknown) {
+      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+    }
+  }
+
+  async function exportToProjectConfig(config: ProjectConfig) {
+    const exportData = await buildExportData();
+
+    if (config.format === "json") {
+      await exportAnnotationsJson(config.annotationPath, exportData);
+    } else if (config.format === "coco") {
+      await exportAnnotationsJson(config.annotationPath, exportCoco(exportData));
+    } else if (config.format === "voc") {
+      await exportTextFiles(config.annotationPath, exportVoc(exportData));
+    } else {
+      await exportTextFiles(config.annotationPath, exportYolo(exportData));
+    }
+  }
+
+  async function updateProjectConfig(format: ProjectConfig["format"], annotationPath: string) {
+    const configPath = activeProjectConfigPath || projectConfigPath(folderPath);
+    const nextConfig: ProjectConfig = {
+      schemaVersion: 1,
+      format,
+      annotationPath,
+      exportedAt: new Date().toISOString(),
+      imageFolder: folderPath,
+      labels,
+      template: currentTemplateSnapshot(),
+      exportOptions: { format },
+    };
+
+    setActiveProjectConfig(nextConfig);
+    setActiveProjectConfigPath(configPath);
+    await saveProjectConfig(configPath, nextConfig);
+  }
+
+  async function importAnnotations() {
+    setError("");
+
+    try {
+      if (images.length === 0 || !folderPath) {
+        throw new Error("请先打开图片文件夹");
+      }
+
+      if (!confirmReplaceCurrentAnnotations(images)) {
+        return;
+      }
+
+      const annotationPath = await selectJsonFile();
+      if (!annotationPath) {
+        return;
+      }
+      await loadProjectConfigImport(annotationPath, images, false);
+    } catch (caughtError: unknown) {
+      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+    }
+  }
+
+  async function maybeLoadProjectConfig(imageFolder: string, currentImages: ImageFile[]) {
+    const configs = await listTextFiles(imageFolder, "json");
+    const config = configs.find((file) => file.name.toLowerCase() === PROJECT_CONFIG_NAME);
+    if (!config) {
+      return;
+    }
+
+    await loadProjectConfigImport(config.path, currentImages, false);
+  }
+
+  async function loadProjectConfigImport(
+    configPath: string,
+    currentImages: ImageFile[],
+    confirmReplace: boolean,
+  ): Promise<ProjectConfig | null> {
+    if (confirmReplace && !confirmReplaceCurrentAnnotations(currentImages)) {
+      return null;
+    }
+
+    const config = parseProjectConfig(await readTextFile(configPath));
+    const imported =
+      config.format === "json"
+        ? parseNativeJsonImport(await readTextFile(config.annotationPath))
+        : await loadConfiguredStandardImport(config, currentImages);
+    const labelsFromConfig = config.labels.length > 0 ? config.labels : imported.labels;
+
+    applyImportedAnnotations(
+      { ...imported, labels: labelsFromConfig },
+      currentImages,
+      config,
+      configPath,
+    );
+    return config;
+  }
+
+  async function loadConfiguredStandardImport(
+    config: ProjectConfig,
+    currentImages: ImageFile[],
+  ): Promise<ImportedAnnotations> {
+    if (config.format === "coco") {
+      return parseCocoImport(await readTextFile(config.annotationPath));
+    }
+
+    if (config.format === "voc") {
+      return parseVocImport(await readImportFiles(config.annotationPath, "xml"));
+    }
+
+    const files = await readImportFiles(config.annotationPath, "txt");
+    const sizes = new Map(
+      await Promise.all(
+        currentImages.map(
+          async (image) =>
+            [
+              baseName(image.name).toLowerCase(),
+              { name: image.name, ...(await loadImageSize(image.path)) },
+            ] as const,
+        ),
+      ),
+    );
+    return parseYoloImport(files, sizes);
+  }
+
+  function applyImportedAnnotations(
+    imported: ImportedAnnotations,
+    currentImages: ImageFile[],
+    config: ProjectConfig,
+    configPath: string,
+  ) {
+    if (imported.labels.length === 0) {
+      throw new Error("导入文件没有标签");
+    }
+
+    const { annotationsByImage, missingCount } = matchImportedImages(imported, currentImages);
+    replaceAnnotations(annotationsByImage);
+    applyProjectTemplate(config.template, imported.labels);
+    setActiveProjectConfig({ ...config, labels: imported.labels });
+    setActiveProjectConfigPath(configPath);
+    setProjectTemplateId(config.template.id);
+    setSelectedExportFormatId(config.format);
+    if (missingCount > 0) {
+      window.alert(`有 ${missingCount} 个导入图片未匹配到当前图片目录，已跳过。`);
+    }
+  }
+
+  function applyProjectTemplate(template: ProjectConfig["template"], nextLabels: LabelConfig[]) {
+    const projectTemplate: LabelTemplate = { ...template, labels: nextLabels };
+    setTemplates((items) => [
+      ...items.filter((item) => item.id !== projectTemplate.id),
+      projectTemplate,
+    ]);
+    setSelectedTemplateId(projectTemplate.id);
+    setLabels(nextLabels);
+    setSavedLabels(nextLabels);
+    setCurrentLabelId(nextLabels[0].id);
+    setIsLabelDirty(false);
+  }
+
+  async function readImportFiles(folderPath: string, extension: string): Promise<TextImportFile[]> {
+    const files = await listTextFiles(folderPath, extension);
+    if (files.length === 0) {
+      throw new Error(`目录中没有 .${extension} 文件`);
+    }
+
+    return Promise.all(
+      files.map(async (file) => ({
+        ...file,
+        content: await readTextFile(file.path),
+      })),
+    );
   }
 
   async function buildExportData(): Promise<ExportData> {
@@ -445,8 +662,21 @@ function App() {
       return;
     }
 
+    if (template.id === projectTemplateId) {
+      applyProjectTemplate(template, template.labels);
+      return;
+    }
+
     applySavedLabels(template.labels);
     setSelectedTemplateId(template.id);
+  }
+
+  function currentTemplateSnapshot(): ProjectConfig["template"] {
+    const template = templates.find((item) => item.id === selectedTemplateId);
+    return {
+      id: template?.id ?? selectedTemplateId,
+      name: template?.name ?? "当前模板",
+    };
   }
 
   function newTemplate() {
@@ -469,6 +699,11 @@ function App() {
   }
 
   function saveTemplate() {
+    if (selectedTemplateId === projectTemplateId) {
+      saveProjectLabels(labels);
+      return;
+    }
+
     if (!isUserTemplate(selectedTemplateId)) {
       saveTemplateAs();
       return;
@@ -483,6 +718,11 @@ function App() {
   }
 
   function cancelLabelChanges() {
+    if (selectedTemplateId === projectTemplateId && activeProjectConfig) {
+      applyProjectTemplate(activeProjectConfig.template, savedLabels);
+      return;
+    }
+
     applySavedLabels(savedLabels);
   }
 
@@ -506,7 +746,7 @@ function App() {
   }
 
   function deleteTemplate() {
-    if (!isUserTemplate(selectedTemplateId)) {
+    if (!isUserTemplate(selectedTemplateId) || selectedTemplateId === projectTemplateId) {
       return;
     }
 
@@ -532,6 +772,19 @@ function App() {
     saveLabelConfigs(nextLabels).catch(reportError);
   }
 
+  function saveProjectLabels(nextLabels: LabelConfig[]) {
+    if (!activeProjectConfig || !activeProjectConfigPath) {
+      applySavedLabels(nextLabels);
+      return;
+    }
+
+    const nextConfig = { ...activeProjectConfig, labels: nextLabels };
+    replaceMissingAnnotationLabels(nextLabels);
+    setActiveProjectConfig(nextConfig);
+    applyProjectTemplate(activeProjectConfig.template, nextLabels);
+    saveProjectConfig(activeProjectConfigPath, nextConfig).catch(reportError);
+  }
+
   function replaceMissingAnnotationLabels(nextLabels: LabelConfig[]) {
     const safeIds = new Set(nextLabels.map((label) => label.id));
     const fallbackLabelId = nextLabels[0]?.id ?? DEFAULT_LABELS[0].id;
@@ -544,9 +797,11 @@ function App() {
   }
 
   function persistUserTemplates(nextTemplates: LabelTemplate[]) {
-    saveLabelTemplates(nextTemplates.filter((template) => isUserTemplate(template.id))).catch(
-      reportError,
-    );
+    saveLabelTemplates(
+      nextTemplates.filter(
+        (template) => isUserTemplate(template.id) && template.id !== projectTemplateId,
+      ),
+    ).catch(reportError);
   }
 
   function reportError(caughtError: unknown) {
@@ -557,9 +812,9 @@ function App() {
     drawingRect && imageLayout ? toCanvasRect(normalizeRectPoints(drawingRect), imageLayout) : null;
 
   return (
-    <main className="flex h-screen bg-slate-950 text-slate-100">
-      <aside className="flex w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
-        <div className="border-b border-slate-800 p-4">
+    <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
+      <aside className="flex h-screen w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
+        <div className="shrink-0 border-b border-slate-800 p-4">
           <h1 className="text-lg font-semibold">my_label_tool</h1>
           <button
             className="mt-4 w-full rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400"
@@ -567,6 +822,14 @@ function App() {
             onClick={openFolder}
           >
             打开图片文件夹
+          </button>
+          <button
+            className="mt-2 w-full rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={images.length === 0}
+            type="button"
+            onClick={importAnnotations}
+          >
+            导入标注
           </button>
           {folderPath && (
             <p className="mt-3 truncate text-xs text-slate-400" title={folderPath}>
@@ -577,81 +840,102 @@ function App() {
         </div>
 
         <ExportPanel
+          canSaveProject={
+            activeProjectConfig !== null && selectedExportFormatId === activeProjectConfig.format
+          }
           customMappingText={customMappingText}
           disabled={images.length === 0}
           selectedFormatId={selectedExportFormatId}
           onChangeCustomMappingText={setCustomMappingText}
           onChangeFormat={setSelectedExportFormatId}
           onExport={exportSelectedFormat}
+          onSaveProject={saveProjectExport}
         />
 
-        <LabelSettings
-          canSaveTemplate={isUserTemplate(selectedTemplateId)}
-          canDeleteTemplate={isUserTemplate(selectedTemplateId)}
-          isDirty={isLabelDirty}
-          labels={labels}
-          selectedTemplateId={selectedTemplateId}
-          templates={templates}
-          usedLabelIds={usedLabelIds}
-          onCancelChanges={cancelLabelChanges}
-          onChangeLabels={updateLabels}
-          onDeleteTemplate={deleteTemplate}
-          onNewTemplate={newTemplate}
-          onSaveTemplate={saveTemplate}
-          onSaveTemplateAs={saveTemplateAs}
-          onSelectTemplate={selectTemplate}
-        />
+        <div className="scrollbar-dark min-h-0 flex-1 overflow-y-auto">
+          <LabelSettings
+            canSaveTemplate={
+              isUserTemplate(selectedTemplateId) || selectedTemplateId === projectTemplateId
+            }
+            canDeleteTemplate={
+              isUserTemplate(selectedTemplateId) && selectedTemplateId !== projectTemplateId
+            }
+            isDirty={isLabelDirty}
+            labels={labels}
+            selectedTemplateId={selectedTemplateId}
+            templates={templates}
+            usedLabelIds={usedLabelIds}
+            onCancelChanges={cancelLabelChanges}
+            onChangeLabels={updateLabels}
+            onDeleteTemplate={deleteTemplate}
+            onNewTemplate={newTemplate}
+            onSaveTemplate={saveTemplate}
+            onSaveTemplateAs={saveTemplateAs}
+            onSelectTemplate={selectTemplate}
+          />
 
-        <section className="border-b border-slate-800 p-4">
-          <label className="block text-sm text-slate-300">
-            当前标签（新框使用）
-            <select
-              className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
-              value={currentLabel.id}
-              onChange={(event) => selectCurrentLabel(event.target.value)}
-            >
-              {labels.map((label) => (
-                <option key={label.id} value={label.id}>
-                  {label.shortcut ? `${label.name} (${label.shortcut})` : label.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mt-3 flex items-center gap-2 rounded border border-slate-800 bg-slate-950 px-3 py-2 text-sm">
-            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: currentLabel.color }} />
-            <span>{currentLabel.name}</span>
-            {currentLabel.shortcut && <span className="text-xs text-slate-500">快捷键 {currentLabel.shortcut}</span>}
+          <section className="border-b border-slate-800 p-4">
+            <label className="block text-sm text-slate-300">
+              当前标签（新框使用）
+              <select
+                className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
+                value={currentLabel.id}
+                onChange={(event) => selectCurrentLabel(event.target.value)}
+              >
+                {labels.map((label) => (
+                  <option key={label.id} value={label.id}>
+                    {label.shortcut ? `${label.name} (${label.shortcut})` : label.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-3 flex items-center gap-2 rounded border border-slate-800 bg-slate-950 px-3 py-2 text-sm">
+              <span
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: currentLabel.color }}
+              />
+              <span>{currentLabel.name}</span>
+              {currentLabel.shortcut && (
+                <span className="text-xs text-slate-500">快捷键 {currentLabel.shortcut}</span>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <section className="flex max-h-64 min-h-36 shrink-0 flex-col border-t border-slate-800 bg-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
+            <h2 className="text-sm font-semibold text-slate-200">图片列表</h2>
+            <span className="text-xs text-slate-500">{images.length}</span>
+          </div>
+          <div className="scrollbar-dark min-h-0 flex-1 overflow-auto p-2">
+            {images.length === 0 ? (
+              <p className="p-2 text-sm text-slate-400">
+                {folderPath
+                  ? "没有找到可加载的 jpg/png/bmp 图片；空文件或损坏图片会被跳过。"
+                  : "请选择包含 jpg/png/bmp 的文件夹。"}
+              </p>
+            ) : (
+              images.map((image) => (
+                <button
+                  className={`block w-full truncate rounded px-3 py-2 text-left text-sm ${
+                    image.path === selectedPath
+                      ? "bg-sky-500 text-white"
+                      : "text-slate-300 hover:bg-slate-800"
+                  }`}
+                  key={image.path}
+                  title={image.path}
+                  type="button"
+                  onClick={() => setSelectedPath(image.path)}
+                >
+                  {image.name}
+                </button>
+              ))
+            )}
           </div>
         </section>
-
-        <div className="min-h-0 flex-1 overflow-auto p-2">
-          {images.length === 0 ? (
-            <p className="p-2 text-sm text-slate-400">
-              {folderPath
-                ? "没有找到可加载的 jpg/png/bmp 图片；空文件或损坏图片会被跳过。"
-                : "请选择包含 jpg/png/bmp 的文件夹。"}
-            </p>
-          ) : (
-            images.map((image) => (
-              <button
-                className={`block w-full truncate rounded px-3 py-2 text-left text-sm ${
-                  image.path === selectedPath
-                    ? "bg-sky-500 text-white"
-                    : "text-slate-300 hover:bg-slate-800"
-                }`}
-                key={image.path}
-                title={image.path}
-                type="button"
-                onClick={() => setSelectedPath(image.path)}
-              >
-                {image.name}
-              </button>
-            ))
-          )}
-        </div>
       </aside>
 
-      <div ref={canvasHostRef} className="min-w-0 flex-1 bg-slate-950">
+      <div ref={canvasHostRef} className="h-full min-w-0 flex-1 overflow-hidden bg-slate-950">
         {selectedImage && loadedImage && imageLayout ? (
           <Stage
             width={canvasSize.width}
@@ -684,12 +968,7 @@ function App() {
                 />
               ))}
               {draftRect && (
-                <Rect
-                  {...draftRect}
-                  dash={[6, 4]}
-                  stroke={currentLabel.color}
-                  strokeWidth={2}
-                />
+                <Rect {...draftRect} dash={[6, 4]} stroke={currentLabel.color} strokeWidth={2} />
               )}
               <Transformer ref={transformerRef} rotateEnabled={false} />
             </Layer>
@@ -809,6 +1088,61 @@ function loadImageSize(path: string): Promise<{ width: number; height: number }>
     image.onerror = () => reject(new Error(`图片尺寸读取失败：${path}`));
     image.src = imageFileSrc(path);
   });
+}
+
+function confirmReplaceCurrentAnnotations(images: ImageFile[]): boolean {
+  const annotationsByImage = useAnnotationStore.getState().annotationsByImage;
+  const count = images.reduce(
+    (total, image) => total + (annotationsByImage[image.path]?.length ?? 0),
+    0,
+  );
+  return count === 0 || window.confirm("当前图片目录已有标注，导入后会覆盖，是否继续？");
+}
+
+function matchImportedImages(imported: ImportedAnnotations, currentImages: ImageFile[]) {
+  const byPath = new Map(currentImages.map((image) => [normalizePath(image.path), image]));
+  const byName = new Map(currentImages.map((image) => [image.name.toLowerCase(), image]));
+  const annotationsByImage: Record<string, AnnotationShape[]> = {};
+  let missingCount = 0;
+
+  for (const image of imported.images) {
+    const matched =
+      (image.path ? byPath.get(normalizePath(image.path)) : undefined) ??
+      byName.get(image.name.toLowerCase());
+    if (!matched) {
+      missingCount += 1;
+      continue;
+    }
+    annotationsByImage[matched.path] = image.annotations;
+  }
+
+  return { annotationsByImage, missingCount };
+}
+
+function projectConfigPath(folderPath: string): string {
+  return joinPath(folderPath, PROJECT_CONFIG_NAME);
+}
+
+function joinPath(folderPath: string, name: string): string {
+  const separator = folderPath.includes("\\") ? "\\" : "/";
+  return `${folderPath.replace(/[\\/]+$/, "")}${separator}${name}`;
+}
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/").toLowerCase();
+}
+
+function baseName(path: string): string {
+  return (
+    path
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/\.[^.]+$/, "") ?? path
+  );
+}
+
+function saveProjectConfig(path: string, config: ProjectConfig): Promise<void> {
+  return exportAnnotationsJson(path, config);
 }
 
 function parseCustomMapping(text: string): Required<CustomExportMapping> {

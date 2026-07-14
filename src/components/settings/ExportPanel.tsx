@@ -6,18 +6,22 @@ interface ExportPanelProps {
   customMappingText: string;
   disabled: boolean;
   selectedFormatId: ExportFormatId;
+  canSaveProject: boolean;
   onChangeCustomMappingText: (value: string) => void;
   onChangeFormat: (formatId: ExportFormatId) => void;
   onExport: () => void;
+  onSaveProject: () => void;
 }
 
 export function ExportPanel({
   customMappingText,
   disabled,
   selectedFormatId,
+  canSaveProject,
   onChangeCustomMappingText,
   onChangeFormat,
   onExport,
+  onSaveProject,
 }: ExportPanelProps) {
   const selectedTemplate =
     EXPORT_TEMPLATES.find((template) => template.id === selectedFormatId) ?? EXPORT_TEMPLATES[0];
@@ -27,7 +31,7 @@ export function ExportPanel({
   }
 
   return (
-    <section className="border-b border-slate-800 p-4">
+    <section className="shrink-0 border-b border-slate-800 p-4">
       <h2 className="text-sm font-semibold text-slate-200">导出</h2>
       <select
         className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
@@ -49,14 +53,24 @@ export function ExportPanel({
           onChange={(event) => onChangeCustomMappingText(event.target.value)}
         />
       )}
-      <button
-        className="mt-3 w-full rounded bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
-        type="button"
-        disabled={disabled}
-        onClick={onExport}
-      >
-        导出 {selectedTemplate.name}
-      </button>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          className="rounded bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+          type="button"
+          disabled={disabled || !canSaveProject}
+          onClick={onSaveProject}
+        >
+          保存
+        </button>
+        <button
+          className="rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          type="button"
+          disabled={disabled}
+          onClick={onExport}
+        >
+          另存为
+        </button>
+      </div>
     </section>
   );
 }

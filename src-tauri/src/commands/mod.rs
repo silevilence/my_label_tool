@@ -16,6 +16,12 @@ pub struct ImageFile {
     name: String,
 }
 
+#[derive(Serialize)]
+pub struct TextFileEntry {
+    path: String,
+    name: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextExportFile {
@@ -120,9 +126,58 @@ pub fn export_text_files(output_dir: PathBuf, files: Vec<TextExportFile>) -> Res
     Ok(())
 }
 
+#[tauri::command]
+pub fn read_text_file(path: PathBuf) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn list_text_files(
+    folder_path: PathBuf,
+    extension: String,
+) -> Result<Vec<TextFileEntry>, String> {
+    if !folder_path.is_dir() {
+        return Err("请选择一个有效的文件夹".to_string());
+    }
+
+    let extension = extension.trim_start_matches('.').to_lowercase();
+    let mut files = Vec::new();
+
+    for entry in fs::read_dir(&folder_path).map_err(|error| error.to_string())? {
+        let path = entry.map_err(|error| error.to_string())?.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let matches_extension = path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case(&extension))
+            .unwrap_or(false);
+        if !matches_extension {
+            continue;
+        }
+
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .to_string();
+        files.push(TextFileEntry {
+            path: path.to_string_lossy().into_owned(),
+            name,
+        });
+    }
+
+    files.sort_by_key(|file| file.name.to_lowercase());
+    Ok(files)
+}
+
 fn is_safe_relative_path(path: &Path) -> bool {
     !path.as_os_str().is_empty()
-        && path.components().all(|component| matches!(component, Component::Normal(_)))
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
 }
 
 #[tauri::command]
@@ -161,13 +216,19 @@ pub fn save_label_templates(
 }
 
 fn label_configs_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     Ok(dir.join("labels.json"))
 }
 
 fn label_templates_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     Ok(dir.join("label-templates.json"))
 }
@@ -196,8 +257,8 @@ fn write_label_templates(path: &Path, templates: &[LabelTemplate]) -> Result<(),
 mod tests {
     use super::{
         export_annotations_json, export_text_files, is_loadable_image, is_supported_image,
-        list_image_files, read_label_configs, read_label_templates, write_label_configs,
-        write_label_templates, TextExportFile,
+        list_image_files, list_text_files, read_label_configs, read_label_templates,
+        read_text_file, write_label_configs, write_label_templates, TextExportFile,
     };
     use crate::models::annotation::{
         AnnotationExport, AnnotationShape, ImageAnnotations, LabelConfig, LabelTemplate,
@@ -217,10 +278,8 @@ mod tests {
 
     #[test]
     fn rejects_empty_image_files() {
-        let path = std::env::temp_dir().join(format!(
-            "my_label_tool_empty_{}.png",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("my_label_tool_empty_{}.png", std::process::id()));
         fs::write(&path, []).unwrap();
 
         assert!(!is_loadable_image(&path));
@@ -229,15 +288,16 @@ mod tests {
 
     #[test]
     fn list_image_files_skips_empty_images() {
-        let dir = std::env::temp_dir().join(format!(
-            "my_label_tool_images_{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("my_label_tool_images_{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let empty_path = dir.join("empty.png");
         let image_path = dir.join("image.png");
         fs::write(&empty_path, []).unwrap();
-        fs::write(&image_path, [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]).unwrap();
+        fs::write(
+            &image_path,
+            [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+        )
+        .unwrap();
 
         let images = list_image_files(dir.clone()).unwrap();
 
@@ -288,10 +348,8 @@ mod tests {
 
     #[test]
     fn exports_text_files() {
-        let dir = std::env::temp_dir().join(format!(
-            "my_label_tool_text_export_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("my_label_tool_text_export_{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
 
         export_text_files(
@@ -304,6 +362,22 @@ mod tests {
         .unwrap();
 
         assert_eq!(fs::read_to_string(dir.join("a.txt")).unwrap(), "ok");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reads_and_lists_text_files() {
+        let dir =
+            std::env::temp_dir().join(format!("my_label_tool_text_import_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("a.xml"), "ok").unwrap();
+        fs::write(dir.join("b.txt"), "skip").unwrap();
+
+        let files = list_text_files(dir.clone(), "xml".to_string()).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].name, "a.xml");
+        assert_eq!(read_text_file(PathBuf::from(&files[0].path)).unwrap(), "ok");
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -322,10 +396,8 @@ mod tests {
 
     #[test]
     fn saves_and_loads_label_configs() {
-        let path = std::env::temp_dir().join(format!(
-            "my_label_tool_labels_{}.json",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("my_label_tool_labels_{}.json", std::process::id()));
         let labels = vec![LabelConfig {
             id: "person".to_string(),
             name: "人".to_string(),

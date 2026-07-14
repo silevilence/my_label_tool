@@ -10,6 +10,7 @@ interface AnnotationState {
     annotationId: string,
     patch: Partial<AnnotationShape>,
   ) => void;
+  replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
   replaceLabel: (oldLabelId: string, nextLabelId: string) => void;
   selectShape: (annotationId: string | null) => void;
 }
@@ -34,6 +35,7 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
         ),
       },
     })),
+  replaceAnnotations: (annotationsByImage) => set({ annotationsByImage, selectedShapeId: null }),
   replaceLabel: (oldLabelId, nextLabelId) =>
     set((state) => ({
       annotationsByImage: Object.fromEntries(

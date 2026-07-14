@@ -9,6 +9,8 @@ pub fn run() {
             commands::list_image_files,
             commands::export_annotations_json,
             commands::export_text_files,
+            commands::read_text_file,
+            commands::list_text_files,
             commands::load_label_configs,
             commands::save_label_configs,
             commands::load_label_templates,

@@ -8,6 +8,11 @@ export interface ImageFile {
   name: string;
 }
 
+export interface TextFileEntry {
+  path: string;
+  name: string;
+}
+
 export interface AnnotationExportImage extends ImageFile {
   annotations: AnnotationShape[];
 }
@@ -46,10 +51,21 @@ export async function selectExportPath(defaultPath: string): Promise<string | nu
   return typeof path === "string" ? path : null;
 }
 
+export async function selectJsonFile(): Promise<string | null> {
+  const path = await open({
+    directory: false,
+    multiple: false,
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  return typeof path === "string" ? path : null;
+}
+
 export async function selectExportFolder(): Promise<string | null> {
   const path = await open({ directory: true, multiple: false });
   return typeof path === "string" ? path : null;
 }
+
+export const selectFolder = selectExportFolder;
 
 export function exportAnnotationsJson(outputPath: string, data: unknown): Promise<void> {
   return invoke("export_annotations_json", { outputPath, data });
@@ -57,6 +73,14 @@ export function exportAnnotationsJson(outputPath: string, data: unknown): Promis
 
 export function exportTextFiles(outputDir: string, files: TextExportFile[]): Promise<void> {
   return invoke("export_text_files", { outputDir, files });
+}
+
+export function readTextFile(path: string): Promise<string> {
+  return invoke<string>("read_text_file", { path });
+}
+
+export function listTextFiles(folderPath: string, extension: string): Promise<TextFileEntry[]> {
+  return invoke<TextFileEntry[]>("list_text_files", { folderPath, extension });
 }
 
 export function loadLabelConfigs(): Promise<LabelConfig[]> {
