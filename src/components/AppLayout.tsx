@@ -393,6 +393,7 @@ export function AppLayout({
                 )}
                 <Transformer
                   ref={transformerRef}
+                  keepRatio={false}
                   listening={interactionMode === "default"}
                   rotateEnabled={false}
                   visible={interactionMode === "default"}
