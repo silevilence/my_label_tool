@@ -14,11 +14,13 @@ import {
 } from "./canvas/CanvasChrome";
 import { isLargeImage, type CanvasRect } from "./canvas/geometry";
 import type { CanvasContextMenu as CanvasContextMenuState, ImageLayout } from "./canvas/types";
+import type { InteractionMode } from "./canvas/types";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import type { ExportFormatId } from "../types/export";
 import type { ProjectConfig } from "../lib/importers";
 import type { ImageFile } from "../lib/tauri-api";
 import type { ShortcutActionId, ShortcutMap } from "../lib/defaults/shortcuts";
+import type { LabelDisplaySettings } from "../lib/defaults/display";
 import { isUserTemplate } from "../lib/app-utils";
 
 interface AppLayoutProps {
@@ -41,12 +43,15 @@ interface AppLayoutProps {
   imageLayout: ImageLayout | null;
   imageLoadError: string;
   images: ImageFile[];
-  interactionMode: "default" | "select" | "annotate";
+  interactionMode: InteractionMode;
+  isImageLoading: boolean;
   isLabelDirty: boolean;
   isPanning: boolean;
   isShortcutSettingsOpen: boolean;
   labelById: Map<string, LabelConfig>;
+  labelDisplaySettings: LabelDisplaySettings;
   labelShortcuts: string[];
+  labelSwitchHint: LabelConfig | null;
   labels: LabelConfig[];
   loadedImage: HTMLImageElement | null;
   projectTemplateId: string;
@@ -98,6 +103,7 @@ interface AppLayoutProps {
   setIsShortcutSettingsOpen: (isOpen: boolean) => void;
   setSelectedExportFormatId: (format: ExportFormatId) => void;
   setSelectedPath: (path: string) => void;
+  setLabelDisplaySetting: (mode: InteractionMode, visible: boolean) => void;
   startPanning: (event: KonvaEventObject<MouseEvent>) => void;
   undo: () => void;
   updateLabels: (labels: LabelConfig[]) => void;
@@ -126,11 +132,14 @@ export function AppLayout({
   imageLoadError,
   images,
   interactionMode,
+  isImageLoading,
   isLabelDirty,
   isPanning,
   isShortcutSettingsOpen,
   labelById,
+  labelDisplaySettings,
   labelShortcuts,
+  labelSwitchHint,
   labels,
   loadedImage,
   projectTemplateId,
@@ -182,6 +191,7 @@ export function AppLayout({
   setIsShortcutSettingsOpen,
   setSelectedExportFormatId,
   setSelectedPath,
+  setLabelDisplaySetting,
   startPanning,
   undo,
   updateLabels,
@@ -259,7 +269,7 @@ export function AppLayout({
                   type="button"
                   onClick={() => setIsShortcutSettingsOpen(true)}
                 >
-                  快捷键配置
+                  设置
                 </button>
               </div>
             </details>
@@ -451,6 +461,7 @@ export function AppLayout({
                     key={annotation.id}
                     label={labelById.get(annotation.labelId) ?? labels[0]}
                     rectRef={selectedRectRef}
+                    showLabel={labelDisplaySettings[interactionMode]}
                     onContextMenu={openContextMenu}
                     onDragEnd={handleDragEnd}
                     onPanStart={startPanning}
@@ -471,21 +482,40 @@ export function AppLayout({
               </Layer>
             </Stage>
             <ModeHelpOverlay mode={interactionMode} />
+            {labelSwitchHint && (
+              <div className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700/80 bg-slate-950/85 px-4 py-2 text-sm text-slate-100 shadow-xl">
+                <span
+                  className="h-3 w-3 rounded-full"
+                  style={{ backgroundColor: labelSwitchHint.color }}
+                />
+                <span>当前标签：{labelSwitchHint.name}</span>
+              </div>
+            )}
           </>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">
-            {selectedImage
-              ? imageLoadError ||
-                (loadedImage ? "画布区域尺寸异常，无法显示图片。" : "正在加载图片...")
-              : "选择文件夹后，在这里预览图片。"}
+            {selectedImage && isImageLoading ? (
+              <div className="w-56 text-center">
+                <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                  <div className="h-full w-1/2 animate-pulse rounded-full bg-sky-400" />
+                </div>
+                <div>正在加载图片...</div>
+              </div>
+            ) : selectedImage ? (
+              imageLoadError || (loadedImage ? "画布区域尺寸异常，无法显示图片。" : "正在加载图片...")
+            ) : (
+              "选择文件夹后，在这里预览图片。"
+            )}
           </div>
         )}
       </div>
 
       {isShortcutSettingsOpen && (
         <ShortcutSettings
+          labelDisplaySettings={labelDisplaySettings}
           labelShortcuts={labelShortcuts}
           shortcuts={shortcuts}
+          onChangeLabelDisplaySetting={setLabelDisplaySetting}
           onChangeShortcut={updateShortcut}
           onClose={() => setIsShortcutSettingsOpen(false)}
         />

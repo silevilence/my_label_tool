@@ -45,7 +45,7 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
       applyImageHistory(state, imagePath, [
         ...(state.annotationsByImage[imagePath] ?? []),
         annotation,
-      ], annotation.id),
+      ], null),
     ),
   updateAnnotation: (imagePath, annotationId, patch) =>
     set((state) => {

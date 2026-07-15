@@ -4,17 +4,23 @@ import {
   type ShortcutActionId,
   type ShortcutMap,
 } from "../../lib/defaults/shortcuts";
+import type { InteractionMode } from "../canvas/types";
+import type { LabelDisplaySettings } from "../../lib/defaults/display";
 
 interface ShortcutSettingsProps {
+  labelDisplaySettings: LabelDisplaySettings;
   labelShortcuts: string[];
   shortcuts: ShortcutMap;
+  onChangeLabelDisplaySetting: (mode: InteractionMode, visible: boolean) => void;
   onChangeShortcut: (actionId: ShortcutActionId, shortcut: string) => void;
   onClose: () => void;
 }
 
 export function ShortcutSettings({
+  labelDisplaySettings,
   labelShortcuts,
   shortcuts,
+  onChangeLabelDisplaySetting,
   onChangeShortcut,
   onClose,
 }: ShortcutSettingsProps) {
@@ -67,8 +73,10 @@ export function ShortcutSettings({
       <section className="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold text-slate-100">快捷键配置</h2>
-            <p className="mt-1 text-xs text-slate-400">点击“录制”，按下新按键完成改绑。</p>
+            <h2 className="text-base font-semibold text-slate-100">设置</h2>
+            <p className="mt-1 text-xs text-slate-400">
+              配置快捷键，以及不同交互模式下是否显示框上的标签名。
+            </p>
           </div>
           <button
             className="rounded border border-slate-700 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800"
@@ -79,7 +87,33 @@ export function ShortcutSettings({
           </button>
         </div>
 
+        <div className="mt-4 rounded border border-slate-800 p-3">
+          <h3 className="text-sm font-medium text-slate-100">标签名显示</h3>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {LABEL_DISPLAY_OPTIONS.map((option) => (
+              <label
+                className="flex items-start gap-2 rounded border border-slate-800 bg-slate-950 p-2 text-sm text-slate-200"
+                key={option.id}
+              >
+                <input
+                  checked={labelDisplaySettings[option.id]}
+                  className="mt-1"
+                  type="checkbox"
+                  onChange={(event) =>
+                    onChangeLabelDisplaySetting(option.id, event.target.checked)
+                  }
+                />
+                <span>
+                  <span className="block">{option.label}</span>
+                  <span className="block text-xs text-slate-500">{option.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         <div className="mt-4 divide-y divide-slate-800 rounded border border-slate-800">
+          <h3 className="px-3 py-2 text-sm font-medium text-slate-100">快捷键</h3>
           {SHORTCUT_ACTIONS.map((action) => (
             <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 p-3" key={action.id}>
               <div>
@@ -105,6 +139,16 @@ export function ShortcutSettings({
     </div>
   );
 }
+
+const LABEL_DISPLAY_OPTIONS: Array<{
+  id: InteractionMode;
+  label: string;
+  description: string;
+}> = [
+  { id: "default", label: "默认模式", description: "普通查看、选择与调整" },
+  { id: "select", label: "选择模式", description: "按住 Shift 强制选择" },
+  { id: "annotate", label: "标注模式", description: "按住 Ctrl 强制绘制" },
+];
 
 export function normalizeShortcutKey(key: string): string {
   return key.length === 1 ? key.toLowerCase() : key;

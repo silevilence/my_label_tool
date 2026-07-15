@@ -1,5 +1,5 @@
 import type { MutableRefObject, ReactNode } from "react";
-import { Rect } from "react-konva";
+import { Label as KonvaLabel, Rect, Tag, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { AnnotationShape, LabelConfig } from "../../types/annotation";
@@ -248,6 +248,7 @@ interface AnnotationRectProps {
   isSelected: boolean;
   label: LabelConfig;
   rectRef: MutableRefObject<KonvaRect | null>;
+  showLabel: boolean;
   onContextMenu: (event: KonvaEventObject<MouseEvent>, annotationId: string) => void;
   onDragEnd: (annotation: AnnotationShape, event: KonvaEventObject<DragEvent>) => void;
   onPanStart: (event: KonvaEventObject<MouseEvent>) => void;
@@ -264,6 +265,7 @@ export function AnnotationRect({
   isSelected,
   label,
   rectRef,
+  showLabel,
   onContextMenu,
   onDragEnd,
   onPanStart,
@@ -273,53 +275,65 @@ export function AnnotationRect({
   const rect = toCanvasRect(annotation.points, imageLayout);
 
   return (
-    <Rect
-      {...rect}
-      ref={(node) => {
-        if (isSelected) {
-          rectRef.current = node;
-        }
-      }}
-      fill={`${label.color}22`}
-      shadowBlur={isHighlighted ? 10 : 0}
-      shadowColor="#facc15"
-      perfectDrawEnabled={false}
-      shadowForStrokeEnabled={false}
-      stroke={isHighlighted ? "#facc15" : label.color}
-      strokeWidth={isHighlighted || isSelected ? 3 : 2}
-      draggable={!isPanning && interactionMode === "default"}
-      onClick={(event) => {
-        if (interactionMode !== "default" || event.evt.ctrlKey || event.evt.shiftKey) {
-          return;
-        }
-        onSelect(annotation.id);
-      }}
-      onContextMenu={(event) => {
-        event.cancelBubble = true;
-        onContextMenu(event, annotation.id);
-      }}
-      onDragEnd={(event) => onDragEnd(annotation, event)}
-      onMouseDown={(event) => {
-        if (event.evt.button === 1) {
-          event.evt.preventDefault();
+    <>
+      <Rect
+        {...rect}
+        ref={(node) => {
+          if (isSelected) {
+            rectRef.current = node;
+          }
+        }}
+        fill={`${label.color}22`}
+        shadowBlur={isHighlighted ? 10 : 0}
+        shadowColor="#facc15"
+        perfectDrawEnabled={false}
+        shadowForStrokeEnabled={false}
+        stroke={isHighlighted ? "#facc15" : label.color}
+        strokeWidth={isHighlighted || isSelected ? 3 : 2}
+        draggable={!isPanning && interactionMode === "default"}
+        onClick={(event) => {
+          if (interactionMode !== "default" || event.evt.ctrlKey || event.evt.shiftKey) {
+            return;
+          }
+          onSelect(annotation.id);
+        }}
+        onContextMenu={(event) => {
           event.cancelBubble = true;
-          return;
-        }
-        if (event.evt.button === 2 && event.evt.ctrlKey) {
+          onContextMenu(event, annotation.id);
+        }}
+        onDragEnd={(event) => onDragEnd(annotation, event)}
+        onMouseDown={(event) => {
+          if (event.evt.button === 1) {
+            event.evt.preventDefault();
+            event.cancelBubble = true;
+            return;
+          }
+          if (event.evt.button === 2 && event.evt.ctrlKey) {
+            event.cancelBubble = true;
+            onPanStart(event);
+            return;
+          }
+          if (event.evt.button !== 0) {
+            return;
+          }
+          if (event.evt.ctrlKey || event.evt.shiftKey) {
+            return;
+          }
           event.cancelBubble = true;
-          onPanStart(event);
-          return;
-        }
-        if (event.evt.button !== 0) {
-          return;
-        }
-        if (event.evt.ctrlKey || event.evt.shiftKey) {
-          return;
-        }
-        event.cancelBubble = true;
-        onSelect(annotation.id);
-      }}
-      onTransformEnd={() => onTransformEnd(annotation)}
-    />
+          onSelect(annotation.id);
+        }}
+        onTransformEnd={() => onTransformEnd(annotation)}
+      />
+      {showLabel && (
+        <KonvaLabel
+          listening={false}
+          x={rect.x}
+          y={Math.max(imageLayout.y, rect.y - 22)}
+        >
+          <Tag fill={`${label.color}dd`} cornerRadius={4} />
+          <Text fill="#ffffff" fontSize={12} padding={4} text={label.name} />
+        </KonvaLabel>
+      )}
+    </>
   );
 }

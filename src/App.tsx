@@ -24,6 +24,8 @@ import {
   toCanvasRect,
 } from "./components/canvas/geometry";
 import { useLabelActions } from "./hooks/useLabelActions";
+import { useLabelDisplaySettings } from "./hooks/useLabelDisplaySettings";
+import { useImageLoader } from "./hooks/useImageLoader";
 import { useProjectActions } from "./hooks/useProjectActions";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
@@ -34,7 +36,6 @@ import {
 } from "./lib/defaults/shortcuts";
 import { isEditableTarget, mergeShortcuts, newAnnotationId } from "./lib/app-utils";
 import {
-  imageFileSrc,
   confirmAction,
   listImageFiles,
   loadLabelConfigs,
@@ -60,8 +61,6 @@ function App() {
   const [folderPath, setFolderPath] = useState("");
   const [images, setImages] = useState<ImageFile[]>([]);
   const [selectedPath, setSelectedPath] = useState("");
-  const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
-  const [imageLoadError, setImageLoadError] = useState("");
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [imageView, setImageView] = useState<ImageLayout | null>(null);
   const [contextMenu, setContextMenu] = useState<CanvasContextMenu | null>(null);
@@ -118,11 +117,16 @@ function App() {
     [annotationsByImage],
   );
   const currentLabel = labelById.get(currentLabelId) ?? labels[0];
-
-  const selectedImage = useMemo(
-    () => images.find((image) => image.path === selectedPath) ?? null,
-    [images, selectedPath],
+  const { imageLoadError, isImageLoading, loadedImage, selectedImage } = useImageLoader(
+    images,
+    selectedPath,
   );
+  const {
+    labelDisplaySettings,
+    labelSwitchHint,
+    setLabelDisplaySetting,
+    showLabelSwitchHint,
+  } = useLabelDisplaySettings(labelById);
 
   const {
     applyProjectTemplate,
@@ -262,37 +266,6 @@ function App() {
   }, [currentLabelId, labelById, labels]);
 
   useEffect(() => {
-    if (!selectedImage) {
-      setLoadedImage(null);
-      setImageLoadError("");
-      return;
-    }
-
-    let cancelled = false;
-    const image = new Image();
-    setLoadedImage(null);
-    setImageLoadError("");
-
-    image.onload = () => {
-      if (!cancelled) {
-        setLoadedImage(image);
-      }
-    };
-    image.onerror = () => {
-      if (!cancelled) {
-        setImageLoadError(`图片加载失败：${selectedImage.name}`);
-      }
-    };
-    image.src = imageFileSrc(selectedImage.path);
-
-    return () => {
-      cancelled = true;
-      image.onload = null;
-      image.onerror = null;
-    };
-  }, [selectedImage]);
-
-  useEffect(() => {
     if (!loadedImage || canvasSize.width === 0 || canvasSize.height === 0) {
       setImageView(null);
       return;
@@ -414,7 +387,7 @@ function App() {
       }
 
       event.preventDefault();
-      selectCurrentLabel(label.id);
+      changeCurrentLabel(label.id);
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -425,6 +398,7 @@ function App() {
     imageView,
     labels,
     redo,
+    selectCurrentLabel,
     selectedPath,
     selectedShapeId,
     shortcuts,
@@ -609,6 +583,11 @@ function App() {
     const nextShortcuts = { ...shortcuts, [actionId]: shortcut };
     setShortcuts(nextShortcuts);
     saveShortcuts(nextShortcuts).catch(reportError);
+  }
+
+  function changeCurrentLabel(labelId: string) {
+    selectCurrentLabel(labelId);
+    showLabelSwitchHint(labelId);
   }
 
   function openContextMenu(event: KonvaEventObject<MouseEvent>, annotationId?: string) {
@@ -946,11 +925,14 @@ function App() {
       imageLoadError={imageLoadError}
       images={images}
       interactionMode={interactionMode}
+      isImageLoading={isImageLoading}
       isLabelDirty={isLabelDirty}
       isPanning={isPanning}
       isShortcutSettingsOpen={isShortcutSettingsOpen}
       labelById={labelById}
+      labelDisplaySettings={labelDisplaySettings}
       labelShortcuts={labelShortcuts}
+      labelSwitchHint={labelSwitchHint}
       labels={labels}
       loadedImage={loadedImage}
       projectTemplateId={projectTemplateId}
@@ -992,7 +974,7 @@ function App() {
       saveTemplateAs={saveTemplateAs}
       selectAdjacentImage={selectAdjacentImage}
       selectAdjacentUnannotatedImage={selectAdjacentUnannotatedImage}
-      selectCurrentLabel={selectCurrentLabel}
+      selectCurrentLabel={changeCurrentLabel}
       selectShape={selectShape}
       selectTemplate={selectTemplate}
       setAnnotationToDelete={setAnnotationToDelete}
@@ -1000,6 +982,7 @@ function App() {
       setCustomMappingText={setCustomMappingText}
       setImageScale={setImageScale}
       setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
+      setLabelDisplaySetting={setLabelDisplaySetting}
       setSelectedExportFormatId={setSelectedExportFormatId}
       setSelectedPath={setSelectedPath}
       startPanning={startPanning}
