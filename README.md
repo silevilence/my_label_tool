@@ -1,16 +1,18 @@
 # my_label_tool
 
-离线图片标注桌面工具——打开文件夹、画矩形框、绑定标签、导出 JSON。
+离线图片标注桌面工具--打开文件夹、画矩形框、绑定标签，支持多格式导入导出与外部数据集建项，Windows 双击即用。
 
 ## 功能
 
 - **打开图片文件夹**：支持 JPG / PNG / BMP，自动跳过损坏或空文件
-- **矩形框标注**：在图片上绘制、选中、拖拽、缩放矩形框
+- **矩形框标注**：在图片上绘制、选中、拖拽、缩放矩形框；缩放时可自由调整宽高比，不再锁定比例
+- **标注进度统计**：实时显示已标注、未标注与总图片数量，并附完成进度条；可一键跳转下一张 / 上一张未标注图片
 - **标签体系**：内置"通用目标检测"和"道路交通"两套标签模板，支持自定义增删改标签（名称、颜色、快捷键）
-- **标签模板管理**：新建、保存、另存为、删除自定义模板，内置模板不可删除
+- **标签模板管理**：标签与模板管理整合为独立弹窗，主界面更清爽；支持新建、保存、另存为、删除自定义模板，内置模板不可删除
 - **快捷键切标签**：按下标签绑定的单键（如 `1` / `2` / `3`）可快速切换当前标签，已有选中框时同步切换其标签
 - **多格式导出**：支持原始 JSON、COCO JSON、VOC XML、YOLO TXT、自定义字段映射 JSON 五种导出格式
 - **标注导入**：支持导入原生 JSON、COCO、VOC、YOLO 标注；打开文件夹时若存在项目配置文件会提示自动加载
+- **从外部数据集创建项目**：手上只有 YOLO 格式的图片和标注目录时，无需本工具项目文件即可直接导入并生成项目；自动读取 `classes.txt` 生成标签，导入后保存项目配置，再次打开该目录自动按本项目加载
 - **画布缩放与平移**：滚轮以鼠标位置为中心缩放，Ctrl+滚轮微调；Ctrl+右键或中键拖动平移画布
 - **撤销 / 重做**：标注的新增、删除、移动、调整均可撤销重做（默认 `Ctrl+Z` / `Ctrl+Y`）
 - **删除与清空**：选中标注框按 `Delete` 删除；提供"清空当前图片所有标注"按钮（需二次确认）
@@ -56,22 +58,46 @@ cargo check --manifest-path src-tauri/Cargo.toml   # Rust 编译检查
 cargo clippy --manifest-path src-tauri/Cargo.toml  # Rust lint
 ```
 
+## 测试
+
+```bash
+# Rust 后端单元测试（覆盖图片识别、JSON 导出、文本文件导出/列举等）
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+前端目前无自动化测试，涉及画布交互的改动需按 `AGENTS.md` 中的手动验证清单核对。详细的打包与发布流程见 [docs/build.md](docs/build.md)。
+
+## 发布
+
+项目通过 GitHub Actions 自动发布 Windows 安装包。推送形如 `V0.2.0` / `v0.2.0` 的版本 Tag 时，[release.yml](.github/workflows/release.yml) 工作流会自动触发：
+
+1. 从 `changelog.md` 读取对应版本章节作为 Release 说明
+2. 执行前端构建与 Tauri 打包，生成 Windows 安装包（NSIS `.exe` / MSI）
+3. 将安装包上传并发布到对应的 GitHub Release
+
+发布前需确保 `changelog.md` 中已有该 Tag 对应的版本章节，且 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 三处版本号已同步。
+
 ## 项目结构
 
 ```
 my_label_tool/
 ├── src/                            # React 前端
 │   ├── components/                 # 画布、设置面板、侧边栏、工具栏组件
+│   │   ├── canvas/                 # Konva 画布、几何计算、交互类型
+│   │   └── settings/               # 导出面板、标签设置、快捷键设置
 │   ├── store/                      # Zustand 状态管理（标注数据 + 全局状态）
-│   ├── types/                      # 核心类型定义
+│   ├── types/                      # 核心类型定义（annotation、export）
 │   ├── lib/                        # Tauri API 封装、导入导出、默认配置
-│   └── hooks/                      # 自定义 hooks
+│   │   ├── defaults/               # 导出模板、标签、快捷键默认值
+│   │   └── exporters/              # COCO / VOC / YOLO / 自定义导出
+│   └── hooks/                      # useLabelActions、useProjectActions
 ├── src-tauri/                      # Rust 后端
-│   ├── src/                        # commands、models
+│   ├── src/                        # 入口、commands、models
 │   ├── capabilities/               # Tauri 权限配置
 │   ├── Cargo.toml
 │   └── tauri.conf.json
-├── docs/                           # 文档
+├── .github/workflows/              # GitHub Actions 发布工作流
+├── docs/                           # 文档（build.md：Windows 打包与发布说明）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md                       # AI 开发指南
 └── package.json

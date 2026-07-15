@@ -73,17 +73,27 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ```
 my_label_tool/
 ├── src/                            # React 前端
-│   ├── components/                 # UI 组件（布局、画布、设置面板、侧边栏、工具栏）
+│   ├── components/                 # UI 组件
+│   │   ├── canvas/                 # Konva 画布（CanvasChrome）、几何计算（geometry）、交互类型
+│   │   ├── settings/               # 导出面板、标签设置（弹窗）、快捷键设置
+│   │   ├── sidebar/                # 侧边栏（预留，当前仅 .gitkeep）
+│   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
 │   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态）
 │   ├── types/                      # 核心类型（annotation、export）
-│   ├── lib/                        # tauri-api 封装、导入、工具函数、defaults、exporters
+│   ├── lib/                        # tauri-api 封装、导入导出、工具函数
+│   │   ├── defaults/               # 导出模板、标签、快捷键默认值
+│   │   ├── exporters/              # COCO / VOC / YOLO / 自定义导出
+│   │   ├── importers.ts            # 多格式导入 + 项目配置（ProjectConfig）解析
+│   │   ├── tauri-api.ts            # 所有 Tauri command 调用封装
+│   │   └── app-utils.ts            # 路径、图片尺寸、项目配置等工具函数
 │   └── hooks/                      # useLabelActions、useProjectActions
 ├── src-tauri/                      # Rust 后端
 │   ├── src/                        # 入口、commands、models
 │   ├── capabilities/               # Tauri 权限（core:default + dialog:default）
 │   ├── Cargo.toml
 │   └── tauri.conf.json
-├── docs/                           # 文档（待补充）
+├── .github/workflows/              # GitHub Actions 发布工作流（release.yml）
+├── docs/                           # 文档（build.md：Windows 打包与发布说明）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md
 └── package.json
@@ -144,6 +154,8 @@ interface LabelTemplate {
 
 **视频标注扩展预留**：`AnnotationShape.frameIndex` 字段现在就加上，即使图片阶段用不到，避免后期做视频标注时重构数据结构。
 
+**项目配置（ProjectConfig）**：导入与项目复用的核心契约，定义在 `lib/importers.ts`。包含 `schemaVersion`（当前恒为 1）、`format`（导入来源格式）、`annotationPath`、`imageFolder`、`exportedAt`、标签快照 `labels`、项目专用模板 `template`（id 固定为 `project-config`，名称「项目临时配置」）与 `exportOptions`。项目配置文件名固定为 `my-label-tool.project.json`，保存在图片目录下；打开图片目录时若存在该文件则提示自动加载。新增导入来源或修改导入流程时，必须同步更新 `ProjectConfig` 与 `parseProjectConfig` 校验逻辑，不得破坏已有配置的兼容性。
+
 ---
 
 ## 6. 编码规范
@@ -153,7 +165,7 @@ interface LabelTemplate {
 - 组件用函数组件 + Hooks，禁止 class component。
 - 禁止 `any`，确需动态类型时用 `unknown` 并做类型收窄。
 - 所有 Tauri command 调用必须封装在 `lib/tauri-api.ts`，组件内不得直接 `invoke(...)`。
-- 画布相关状态（当前缩放级别、选中图形、绘制中的临时图形）与业务数据状态（标注列表、标签配置）分开存放在不同 store 中。
+- 状态分层：标注业务数据（标注列表、选中图形 id、撤销/重做栈）放入 Zustand store（`useAnnotationStore`）；画布交互状态（缩放级别、绘制中的临时图形、交互模式、平移状态）保留在 `App.tsx` 的本地 `useState`，不进 store；全局就绪标志放入 `useAppStore`。新增状态时按此归属判断，不要把瞬时交互态塞进 store。
 
 ### Rust
 
