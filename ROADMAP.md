@@ -234,3 +234,9 @@
 - [x] **编写打包与发布说明文档**
   - [x] 在 `docs/` 下新增 `build.md`，记录打包命令、注意事项、已知问题
   - [x] 记录支持的最低 Windows 版本（如需要）
+
+- [x] **配置 GitHub Actions 自动发布 Windows 安装包**
+  - [x] 新增 release workflow：当推送版本 Tag 时触发，匹配 `V0.1.0` / `v0.1.0` 这类格式（大小写不敏感）
+  - [x] 从 `changelog.md` 中读取对应版本章节，作为 GitHub Release 的发布说明
+  - [x] 执行前端构建与 Tauri 打包，生成 Windows 安装包产物
+  - [x] 将安装包上传并发布到对应 GitHub Release

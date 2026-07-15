@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "V*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build and publish Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Extract release notes
+        id: changelog
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^(?i:v\d+\.\d+\.\d+)$') {
+            throw "Release tag must look like V0.1.0 or v0.1.0, got '$tag'."
+          }
+
+          $lines = Get-Content -Path changelog.md
+          $start = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\s*##\s+' -and ($lines[$i] -replace '^\s*##\s+', '').Trim() -ieq $tag) {
+              $start = $i
+              break
+            }
+          }
+          if ($start -lt 0) {
+            throw "No changelog section found for '$tag'."
+          }
+
+          $end = $lines.Count
+          for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\s*##\s+') {
+              $end = $i
+              break
+            }
+          }
+
+          $body = [System.Collections.Generic.List[string]]::new()
+          for ($i = $start + 1; $i -lt $end; $i++) {
+            $body.Add($lines[$i])
+          }
+          while ($body.Count -gt 0 -and [string]::IsNullOrWhiteSpace($body[0])) {
+            $body.RemoveAt(0)
+          }
+          while ($body.Count -gt 0 -and [string]::IsNullOrWhiteSpace($body[$body.Count - 1])) {
+            $body.RemoveAt($body.Count - 1)
+          }
+          if ($body.Count -eq 0) {
+            throw "Changelog section for '$tag' is empty."
+          }
+
+          $notes = $body -join [Environment]::NewLine
+          "body<<__CHANGELOG__" >> $env:GITHUB_OUTPUT
+          $notes >> $env:GITHUB_OUTPUT
+          "__CHANGELOG__" >> $env:GITHUB_OUTPUT
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseBody: ${{ steps.changelog.outputs.body }}
+          releaseDraft: false
+          prerelease: false
