@@ -25,3 +25,42 @@
 .scrollbar-dark::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+.progress-indeterminate {
+  animation: progress-indeterminate 0.9s ease-in-out infinite;
+  transform-origin: left;
+}
+
+.canvas-floating-panel {
+  transition: transform 180ms ease-out;
+  will-change: transform;
+}
+
+.canvas-floating-panel-bottom {
+  transform: translateY(calc(100vh - 100% - 1.5rem));
+}
+
+.canvas-floating-panel-top {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-floating-panel {
+    transition: none;
+    will-change: auto;
+  }
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-110%) scaleX(0.55);
+  }
+
+  50% {
+    transform: translateX(45%) scaleX(0.9);
+  }
+
+  100% {
+    transform: translateX(210%) scaleX(0.55);
+  }
+}

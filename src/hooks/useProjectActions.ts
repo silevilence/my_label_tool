@@ -152,8 +152,10 @@ export function useProjectActions({
 
       await exportToProjectConfig(activeProjectConfig);
       await updateProjectConfig(activeProjectConfig.format, activeProjectConfig.annotationPath);
+      return true;
     } catch (caughtError: unknown) {
       reportError(caughtError);
+      return false;
     }
   }
 

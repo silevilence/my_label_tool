@@ -3,6 +3,7 @@ import { Label as KonvaLabel, Rect, Tag, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { AnnotationShape, LabelConfig } from "../../types/annotation";
+import type { ShortcutMap } from "../../lib/defaults/shortcuts";
 import { toCanvasRect } from "./geometry";
 import { INTERACTION_MODE_HELP, type ImageLayout, type InteractionMode } from "./types";
 
@@ -12,17 +13,88 @@ interface DeleteAnnotationDialogProps {
   onConfirm: () => void;
 }
 
-export function ModeHelpOverlay({ mode }: { mode: InteractionMode }) {
+interface ModeHelpOverlayProps {
+  corner: OverlayCorner;
+  mode: InteractionMode;
+  shortcuts: ShortcutMap;
+}
+
+export function ModeHelpOverlay({
+  corner,
+  mode,
+  shortcuts,
+}: ModeHelpOverlayProps) {
   const help = INTERACTION_MODE_HELP[mode];
+  const shortcutTips = SHORTCUT_TIPS[mode](shortcuts);
 
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg">
+    <div className={`canvas-floating-panel pointer-events-none absolute top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}>
       <div className="font-medium text-sky-200">{help.title}</div>
       {help.tips.map((tip) => (
         <div key={tip}>{tip}</div>
       ))}
+      {shortcutTips.length > 0 && (
+        <div className="mt-1 border-t border-slate-700/70 pt-1 text-slate-300">
+          {shortcutTips.map((tip) => (
+            <div key={tip}>{tip}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+interface LabelShortcutOverlayProps {
+  corner: OverlayCorner;
+  labels: LabelConfig[];
+}
+
+export function LabelShortcutOverlay({ corner, labels }: LabelShortcutOverlayProps) {
+  const labelShortcuts = labels.filter((label) => label.shortcut);
+  if (labelShortcuts.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={`canvas-floating-panel pointer-events-none absolute top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}>
+      <div className="font-medium text-sky-200">标签快捷键</div>
+      {labelShortcuts.map((label) => (
+        <div className="flex gap-2" key={label.id}>
+          <span className="min-w-5 text-slate-400">{label.shortcut}</span>
+          <span>{label.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export type OverlayCorner = "bottom-left" | "bottom-right" | "top-left" | "top-right";
+
+const OVERLAY_CORNER_CLASS: Record<OverlayCorner, string> = {
+  "bottom-left": "canvas-floating-panel-bottom left-3",
+  "bottom-right": "canvas-floating-panel-bottom right-3",
+  "top-left": "canvas-floating-panel-top left-3",
+  "top-right": "canvas-floating-panel-top right-3",
+};
+
+const SHORTCUT_TIPS: Record<InteractionMode, (shortcuts: ShortcutMap) => string[]> = {
+  default: (shortcuts) => [
+    `${formatShortcut(shortcuts.previousImage)} / ${formatShortcut(shortcuts.nextImage)}：切换图片`,
+    `${formatShortcut(shortcuts.zoomIn)} / ${formatShortcut(shortcuts.zoomOut)}：缩放`,
+    "Delete：删除选中框",
+  ],
+  select: () => [],
+  annotate: () => ["Ctrl+S：保存", "Ctrl+Z：撤销", "Ctrl+Y：重做"],
+};
+
+function formatShortcut(shortcut: string): string {
+  if (shortcut === "ArrowLeft") {
+    return "←";
+  }
+  if (shortcut === "ArrowRight") {
+    return "→";
+  }
+  return shortcut.toUpperCase();
 }
 
 export function DeleteAnnotationDialog({

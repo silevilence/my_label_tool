@@ -5,21 +5,25 @@ import {
   type ShortcutMap,
 } from "../../lib/defaults/shortcuts";
 import type { InteractionMode } from "../canvas/types";
-import type { LabelDisplaySettings } from "../../lib/defaults/display";
+import type { HelpDisplaySettings, LabelDisplaySettings } from "../../lib/defaults/display";
 
 interface ShortcutSettingsProps {
+  helpDisplaySettings: HelpDisplaySettings;
   labelDisplaySettings: LabelDisplaySettings;
   labelShortcuts: string[];
   shortcuts: ShortcutMap;
+  onChangeHelpDisplaySetting: (setting: keyof HelpDisplaySettings, visible: boolean) => void;
   onChangeLabelDisplaySetting: (mode: InteractionMode, visible: boolean) => void;
   onChangeShortcut: (actionId: ShortcutActionId, shortcut: string) => void;
   onClose: () => void;
 }
 
 export function ShortcutSettings({
+  helpDisplaySettings,
   labelDisplaySettings,
   labelShortcuts,
   shortcuts,
+  onChangeHelpDisplaySetting,
   onChangeLabelDisplaySetting,
   onChangeShortcut,
   onClose,
@@ -75,7 +79,7 @@ export function ShortcutSettings({
           <div>
             <h2 className="text-base font-semibold text-slate-100">设置</h2>
             <p className="mt-1 text-xs text-slate-400">
-              配置快捷键，以及不同交互模式下是否显示框上的标签名。
+              配置快捷键、画布提示，以及不同交互模式下是否显示框上的标签名。
             </p>
           </div>
           <button
@@ -85,6 +89,40 @@ export function ShortcutSettings({
           >
             关闭
           </button>
+        </div>
+
+        <div className="mt-4 rounded border border-slate-800 p-3">
+          <h3 className="text-sm font-medium text-slate-100">画布提示</h3>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <label className="flex items-start gap-2 rounded border border-slate-800 bg-slate-950 p-2 text-sm text-slate-200">
+              <input
+                checked={helpDisplaySettings.showModeHelp}
+                className="mt-1"
+                type="checkbox"
+                onChange={(event) =>
+                  onChangeHelpDisplaySetting("showModeHelp", event.target.checked)
+                }
+              />
+              <span>
+                <span className="block">显示模式操作提示</span>
+                <span className="block text-xs text-slate-500">画布左上角的操作说明</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 rounded border border-slate-800 bg-slate-950 p-2 text-sm text-slate-200">
+              <input
+                checked={helpDisplaySettings.showLabelShortcuts}
+                className="mt-1"
+                type="checkbox"
+                onChange={(event) =>
+                  onChangeHelpDisplaySetting("showLabelShortcuts", event.target.checked)
+                }
+              />
+              <span>
+                <span className="block">显示标签快捷键</span>
+                <span className="block text-xs text-slate-500">如 1：人、Q：车</span>
+              </span>
+            </label>
+          </div>
         </div>
 
         <div className="mt-4 rounded border border-slate-800 p-3">

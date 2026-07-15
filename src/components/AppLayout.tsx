@@ -1,4 +1,4 @@
-import type { MutableRefObject } from "react";
+import { useRef, useState, type MouseEvent as ReactMouseEvent, type MutableRefObject } from "react";
 import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
@@ -10,7 +10,9 @@ import {
   AnnotationRect,
   CanvasContextMenu,
   DeleteAnnotationDialog,
+  LabelShortcutOverlay,
   ModeHelpOverlay,
+  type OverlayCorner,
 } from "./canvas/CanvasChrome";
 import { isLargeImage, type CanvasRect } from "./canvas/geometry";
 import type { CanvasContextMenu as CanvasContextMenuState, ImageLayout } from "./canvas/types";
@@ -20,7 +22,7 @@ import type { ExportFormatId } from "../types/export";
 import type { ProjectConfig } from "../lib/importers";
 import type { ImageFile } from "../lib/tauri-api";
 import type { ShortcutActionId, ShortcutMap } from "../lib/defaults/shortcuts";
-import type { LabelDisplaySettings } from "../lib/defaults/display";
+import type { HelpDisplaySettings, LabelDisplaySettings } from "../lib/defaults/display";
 import { isUserTemplate } from "../lib/app-utils";
 
 interface AppLayoutProps {
@@ -40,6 +42,7 @@ interface AppLayoutProps {
   error: string;
   folderPath: string;
   highlightedShapeId: string | null;
+  helpDisplaySettings: HelpDisplaySettings;
   imageLayout: ImageLayout | null;
   imageLoadError: string;
   images: ImageFile[];
@@ -47,6 +50,7 @@ interface AppLayoutProps {
   isImageLoading: boolean;
   isLabelDirty: boolean;
   isPanning: boolean;
+  isSaving: boolean;
   isShortcutSettingsOpen: boolean;
   labelById: Map<string, LabelConfig>;
   labelDisplaySettings: LabelDisplaySettings;
@@ -62,6 +66,7 @@ interface AppLayoutProps {
   selectedRectRef: MutableRefObject<KonvaRect | null>;
   selectedShapeId: string | null;
   selectedTemplateId: string;
+  showSaveSuccess: boolean;
   shortcuts: ShortcutMap;
   templates: LabelTemplate[];
   transformerRef: MutableRefObject<KonvaTransformer | null>;
@@ -99,6 +104,7 @@ interface AppLayoutProps {
   setAnnotationToDelete: (annotation: AnnotationShape | null) => void;
   setContextMenu: (contextMenu: CanvasContextMenuState | null) => void;
   setCustomMappingText: (text: string) => void;
+  setHelpDisplaySetting: (setting: keyof HelpDisplaySettings, visible: boolean) => void;
   setImageScale: (scale: number) => void;
   setIsShortcutSettingsOpen: (isOpen: boolean) => void;
   setSelectedExportFormatId: (format: ExportFormatId) => void;
@@ -128,6 +134,7 @@ export function AppLayout({
   error,
   folderPath,
   highlightedShapeId,
+  helpDisplaySettings,
   imageLayout,
   imageLoadError,
   images,
@@ -135,6 +142,7 @@ export function AppLayout({
   isImageLoading,
   isLabelDirty,
   isPanning,
+  isSaving,
   isShortcutSettingsOpen,
   labelById,
   labelDisplaySettings,
@@ -150,6 +158,7 @@ export function AppLayout({
   selectedRectRef,
   selectedShapeId,
   selectedTemplateId,
+  showSaveSuccess,
   shortcuts,
   templates,
   transformerRef,
@@ -187,6 +196,7 @@ export function AppLayout({
   setAnnotationToDelete,
   setContextMenu,
   setCustomMappingText,
+  setHelpDisplaySetting,
   setImageScale,
   setIsShortcutSettingsOpen,
   setSelectedExportFormatId,
@@ -198,6 +208,8 @@ export function AppLayout({
   updateShortcut,
   zoomFromKeyboard,
 }: AppLayoutProps) {
+  const menuRef = useRef<HTMLDetailsElement | null>(null);
+  const [canvasPointer, setCanvasPointer] = useState<{ x: number; y: number } | null>(null);
   const selectedImageIndex = images.findIndex((image) => image.path === selectedPath);
   const currentImageNumber = selectedImageIndex >= 0 ? selectedImageIndex + 1 : 0;
   const annotatedCount = images.filter(
@@ -213,13 +225,29 @@ export function AppLayout({
       .slice(selectedImageIndex + 1)
       .some((image) => (annotationsByImage[image.path] ?? []).length === 0);
 
+  function closeMenu() {
+    menuRef.current?.removeAttribute("open");
+  }
+
+  function updateCanvasPointer(event: ReactMouseEvent<HTMLDivElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setCanvasPointer({ x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+  }
+
+  const modeHelpCorner: OverlayCorner =
+    canvasPointer && canvasPointer.x < 360 && canvasPointer.y < 220 ? "bottom-left" : "top-left";
+  const labelShortcutCorner: OverlayCorner =
+    canvasPointer && canvasPointer.x > canvasSize.width - 360 && canvasPointer.y < 220
+      ? "bottom-right"
+      : "top-right";
+
   return (
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
       <aside className="flex h-screen w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
         <div className="shrink-0 border-b border-slate-800 p-4">
           <div className="flex items-center justify-between gap-2">
             <h1 className="truncate text-lg font-semibold">my_label_tool</h1>
-            <details className="group relative">
+            <details ref={menuRef} className="group relative">
               <summary
                 aria-label="打开菜单"
                 className="cursor-pointer list-none rounded border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-800"
@@ -231,7 +259,10 @@ export function AppLayout({
                 <button
                   className="w-full rounded bg-sky-500 px-3 py-2 text-left text-sm font-medium text-white hover:bg-sky-400"
                   type="button"
-                  onClick={openFolder}
+                  onClick={() => {
+                    closeMenu();
+                    openFolder();
+                  }}
                 >
                   打开图片文件夹
                 </button>
@@ -241,7 +272,10 @@ export function AppLayout({
                     className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={images.length === 0}
                     type="button"
-                    onClick={importAnnotations}
+                    onClick={() => {
+                      closeMenu();
+                      importAnnotations();
+                    }}
                   >
                     导入本工具项目
                   </button>
@@ -249,7 +283,10 @@ export function AppLayout({
                     className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={images.length === 0}
                     type="button"
-                    onClick={createProjectFromExternalYolo}
+                    onClick={() => {
+                      closeMenu();
+                      createProjectFromExternalYolo();
+                    }}
                   >
                     从 YOLO 创建项目
                   </button>
@@ -258,7 +295,10 @@ export function AppLayout({
                       className="w-full rounded px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-800"
                       key={format}
                       type="button"
-                      onClick={() => window.alert(`${format} 外部项目创建暂未实现`)}
+                      onClick={() => {
+                        closeMenu();
+                        window.alert(`${format} 外部项目创建暂未实现`);
+                      }}
                     >
                       从 {format} 创建项目（暂未实现）
                     </button>
@@ -267,7 +307,10 @@ export function AppLayout({
                 <button
                   className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
                   type="button"
-                  onClick={() => setIsShortcutSettingsOpen(true)}
+                  onClick={() => {
+                    closeMenu();
+                    setIsShortcutSettingsOpen(true);
+                  }}
                 >
                   设置
                 </button>
@@ -308,6 +351,7 @@ export function AppLayout({
           }
           customMappingText={customMappingText}
           disabled={images.length === 0}
+          isSaving={isSaving}
           selectedFormatId={selectedExportFormatId}
           onChangeCustomMappingText={setCustomMappingText}
           onChangeFormat={setSelectedExportFormatId}
@@ -427,6 +471,8 @@ export function AppLayout({
       <div
         ref={canvasHostRef}
         className={`relative h-full min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : ""}`}
+        onMouseLeave={() => setCanvasPointer(null)}
+        onMouseMove={updateCanvasPointer}
       >
         {selectedImage && loadedImage && imageLayout ? (
           <>
@@ -481,7 +527,16 @@ export function AppLayout({
                 />
               </Layer>
             </Stage>
-            <ModeHelpOverlay mode={interactionMode} />
+            {helpDisplaySettings.showModeHelp && (
+              <ModeHelpOverlay
+                corner={modeHelpCorner}
+                mode={interactionMode}
+                shortcuts={shortcuts}
+              />
+            )}
+            {interactionMode === "default" && helpDisplaySettings.showLabelShortcuts && (
+              <LabelShortcutOverlay corner={labelShortcutCorner} labels={labels} />
+            )}
             {labelSwitchHint && (
               <div className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700/80 bg-slate-950/85 px-4 py-2 text-sm text-slate-100 shadow-xl">
                 <span
@@ -497,7 +552,7 @@ export function AppLayout({
             {selectedImage && isImageLoading ? (
               <div className="w-56 text-center">
                 <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
-                  <div className="h-full w-1/2 animate-pulse rounded-full bg-sky-400" />
+                  <div className="progress-indeterminate h-full w-1/2 rounded-full bg-sky-400" />
                 </div>
                 <div>正在加载图片...</div>
               </div>
@@ -510,11 +565,31 @@ export function AppLayout({
         )}
       </div>
 
+      {isSaving && (
+        <div className="pointer-events-none fixed left-1/2 top-5 z-[70] w-72 -translate-x-1/2 rounded-xl border border-sky-400/40 bg-slate-950/90 p-4 text-sm text-slate-100 shadow-2xl">
+          <div className="mb-3 flex items-center justify-between">
+            <span>正在保存...</span>
+            <span className="text-xs text-slate-400">Ctrl+S</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+            <div className="progress-indeterminate h-full w-1/2 rounded-full bg-sky-400" />
+          </div>
+        </div>
+      )}
+
+      {showSaveSuccess && (
+        <div className="pointer-events-none fixed left-1/2 top-5 z-[70] -translate-x-1/2 rounded-full border border-emerald-400/40 bg-emerald-500/90 px-4 py-2 text-sm font-medium text-white shadow-2xl">
+          保存完成
+        </div>
+      )}
+
       {isShortcutSettingsOpen && (
         <ShortcutSettings
+          helpDisplaySettings={helpDisplaySettings}
           labelDisplaySettings={labelDisplaySettings}
           labelShortcuts={labelShortcuts}
           shortcuts={shortcuts}
+          onChangeHelpDisplaySetting={setHelpDisplaySetting}
           onChangeLabelDisplaySetting={setLabelDisplaySetting}
           onChangeShortcut={updateShortcut}
           onClose={() => setIsShortcutSettingsOpen(false)}

@@ -5,6 +5,7 @@ import type { ExportFormatId } from "../../types/export";
 interface ExportPanelProps {
   customMappingText: string;
   disabled: boolean;
+  isSaving: boolean;
   selectedFormatId: ExportFormatId;
   canSaveProject: boolean;
   onChangeCustomMappingText: (value: string) => void;
@@ -16,6 +17,7 @@ interface ExportPanelProps {
 export function ExportPanel({
   customMappingText,
   disabled,
+  isSaving,
   selectedFormatId,
   canSaveProject,
   onChangeCustomMappingText,
@@ -57,10 +59,10 @@ export function ExportPanel({
         <button
           className="rounded bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
           type="button"
-          disabled={disabled || !canSaveProject}
+          disabled={disabled || !canSaveProject || isSaving}
           onClick={onSaveProject}
         >
-          保存
+          {isSaving ? "保存中..." : "保存"}
         </button>
         <button
           className="rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"

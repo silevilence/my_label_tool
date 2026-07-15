@@ -26,7 +26,9 @@ import {
 import { useLabelActions } from "./hooks/useLabelActions";
 import { useLabelDisplaySettings } from "./hooks/useLabelDisplaySettings";
 import { useImageLoader } from "./hooks/useImageLoader";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useProjectActions } from "./hooks/useProjectActions";
+import { useSaveFeedback } from "./hooks/useSaveFeedback";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
 import {
@@ -34,7 +36,7 @@ import {
   type ShortcutActionId,
   type ShortcutMap,
 } from "./lib/defaults/shortcuts";
-import { isEditableTarget, mergeShortcuts, newAnnotationId } from "./lib/app-utils";
+import { mergeShortcuts, newAnnotationId } from "./lib/app-utils";
 import {
   confirmAction,
   listImageFiles,
@@ -122,8 +124,10 @@ function App() {
     selectedPath,
   );
   const {
+    helpDisplaySettings,
     labelDisplaySettings,
     labelSwitchHint,
+    setHelpDisplaySetting,
     setLabelDisplaySetting,
     showLabelSwitchHint,
   } = useLabelDisplaySettings(labelById);
@@ -186,6 +190,7 @@ function App() {
     setProjectTemplateId,
     setSelectedExportFormatId,
   });
+  const { isSaving, saveWithFeedback, showSaveSuccess } = useSaveFeedback(saveProjectExport);
 
   useEffect(() => {
     const host = canvasHostRef.current;
@@ -329,81 +334,19 @@ function App() {
     transformer.getLayer()?.batchDraw();
   }, [selectedShape]);
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (isEditableTarget(event.target)) {
-        return;
-      }
-
-      const key = normalizeShortcutKey(event.key);
-      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-        if (key === "z") {
-          event.preventDefault();
-          undo();
-          return;
-        }
-        if (key === "y") {
-          event.preventDefault();
-          redo();
-          return;
-        }
-      }
-
-      if (event.ctrlKey || event.altKey || event.metaKey) {
-        return;
-      }
-
-      if (key === "Delete" && selectedPath && selectedShapeId) {
-        event.preventDefault();
-        deleteAnnotation(selectedPath, selectedShapeId);
-        setDrawingRect(null);
-        return;
-      }
-
-      if (key === shortcuts.previousImage) {
-        event.preventDefault();
-        selectAdjacentImage(-1);
-        return;
-      }
-      if (key === shortcuts.nextImage) {
-        event.preventDefault();
-        selectAdjacentImage(1);
-        return;
-      }
-      if (key === shortcuts.zoomIn) {
-        event.preventDefault();
-        zoomFromKeyboard(1);
-        return;
-      }
-      if (key === shortcuts.zoomOut) {
-        event.preventDefault();
-        zoomFromKeyboard(-1);
-        return;
-      }
-
-      const label = labels.find((item) => item.shortcut === key);
-      if (!label) {
-        return;
-      }
-
-      event.preventDefault();
-      changeCurrentLabel(label.id);
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    deleteAnnotation,
-    images,
-    imageView,
+  useKeyboardShortcuts({
     labels,
-    redo,
-    selectCurrentLabel,
     selectedPath,
     selectedShapeId,
     shortcuts,
+    changeCurrentLabel,
+    deleteSelectedShape,
+    redo,
+    save: () => void saveWithFeedback(),
+    selectAdjacentImage,
     undo,
-  ]);
+    zoomFromKeyboard,
+  });
 
   useEffect(() => {
     if (!contextMenu) {
@@ -614,6 +557,13 @@ function App() {
   function changeAnnotationLabel(annotationId: string, labelId: string) {
     updateAnnotation(selectedPath, annotationId, { labelId });
     setContextMenu(null);
+  }
+
+  function deleteSelectedShape() {
+    if (selectedPath && selectedShapeId) {
+      deleteAnnotation(selectedPath, selectedShapeId);
+      setDrawingRect(null);
+    }
   }
 
   function deleteContextAnnotation(annotation: AnnotationShape) {
@@ -921,6 +871,7 @@ function App() {
       error={error}
       folderPath={folderPath}
       highlightedShapeId={highlightedShapeId}
+      helpDisplaySettings={helpDisplaySettings}
       imageLayout={imageLayout}
       imageLoadError={imageLoadError}
       images={images}
@@ -928,6 +879,7 @@ function App() {
       isImageLoading={isImageLoading}
       isLabelDirty={isLabelDirty}
       isPanning={isPanning}
+      isSaving={isSaving}
       isShortcutSettingsOpen={isShortcutSettingsOpen}
       labelById={labelById}
       labelDisplaySettings={labelDisplaySettings}
@@ -943,6 +895,7 @@ function App() {
       selectedRectRef={selectedRectRef}
       selectedShapeId={selectedShapeId}
       selectedTemplateId={selectedTemplateId}
+      showSaveSuccess={showSaveSuccess}
       shortcuts={shortcuts}
       templates={templates}
       transformerRef={transformerRef}
@@ -969,7 +922,7 @@ function App() {
       openFolder={openFolder}
       redo={redo}
       resetZoom={resetZoom}
-      saveProjectExport={saveProjectExport}
+      saveProjectExport={saveWithFeedback}
       saveTemplate={saveTemplate}
       saveTemplateAs={saveTemplateAs}
       selectAdjacentImage={selectAdjacentImage}
@@ -980,6 +933,7 @@ function App() {
       setAnnotationToDelete={setAnnotationToDelete}
       setContextMenu={setContextMenu}
       setCustomMappingText={setCustomMappingText}
+      setHelpDisplaySetting={setHelpDisplaySetting}
       setImageScale={setImageScale}
       setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
       setLabelDisplaySetting={setLabelDisplaySetting}
