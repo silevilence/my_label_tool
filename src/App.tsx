@@ -159,8 +159,13 @@ function App() {
     updateAnnotation,
   });
 
-  const { exportSelectedFormat, importAnnotations, maybeLoadProjectConfig, saveProjectExport } =
-    useProjectActions({
+  const {
+    createProjectFromExternalYolo,
+    exportSelectedFormat,
+    importAnnotations,
+    maybeLoadProjectConfig,
+    saveProjectExport,
+  } = useProjectActions({
       activeProjectConfig,
       activeProjectConfigPath,
       annotationsByImage,
@@ -937,6 +942,7 @@ function App() {
       changeAnnotationLabel={changeAnnotationLabel}
       clearCurrentImageAnnotations={clearCurrentImageAnnotations}
       confirmDeleteAnnotation={confirmDeleteAnnotation}
+      createProjectFromExternalYolo={createProjectFromExternalYolo}
       deleteContextAnnotation={deleteContextAnnotation}
       deleteTemplate={deleteTemplate}
       exportSelectedFormat={exportSelectedFormat}

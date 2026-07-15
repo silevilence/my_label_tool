@@ -14,11 +14,13 @@ import { exportYolo } from "../lib/exporters/yolo";
 import {
   PROJECT_CONFIG_NAME,
   parseCocoImport,
+  parseExternalYoloImport,
   parseNativeJsonImport,
   parseProjectConfig,
   parseVocImport,
   parseYoloImport,
   projectConfigTemplate,
+  type ImageSize,
   type ImportedAnnotations,
   type ProjectConfig,
   type TextImportFile,
@@ -209,6 +211,50 @@ export function useProjectActions({
     }
   }
 
+  async function createProjectFromExternalYolo() {
+    setError("");
+
+    try {
+      if (images.length === 0 || !folderPath) {
+        throw new Error("请先打开图片文件夹");
+      }
+
+      if (!(await confirmReplaceCurrentAnnotations(images))) {
+        return;
+      }
+
+      const annotationPath = await selectExportFolder();
+      if (!annotationPath) {
+        return;
+      }
+
+      const files = await readImportFiles(annotationPath, "txt");
+      const { imported, summary } = parseExternalYoloImport(
+        files,
+        await imageSizesByBaseName(images),
+      );
+      const configPath = projectConfigPath(folderPath);
+      const config: ProjectConfig = {
+        schemaVersion: 1,
+        format: "yolo",
+        annotationPath,
+        exportedAt: new Date().toISOString(),
+        imageFolder: folderPath,
+        labels: imported.labels,
+        template: projectConfigTemplate(),
+        exportOptions: { format: "yolo" },
+      };
+
+      applyImportedAnnotations(imported, images, config, configPath);
+      await saveProjectConfig(configPath, config);
+      window.alert(
+        `YOLO 项目创建完成：${summary.missingAnnotationFileCount} 张图片缺少标注文件，${summary.orphanAnnotationFileCount} 个标注文件未匹配图片，${summary.invalidLineCount} 行非法标注已跳过。`,
+      );
+    } catch (caughtError: unknown) {
+      reportError(caughtError);
+    }
+  }
+
   async function maybeLoadProjectConfig(imageFolder: string, currentImages: ImageFile[]) {
     const configs = await listTextFiles(imageFolder, "json");
     const config = configs.find((file) => file.name.toLowerCase() === PROJECT_CONFIG_NAME);
@@ -257,18 +303,7 @@ export function useProjectActions({
     }
 
     const files = await readImportFiles(config.annotationPath, "txt");
-    const sizes = new Map(
-      await Promise.all(
-        currentImages.map(
-          async (image) =>
-            [
-              baseName(image.name).toLowerCase(),
-              { name: image.name, ...(await loadImageSize(image.path)) },
-            ] as const,
-        ),
-      ),
-    );
-    return parseYoloImport(files, sizes);
+    return parseYoloImport(files, await imageSizesByBaseName(currentImages), config.labels);
   }
 
   function applyImportedAnnotations(
@@ -310,6 +345,20 @@ export function useProjectActions({
     );
   }
 
+  async function imageSizesByBaseName(currentImages: ImageFile[]): Promise<Map<string, ImageSize>> {
+    return new Map(
+      await Promise.all(
+        currentImages.map(
+          async (image) =>
+            [
+              baseName(image.name).toLowerCase(),
+              { name: image.name, ...(await loadImageSize(image.path)) },
+            ] as const,
+        ),
+      ),
+    );
+  }
+
   async function buildExportData(): Promise<ExportData> {
     const exportImages = await Promise.all(
       images.map(async (image) => ({
@@ -327,6 +376,7 @@ export function useProjectActions({
   }
 
   return {
+    createProjectFromExternalYolo,
     exportSelectedFormat,
     importAnnotations,
     maybeLoadProjectConfig,

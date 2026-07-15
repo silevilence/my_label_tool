@@ -64,6 +64,7 @@ interface AppLayoutProps {
   changeAnnotationLabel: (annotationId: string, labelId: string) => void;
   clearCurrentImageAnnotations: () => void;
   confirmDeleteAnnotation: () => void;
+  createProjectFromExternalYolo: () => void;
   deleteContextAnnotation: (annotation: AnnotationShape) => void;
   deleteTemplate: () => void;
   exportSelectedFormat: () => void;
@@ -145,6 +146,7 @@ export function AppLayout({
   changeAnnotationLabel,
   clearCurrentImageAnnotations,
   confirmDeleteAnnotation,
+  createProjectFromExternalYolo,
   deleteContextAnnotation,
   deleteTemplate,
   exportSelectedFormat,
@@ -194,14 +196,39 @@ export function AppLayout({
           >
             打开图片文件夹
           </button>
-          <button
-            className="mt-2 w-full rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={images.length === 0}
-            type="button"
-            onClick={importAnnotations}
-          >
-            导入标注
-          </button>
+          <details className="mt-2 group">
+            <summary className="w-full cursor-pointer list-none rounded border border-slate-700 px-3 py-2 text-center text-sm font-medium text-slate-100 hover:bg-slate-800">
+              导入标注
+            </summary>
+            <div className="mt-2 space-y-2 rounded border border-slate-800 bg-slate-950 p-2">
+              <button
+                className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={images.length === 0}
+                type="button"
+                onClick={importAnnotations}
+              >
+                导入本工具项目
+              </button>
+              <button
+                className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={images.length === 0}
+                type="button"
+                onClick={createProjectFromExternalYolo}
+              >
+                从 YOLO 创建项目
+              </button>
+              {["COCO", "VOC", "Custom"].map((format) => (
+                <button
+                  className="w-full rounded px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-800"
+                  key={format}
+                  type="button"
+                  onClick={() => window.alert(`${format} 外部项目创建暂未实现`)}
+                >
+                  从 {format} 创建项目（暂未实现）
+                </button>
+              ))}
+            </div>
+          </details>
           <button
             className="mt-2 w-full rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800"
             type="button"

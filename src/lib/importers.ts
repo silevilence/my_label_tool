@@ -40,6 +40,12 @@ export interface ImportedAnnotations {
   images: ImportedImageAnnotations[];
 }
 
+export interface ImportSummary {
+  invalidLineCount: number;
+  missingAnnotationFileCount: number;
+  orphanAnnotationFileCount: number;
+}
+
 export interface TextImportFile extends TextFileEntry {
   content: string;
 }
@@ -205,10 +211,15 @@ export function parseVocImport(files: TextImportFile[]): ImportedAnnotations {
 export function parseYoloImport(
   files: TextImportFile[],
   imageSizesByBaseName: Map<string, ImageSize>,
+  fallbackLabels: LabelConfig[] = [],
 ): ImportedAnnotations {
   const classesFile = files.find((file) => file.name.toLowerCase() === "classes.txt");
   if (!classesFile) {
-    throw new Error("YOLO 导入目录缺少 classes.txt");
+    if (fallbackLabels.length === 0) {
+      throw new Error("YOLO 导入目录缺少 classes.txt");
+    }
+
+    return parseYoloFiles(files, imageSizesByBaseName, fallbackLabels);
   }
 
   const classNames = classesFile.content
@@ -220,6 +231,14 @@ export function parseYoloImport(
   }
 
   const labels = classNames.map((name, index) => makeLabel(`yolo-${index}`, name, index));
+  return parseYoloFiles(files, imageSizesByBaseName, labels);
+}
+
+function parseYoloFiles(
+  files: TextImportFile[],
+  imageSizesByBaseName: Map<string, ImageSize>,
+  labels: LabelConfig[],
+): ImportedAnnotations {
   const images = files
     .filter((file) => file.name.toLowerCase() !== "classes.txt")
     .map((file) => {
@@ -239,6 +258,59 @@ export function parseYoloImport(
     .filter((image): image is ImportedImageAnnotations => image !== null);
 
   return { labels, images };
+}
+
+export function parseExternalYoloImport(
+  files: TextImportFile[],
+  imageSizesByBaseName: Map<string, ImageSize>,
+): { imported: ImportedAnnotations; summary: ImportSummary } {
+  const annotationFiles = files.filter((file) => file.name.toLowerCase() !== "classes.txt");
+  if (annotationFiles.length === 0) {
+    throw new Error("YOLO 标注目录中没有可导入的 .txt 标注文件");
+  }
+
+  const labels = parseOptionalYoloLabels(files, annotationFiles);
+  if (labels.length === 0) {
+    throw new Error("YOLO 标注目录中没有有效标签");
+  }
+
+  const annotationBaseNames = new Set(
+    annotationFiles.map((file) => baseName(file.name).toLowerCase()),
+  );
+  const summary: ImportSummary = {
+    invalidLineCount: 0,
+    missingAnnotationFileCount: [...imageSizesByBaseName.keys()].filter(
+      (name) => !annotationBaseNames.has(name),
+    ).length,
+    orphanAnnotationFileCount: 0,
+  };
+
+  const images = annotationFiles
+    .map((file) => {
+      const image = imageSizesByBaseName.get(baseName(file.name).toLowerCase());
+      if (!image) {
+        summary.orphanAnnotationFileCount += 1;
+        return null;
+      }
+
+      return {
+        name: image.name,
+        annotations: file.content
+          .split(/\r?\n/)
+          .map((line, lineIndex) => {
+            try {
+              return parseYoloLine(line, lineIndex, image, labels);
+            } catch {
+              summary.invalidLineCount += 1;
+              return null;
+            }
+          })
+          .filter((annotation): annotation is AnnotationShape => annotation !== null),
+      };
+    })
+    .filter((image): image is ImportedImageAnnotations => image !== null);
+
+  return { imported: { labels, images }, summary };
 }
 
 function parseVocFile(file: TextImportFile): {
@@ -407,6 +479,34 @@ function makeLabel(id: string, name: string, index: number): LabelConfig {
     color: DEFAULT_LABEL_COLORS[index % DEFAULT_LABEL_COLORS.length],
     shapeType: "rect",
   };
+}
+
+function parseOptionalYoloLabels(
+  files: TextImportFile[],
+  annotationFiles: TextImportFile[],
+): LabelConfig[] {
+  const classesFile = files.find((file) => file.name.toLowerCase() === "classes.txt");
+  const classNames = classesFile?.content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (classNames && classNames.length > 0) {
+    return classNames.map((name, index) => makeLabel(`yolo-${index}`, name, index));
+  }
+
+  const maxClassIndex = Math.max(
+    -1,
+    ...annotationFiles.flatMap((file) =>
+      file.content
+        .split(/\r?\n/)
+        .map((line) => Number(line.trim().split(/\s+/)[0]))
+        .filter((value) => Number.isInteger(value) && value >= 0),
+    ),
+  );
+  return Array.from({ length: maxClassIndex + 1 }, (_, index) =>
+    makeLabel(`yolo-${index}`, `class_${index}`, index),
+  );
 }
 
 function firstText(parent: Document | Element, tagName: string): string {
