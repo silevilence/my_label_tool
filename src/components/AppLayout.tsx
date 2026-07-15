@@ -25,6 +25,7 @@ interface AppLayoutProps {
   activeProjectConfig: ProjectConfig | null;
   annotationToDelete: AnnotationShape | null;
   annotations: AnnotationShape[];
+  annotationsByImage: Record<string, AnnotationShape[]>;
   canRedo: boolean;
   canUndo: boolean;
   canvasHostRef: MutableRefObject<HTMLDivElement | null>;
@@ -86,6 +87,7 @@ interface AppLayoutProps {
   saveTemplate: () => void;
   saveTemplateAs: () => void;
   selectAdjacentImage: (delta: number) => void;
+  selectAdjacentUnannotatedImage: (delta: 1 | -1) => void;
   selectCurrentLabel: (labelId: string) => void;
   selectShape: (annotationId: string | null) => void;
   selectTemplate: (templateId: string) => void;
@@ -107,6 +109,7 @@ export function AppLayout({
   activeProjectConfig,
   annotationToDelete,
   annotations,
+  annotationsByImage,
   canRedo,
   canUndo,
   canvasHostRef,
@@ -168,6 +171,7 @@ export function AppLayout({
   saveTemplate,
   saveTemplateAs,
   selectAdjacentImage,
+  selectAdjacentUnannotatedImage,
   selectCurrentLabel,
   selectShape,
   selectTemplate,
@@ -184,81 +188,107 @@ export function AppLayout({
   updateShortcut,
   zoomFromKeyboard,
 }: AppLayoutProps) {
+  const selectedImageIndex = images.findIndex((image) => image.path === selectedPath);
+  const currentImageNumber = selectedImageIndex >= 0 ? selectedImageIndex + 1 : 0;
+  const annotatedCount = images.filter(
+    (image) => (annotationsByImage[image.path] ?? []).length > 0,
+  ).length;
+  const progressPercent = images.length > 0 ? (currentImageNumber / images.length) * 100 : 0;
+  const hasPreviousUnannotatedImage = images
+    .slice(0, Math.max(selectedImageIndex, 0))
+    .some((image) => (annotationsByImage[image.path] ?? []).length === 0);
+  const hasNextUnannotatedImage =
+    selectedImageIndex >= 0 &&
+    images
+      .slice(selectedImageIndex + 1)
+      .some((image) => (annotationsByImage[image.path] ?? []).length === 0);
+
   return (
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
       <aside className="flex h-screen w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
         <div className="shrink-0 border-b border-slate-800 p-4">
-          <h1 className="text-lg font-semibold">my_label_tool</h1>
-          <button
-            className="mt-4 w-full rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400"
-            type="button"
-            onClick={openFolder}
-          >
-            打开图片文件夹
-          </button>
-          <details className="mt-2 group">
-            <summary className="w-full cursor-pointer list-none rounded border border-slate-700 px-3 py-2 text-center text-sm font-medium text-slate-100 hover:bg-slate-800">
-              导入标注
-            </summary>
-            <div className="mt-2 space-y-2 rounded border border-slate-800 bg-slate-950 p-2">
-              <button
-                className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={images.length === 0}
-                type="button"
-                onClick={importAnnotations}
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="truncate text-lg font-semibold">my_label_tool</h1>
+            <details className="group relative">
+              <summary
+                aria-label="打开菜单"
+                className="cursor-pointer list-none rounded border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-800"
+                title="菜单"
               >
-                导入本工具项目
-              </button>
-              <button
-                className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={images.length === 0}
-                type="button"
-                onClick={createProjectFromExternalYolo}
-              >
-                从 YOLO 创建项目
-              </button>
-              {["COCO", "VOC", "Custom"].map((format) => (
+                ☰
+              </summary>
+              <div className="absolute right-0 z-30 mt-2 w-56 space-y-1 rounded-lg border border-slate-700 bg-slate-950 p-2 shadow-2xl">
                 <button
-                  className="w-full rounded px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-800"
-                  key={format}
+                  className="w-full rounded bg-sky-500 px-3 py-2 text-left text-sm font-medium text-white hover:bg-sky-400"
                   type="button"
-                  onClick={() => window.alert(`${format} 外部项目创建暂未实现`)}
+                  onClick={openFolder}
                 >
-                  从 {format} 创建项目（暂未实现）
+                  打开图片文件夹
                 </button>
-              ))}
-            </div>
-          </details>
-          <button
-            className="mt-2 w-full rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800"
-            type="button"
-            onClick={() => setIsShortcutSettingsOpen(true)}
-          >
-            快捷键配置
-          </button>
+                <div className="border-t border-slate-800 pt-1">
+                  <div className="px-2 py-1 text-xs text-slate-500">导入标注</div>
+                  <button
+                    className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={images.length === 0}
+                    type="button"
+                    onClick={importAnnotations}
+                  >
+                    导入本工具项目
+                  </button>
+                  <button
+                    className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={images.length === 0}
+                    type="button"
+                    onClick={createProjectFromExternalYolo}
+                  >
+                    从 YOLO 创建项目
+                  </button>
+                  {["COCO", "VOC", "Custom"].map((format) => (
+                    <button
+                      className="w-full rounded px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-800"
+                      key={format}
+                      type="button"
+                      onClick={() => window.alert(`${format} 外部项目创建暂未实现`)}
+                    >
+                      从 {format} 创建项目（暂未实现）
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
+                  type="button"
+                  onClick={() => setIsShortcutSettingsOpen(true)}
+                >
+                  快捷键配置
+                </button>
+              </div>
+            </details>
+          </div>
+          <p className="mt-3 truncate text-xs text-slate-400" title={folderPath || "请选择目录"}>
+            {folderPath || "请选择目录"}
+          </p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button
-              className="rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="撤销"
+              className="rounded border border-slate-700 px-3 py-2 text-lg font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!canUndo}
+              title="撤销（Ctrl+Z）"
               type="button"
               onClick={undo}
             >
-              撤销
+              ↶
             </button>
             <button
-              className="rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="重做"
+              className="rounded border border-slate-700 px-3 py-2 text-lg font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!canRedo}
+              title="重做（Ctrl+Y）"
               type="button"
               onClick={redo}
             >
-              重做
+              ↷
             </button>
           </div>
-          {folderPath && (
-            <p className="mt-3 truncate text-xs text-slate-400" title={folderPath}>
-              {folderPath}
-            </p>
-          )}
           {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
         </div>
 
@@ -333,10 +363,23 @@ export function AppLayout({
           </section>
         </div>
 
-        <section className="flex max-h-64 min-h-36 shrink-0 flex-col border-t border-slate-800 bg-slate-900">
-          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
-            <h2 className="text-sm font-semibold text-slate-200">图片列表</h2>
-            <span className="text-xs text-slate-500">{images.length}</span>
+        <section className="flex max-h-72 min-h-44 shrink-0 flex-col border-t border-slate-800 bg-slate-900">
+          <div className="border-b border-slate-800 px-4 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-200">图片列表</h2>
+              <span className="text-xs text-slate-500">
+                已标注 {annotatedCount} / 未标注 {images.length - annotatedCount} / 总数{" "}
+                {images.length}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+                <div className="h-full bg-sky-500" style={{ width: `${progressPercent}%` }} />
+              </div>
+              <span className="w-14 text-right text-xs text-slate-400">
+                {currentImageNumber}/{images.length}
+              </span>
+            </div>
           </div>
           <div className="scrollbar-dark min-h-0 flex-1 overflow-auto p-2">
             {images.length === 0 ? (
@@ -451,10 +494,10 @@ export function AppLayout({
       {contextMenu && (
         <CanvasContextMenu
           annotation={contextAnnotation}
-          canNextImage={
-            images.findIndex((image) => image.path === selectedPath) < images.length - 1
-          }
-          canPreviousImage={images.findIndex((image) => image.path === selectedPath) > 0}
+          canNextImage={selectedImageIndex >= 0 && selectedImageIndex < images.length - 1}
+          canNextUnannotatedImage={hasNextUnannotatedImage}
+          canPreviousImage={selectedImageIndex > 0}
+          canPreviousUnannotatedImage={hasPreviousUnannotatedImage}
           labels={labels}
           x={contextMenu.x}
           y={contextMenu.y}
@@ -472,12 +515,20 @@ export function AppLayout({
             selectAdjacentImage(1);
             setContextMenu(null);
           }}
+          onNextUnannotatedImage={() => {
+            selectAdjacentUnannotatedImage(1);
+            setContextMenu(null);
+          }}
           onOriginalSize={() => {
             setImageScale(1);
             setContextMenu(null);
           }}
           onPreviousImage={() => {
             selectAdjacentImage(-1);
+            setContextMenu(null);
+          }}
+          onPreviousUnannotatedImage={() => {
+            selectAdjacentUnannotatedImage(-1);
             setContextMenu(null);
           }}
           onResetZoom={() => {

@@ -59,7 +59,9 @@ export function DeleteAnnotationDialog({
 interface CanvasContextMenuProps {
   annotation: AnnotationShape | null;
   canNextImage: boolean;
+  canNextUnannotatedImage: boolean;
   canPreviousImage: boolean;
+  canPreviousUnannotatedImage: boolean;
   labels: LabelConfig[];
   x: number;
   y: number;
@@ -68,8 +70,10 @@ interface CanvasContextMenuProps {
   onFitHeight: () => void;
   onFitWidth: () => void;
   onNextImage: () => void;
+  onNextUnannotatedImage: () => void;
   onOriginalSize: () => void;
   onPreviousImage: () => void;
+  onPreviousUnannotatedImage: () => void;
   onResetZoom: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -78,7 +82,9 @@ interface CanvasContextMenuProps {
 export function CanvasContextMenu({
   annotation,
   canNextImage,
+  canNextUnannotatedImage,
   canPreviousImage,
+  canPreviousUnannotatedImage,
   labels,
   x,
   y,
@@ -87,8 +93,10 @@ export function CanvasContextMenu({
   onFitHeight,
   onFitWidth,
   onNextImage,
+  onNextUnannotatedImage,
   onOriginalSize,
   onPreviousImage,
+  onPreviousUnannotatedImage,
   onResetZoom,
   onZoomIn,
   onZoomOut,
@@ -113,12 +121,23 @@ export function CanvasContextMenu({
       </ContextMenuGroup>
 
       <ContextMenuGroup title="图片操作">
-        <ContextMenuButton disabled={!canPreviousImage} onClick={onPreviousImage}>
-          上一张
-        </ContextMenuButton>
-        <ContextMenuButton disabled={!canNextImage} onClick={onNextImage}>
-          下一张
-        </ContextMenuButton>
+        <ContextSubMenu label="跳转" openUp={openSubmenusUp}>
+          <ContextMenuButton disabled={!canPreviousImage} onClick={onPreviousImage}>
+            上一张
+          </ContextMenuButton>
+          <ContextMenuButton disabled={!canNextImage} onClick={onNextImage}>
+            下一张
+          </ContextMenuButton>
+          <ContextMenuButton
+            disabled={!canPreviousUnannotatedImage}
+            onClick={onPreviousUnannotatedImage}
+          >
+            上个未标注
+          </ContextMenuButton>
+          <ContextMenuButton disabled={!canNextUnannotatedImage} onClick={onNextUnannotatedImage}>
+            下个未标注
+          </ContextMenuButton>
+        </ContextSubMenu>
       </ContextMenuGroup>
 
       {annotation && (

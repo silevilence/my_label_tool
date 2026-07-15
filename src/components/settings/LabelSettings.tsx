@@ -37,6 +37,7 @@ export function LabelSettings({
   onSelectTemplate,
 }: LabelSettingsProps) {
   const [newLabelName, setNewLabelName] = useState("");
+  const [isManageOpen, setIsManageOpen] = useState(false);
 
   function addLabel() {
     const name = newLabelName.trim();
@@ -89,9 +90,7 @@ export function LabelSettings({
 
     if (
       usedLabelIds.has(label.id) &&
-      !(await confirmAction(
-        `「${label.name}」已被矩形框使用，删除后这些框会改为第一个可用标签。`,
-      ))
+      !(await confirmAction(`「${label.name}」已被矩形框使用，删除后这些框会改为第一个可用标签。`))
     ) {
       return;
     }
@@ -115,106 +114,135 @@ export function LabelSettings({
             </option>
           ))}
         </select>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700"
-            type="button"
-            onClick={onNewTemplate}
-          >
-            新增模板
-          </button>
-          <button
-            className="rounded bg-sky-500 px-3 py-1 text-sm font-medium text-white hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700"
-            type="button"
-            disabled={!isDirty && canSaveTemplate}
-            title={canSaveTemplate ? undefined : "内置模板会自动另存为新模板"}
-            onClick={onSaveTemplate}
-          >
-            保存
-          </button>
-          <button
-            className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
-            type="button"
-            disabled={!isDirty}
-            onClick={onCancelChanges}
-          >
-            取消修改
-          </button>
-          <button
-            className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700"
-            type="button"
-            onClick={onSaveTemplateAs}
-          >
-            另存为
-          </button>
-          <button
-            className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
-            type="button"
-            disabled={!canDeleteTemplate}
-            title={canDeleteTemplate ? undefined : "内置模板不能删除"}
-            onClick={onDeleteTemplate}
-          >
-            删除模板
-          </button>
-        </div>
-        {isDirty && <p className="text-xs text-amber-300">有未保存的标签修改。</p>}
-      </div>
-
-      <div className="mt-3 space-y-2">
-        {labels.map((label) => (
-          <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2" key={label.id}>
-            <input
-              className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
-              value={label.name}
-              aria-label="标签名称"
-              onChange={(event) => patchLabel(label.id, { name: event.target.value })}
-            />
-            <input
-              className="h-8 w-10 rounded border border-slate-700 bg-slate-950"
-              type="color"
-              value={label.color}
-              aria-label={`${label.name} 颜色`}
-              onChange={(event) => patchLabel(label.id, { color: event.target.value })}
-            />
-            <input
-              className="w-12 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-center text-sm text-slate-100"
-              maxLength={1}
-              placeholder="-"
-              value={label.shortcut ?? ""}
-              aria-label={`${label.name} 快捷键`}
-              onChange={(event) => updateShortcut(label.id, event.target.value)}
-            />
-            <button
-              className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:bg-red-500 hover:text-white"
-              type="button"
-              onClick={() => deleteLabel(label)}
-            >
-              删除
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-3 flex gap-2">
-        <input
-          className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
-          placeholder="新标签名称"
-          value={newLabelName}
-          onChange={(event) => setNewLabelName(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              addLabel();
-            }
-          }}
-        />
         <button
-          className="rounded bg-sky-500 px-3 py-1 text-sm font-medium text-white hover:bg-sky-400"
+          className="rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800"
           type="button"
-          onClick={addLabel}
+          onClick={() => setIsManageOpen(true)}
         >
-          新增
+          管理模板和标签{isDirty ? " *" : ""}
         </button>
       </div>
+
+      {isManageOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4">
+          <section className="scrollbar-dark max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-slate-100">管理模板和标签</h2>
+              <button
+                aria-label="关闭"
+                className="rounded border border-slate-700 px-2 py-1 text-sm text-slate-300 hover:bg-slate-800"
+                type="button"
+                onClick={() => setIsManageOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700"
+                type="button"
+                onClick={onNewTemplate}
+              >
+                新增模板
+              </button>
+              <button
+                className="rounded bg-sky-500 px-3 py-1 text-sm font-medium text-white hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+                type="button"
+                disabled={!isDirty && canSaveTemplate}
+                title={canSaveTemplate ? undefined : "内置模板会自动另存为新模板"}
+                onClick={onSaveTemplate}
+              >
+                保存
+              </button>
+              <button
+                className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
+                type="button"
+                disabled={!isDirty}
+                onClick={onCancelChanges}
+              >
+                取消修改
+              </button>
+              <button
+                className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700"
+                type="button"
+                onClick={onSaveTemplateAs}
+              >
+                另存为
+              </button>
+              <button
+                className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
+                type="button"
+                disabled={!canDeleteTemplate}
+                title={canDeleteTemplate ? undefined : "内置模板不能删除"}
+                onClick={onDeleteTemplate}
+              >
+                删除模板
+              </button>
+            </div>
+            {isDirty && <p className="mt-3 text-xs text-amber-300">有未保存的标签修改。</p>}
+
+            <div className="mt-4 space-y-2">
+              {labels.map((label) => (
+                <div
+                  className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2"
+                  key={label.id}
+                >
+                  <input
+                    className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
+                    value={label.name}
+                    aria-label="标签名称"
+                    onChange={(event) => patchLabel(label.id, { name: event.target.value })}
+                  />
+                  <input
+                    className="h-8 w-10 rounded border border-slate-700 bg-slate-950"
+                    type="color"
+                    value={label.color}
+                    aria-label={`${label.name} 颜色`}
+                    onChange={(event) => patchLabel(label.id, { color: event.target.value })}
+                  />
+                  <input
+                    className="w-12 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-center text-sm text-slate-100"
+                    maxLength={1}
+                    placeholder="-"
+                    value={label.shortcut ?? ""}
+                    aria-label={`${label.name} 快捷键`}
+                    onChange={(event) => updateShortcut(label.id, event.target.value)}
+                  />
+                  <button
+                    className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:bg-red-500 hover:text-white"
+                    type="button"
+                    onClick={() => deleteLabel(label)}
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <input
+                className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
+                placeholder="新标签名称"
+                value={newLabelName}
+                onChange={(event) => setNewLabelName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    addLabel();
+                  }
+                }}
+              />
+              <button
+                className="rounded bg-sky-500 px-3 py-1 text-sm font-medium text-white hover:bg-sky-400"
+                type="button"
+                onClick={addLabel}
+              >
+                新增
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

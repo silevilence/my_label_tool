@@ -166,22 +166,22 @@ function App() {
     maybeLoadProjectConfig,
     saveProjectExport,
   } = useProjectActions({
-      activeProjectConfig,
-      activeProjectConfigPath,
-      annotationsByImage,
-      customMappingText,
-      folderPath,
-      images,
-      labels,
-      selectedExportFormatId,
-      applyProjectTemplate,
-      replaceAnnotations,
-      setActiveProjectConfig,
-      setActiveProjectConfigPath,
-      setError,
-      setProjectTemplateId,
-      setSelectedExportFormatId,
-    });
+    activeProjectConfig,
+    activeProjectConfigPath,
+    annotationsByImage,
+    customMappingText,
+    folderPath,
+    images,
+    labels,
+    selectedExportFormatId,
+    applyProjectTemplate,
+    replaceAnnotations,
+    setActiveProjectConfig,
+    setActiveProjectConfigPath,
+    setError,
+    setProjectTemplateId,
+    setSelectedExportFormatId,
+  });
 
   useEffect(() => {
     const host = canvasHostRef.current;
@@ -511,6 +511,32 @@ function App() {
     if (nextIndex !== index) {
       setSelectedPath(images[nextIndex].path);
     }
+  }
+
+  function selectAdjacentUnannotatedImage(delta: 1 | -1) {
+    const index = images.findIndex((image) => image.path === selectedPath);
+    if (index < 0) {
+      return;
+    }
+
+    const nextIndex = findAdjacentUnannotatedIndex(index, delta);
+    if (nextIndex >= 0) {
+      setSelectedPath(images[nextIndex].path);
+    }
+  }
+
+  function findAdjacentUnannotatedIndex(index: number, delta: 1 | -1) {
+    for (
+      let nextIndex = index + delta;
+      nextIndex >= 0 && nextIndex < images.length;
+      nextIndex += delta
+    ) {
+      if ((annotationsByImage[images[nextIndex].path] ?? []).length === 0) {
+        return nextIndex;
+      }
+    }
+
+    return -1;
   }
 
   function zoomFromKeyboard(delta: 1 | -1) {
@@ -903,6 +929,7 @@ function App() {
       activeProjectConfig={activeProjectConfig}
       annotationToDelete={annotationToDelete}
       annotations={annotations}
+      annotationsByImage={annotationsByImage}
       canRedo={canRedo}
       canUndo={canUndo}
       canvasHostRef={canvasHostRef}
@@ -964,6 +991,7 @@ function App() {
       saveTemplate={saveTemplate}
       saveTemplateAs={saveTemplateAs}
       selectAdjacentImage={selectAdjacentImage}
+      selectAdjacentUnannotatedImage={selectAdjacentUnannotatedImage}
       selectCurrentLabel={selectCurrentLabel}
       selectShape={selectShape}
       selectTemplate={selectTemplate}
