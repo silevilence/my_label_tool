@@ -300,3 +300,19 @@
 - [x] **优化标签快捷键浮层**
   - [x] 右上角标签快捷键列表高亮当前新建标注框会使用的标签
   - [x] 高亮依据默认绘制标签，不跟随当前选中框的标签变化
+
+- [x] **基于 GitHub Release 的自动更新功能**
+  - [x] 目标：应用启动后或用户点击“检查更新”时，从 GitHub Release 查询新版本，提示用户下载并安装；第一版不做自建更新服务器、不做强制静默更新
+  - [x] 实现要求（AI 助手负责）
+    - [x] 接入 Tauri v2 updater 插件：添加 Rust/前端依赖、注册插件、配置 `tauri.conf.json` 的 updater `pubkey` 与 GitHub Release `latest.json` endpoint
+    - [x] 复用现有 `.github/workflows/release.yml`，让发布产物包含 updater 需要的安装包、签名与 `latest.json`
+    - [x] 新增前端更新入口：启动后轻量检查一次，并在设置/帮助区域提供“检查更新”按钮
+    - [x] 更新提示需显示当前版本、新版本、发布说明摘要，并让用户明确选择“立即更新/稍后”
+    - [x] 更新下载/安装过程中显示状态反馈；失败时给出可理解错误，不影响继续离线使用当前版本
+    - [x] 将自动更新发布流程补充到 `docs/build.md`，包括版本号、tag、changelog、签名密钥与验证步骤
+    - [x] 验收：本地构建通过 `npm run typecheck`、`npm run lint`、`cargo clippy --manifest-path src-tauri/Cargo.toml`；用一个高版本测试 Release 验证可发现并安装更新
+  - [x] 需要你操作
+    - [x] 确认 GitHub Release 是否允许公开访问；若仓库/Release 私有，第一版需改为手动下载或另建更新源
+    - [x] 生成 Tauri updater 签名密钥，只把 public key 写入配置；private key 与密码保存到 GitHub Actions Secrets，禁止提交到仓库
+    - [x] 每次发布前同步更新 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 的版本号，并在 `changelog.md` 添加同名版本章节
+    - [x] 若要降低 Windows SmartScreen 提示，准备代码签名证书；这不阻塞第一版自动更新，但会影响用户信任体验

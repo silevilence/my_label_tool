@@ -38,6 +38,12 @@ import {
 } from "./lib/defaults/shortcuts";
 import { mergeShortcuts, newAnnotationId } from "./lib/app-utils";
 import {
+  checkAppUpdate,
+  installAppUpdate,
+  type AppUpdateProgress,
+  type AppUpdateStatus,
+} from "./lib/updater";
+import {
   confirmAction,
   listImageFiles,
   loadLabelConfigs,
@@ -51,6 +57,7 @@ import { useAnnotationStore } from "./store/useAnnotationStore";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "./types/annotation";
 import type { ExportFormatId } from "./types/export";
 import type { ProjectConfig } from "./lib/importers";
+import type { Update } from "@tauri-apps/plugin-updater";
 import "./App.css";
 
 function App() {
@@ -86,6 +93,10 @@ function App() {
   );
   const [shortcuts, setShortcuts] = useState<ShortcutMap>(DEFAULT_SHORTCUTS);
   const [isShortcutSettingsOpen, setIsShortcutSettingsOpen] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>("idle");
+  const [updateMessage, setUpdateMessage] = useState("");
+  const [updateProgress, setUpdateProgress] = useState<AppUpdateProgress | null>(null);
   const [error, setError] = useState("");
 
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
@@ -242,6 +253,14 @@ function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void checkForUpdates(true);
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -412,6 +431,62 @@ function App() {
       await maybeLoadProjectConfig(path, nextImages);
     } catch (caughtError: unknown) {
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+    }
+  }
+
+  async function checkForUpdates(silent = false) {
+    if (updateStatus === "checking" || updateStatus === "downloading") {
+      return;
+    }
+
+    setUpdateStatus("checking");
+    setUpdateProgress(null);
+    if (!silent) {
+      setUpdateMessage("正在检查更新...");
+    }
+
+    try {
+      const update = await checkAppUpdate();
+      setPendingUpdate(update);
+
+      if (!update) {
+        setUpdateStatus(silent ? "idle" : "not-available");
+        setUpdateMessage(silent ? "" : "已是最新版本。");
+        return;
+      }
+
+      setUpdateStatus("available");
+      setUpdateMessage(
+        `发现新版本 ${update.version}，当前版本 ${update.currentVersion}。${summarizeUpdateBody(update.body)}`,
+      );
+    } catch (caughtError: unknown) {
+      setPendingUpdate(null);
+      setUpdateStatus(silent ? "idle" : "error");
+      setUpdateMessage(
+        silent
+          ? ""
+          : `检查更新失败：${caughtError instanceof Error ? caughtError.message : String(caughtError)}`,
+      );
+    }
+  }
+
+  async function installUpdate() {
+    if (!pendingUpdate || updateStatus === "downloading") {
+      return;
+    }
+
+    setUpdateStatus("downloading");
+    setUpdateMessage(`正在下载并安装 ${pendingUpdate.version}...`);
+
+    try {
+      await installAppUpdate(pendingUpdate, setUpdateProgress);
+      setUpdateStatus("installed");
+      setUpdateMessage("更新已安装，正在重启...");
+    } catch (caughtError: unknown) {
+      setUpdateStatus("error");
+      setUpdateMessage(
+        `安装更新失败：${caughtError instanceof Error ? caughtError.message : String(caughtError)}`,
+      );
     }
   }
 
@@ -846,6 +921,15 @@ function App() {
     setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
   }
 
+  function summarizeUpdateBody(body?: string) {
+    const summary = body?.replace(/\s+/g, " ").trim();
+    if (!summary) {
+      return "";
+    }
+
+    return ` 发布说明：${summary.length > 160 ? `${summary.slice(0, 160)}...` : summary}`;
+  }
+
   const draftRect =
     drawingRect && imageLayout ? toCanvasRect(normalizeRectPoints(drawingRect), imageLayout) : null;
   const contextAnnotation =
@@ -899,9 +983,13 @@ function App() {
       shortcuts={shortcuts}
       templates={templates}
       transformerRef={transformerRef}
+      updateMessage={updateMessage}
+      updateProgress={updateProgress}
+      updateStatus={updateStatus}
       usedLabelIds={usedLabelIds}
       cancelLabelChanges={cancelLabelChanges}
       changeAnnotationLabel={changeAnnotationLabel}
+      checkForUpdates={() => void checkForUpdates()}
       clearCurrentImageAnnotations={clearCurrentImageAnnotations}
       confirmDeleteAnnotation={confirmDeleteAnnotation}
       createProjectFromExternalYolo={createProjectFromExternalYolo}
@@ -917,6 +1005,7 @@ function App() {
       handleStageWheel={handleStageWheel}
       handleTransformEnd={handleTransformEnd}
       importAnnotations={importAnnotations}
+      installUpdate={() => void installUpdate()}
       newTemplate={newTemplate}
       openContextMenu={openContextMenu}
       openFolder={openFolder}
@@ -939,6 +1028,7 @@ function App() {
       setLabelDisplaySetting={setLabelDisplaySetting}
       setSelectedExportFormatId={setSelectedExportFormatId}
       setSelectedPath={setSelectedPath}
+      setUpdateMessage={setUpdateMessage}
       startPanning={startPanning}
       undo={undo}
       updateLabels={updateLabels}

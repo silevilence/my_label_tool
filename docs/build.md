@@ -53,6 +53,36 @@ powershell -NoProfile -Command "npm.cmd run tauri build"
 
 实际产物以本机 `src-tauri/target/release/bundle/` 下生成内容为准。
 
+## 自动更新发布
+
+自动更新使用 GitHub Release 的 `latest.json`：
+
+```text
+https://github.com/silevilence/my_label_tool/releases/latest/download/latest.json
+```
+
+首次启用前需要生成 Tauri updater 签名密钥：
+
+```powershell
+powershell -NoProfile -Command "New-Item -ItemType Directory -Force $env:USERPROFILE\.tauri"
+powershell -NoProfile -Command "npm.cmd run tauri -- signer generate -w $env:USERPROFILE\.tauri\my_label_tool.key"
+```
+
+生成后：
+
+- 将 `my_label_tool.key.pub` 的内容粘贴到 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`
+- 将 `my_label_tool.key` 的完整内容保存为 GitHub Actions Secret：`TAURI_SIGNING_PRIVATE_KEY`
+- 将生成密钥时输入的密码保存为 GitHub Actions Secret：`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- 不要提交 `my_label_tool.key` 私钥文件
+
+每次发布前确认：
+
+1. `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 版本号一致。
+2. `changelog.md` 有同名版本章节，如 `## v0.3.0`。
+3. 推送版本 Tag，如 `git tag v0.3.0 && git push origin v0.3.0`。
+4. Release workflow 成功后，Release assets 中应包含安装包、签名文件与 `latest.json`。
+5. 用已安装旧版本的 Windows 机器点击“检查更新”，确认能发现并安装新版本。
+
 ## 发布前手动验证
 
 至少验证一次：
