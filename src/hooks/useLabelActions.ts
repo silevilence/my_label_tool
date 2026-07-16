@@ -1,12 +1,19 @@
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "../lib/defaults/labels";
 import { newTemplateId, isUserTemplate, saveProjectConfig } from "../lib/app-utils";
 import { confirmAction, saveLabelConfigs, saveLabelTemplates } from "../lib/tauri-api";
+import {
+  analyzeLabelTemplateChange,
+  applyLabelTemplateChange,
+  formatLabelTemplateChange,
+  hasDanglingLabels,
+} from "../lib/label-template-sync";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import type { ProjectConfig } from "../lib/importers";
 
 interface UseLabelActionsParams {
   activeProjectConfig: ProjectConfig | null;
   activeProjectConfigPath: string;
+  annotationsByImage: Record<string, AnnotationShape[]>;
   currentLabelId: string;
   isLabelDirty: boolean;
   labels: LabelConfig[];
@@ -18,6 +25,7 @@ interface UseLabelActionsParams {
   templates: LabelTemplate[];
   usedLabelIds: Set<string>;
   replaceLabel: (oldLabelId: string, nextLabelId: string) => void;
+  replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
   setActiveProjectConfig: (config: ProjectConfig) => void;
   setCurrentLabelId: (labelId: string) => void;
   setError: (message: string) => void;
@@ -38,6 +46,7 @@ interface UseLabelActionsParams {
 export function useLabelActions({
   activeProjectConfig,
   activeProjectConfigPath,
+  annotationsByImage,
   currentLabelId,
   isLabelDirty,
   labels,
@@ -49,6 +58,7 @@ export function useLabelActions({
   templates,
   usedLabelIds,
   replaceLabel,
+  replaceAnnotations,
   setActiveProjectConfig,
   setCurrentLabelId,
   setError,
@@ -117,9 +127,9 @@ export function useLabelActions({
     applySavedLabels(template.labels);
   }
 
-  function saveTemplate() {
+  async function saveTemplate() {
     if (selectedTemplateId === projectTemplateId) {
-      saveProjectLabels(labels);
+      await saveProjectLabels(labels, false);
       return;
     }
 
@@ -134,6 +144,14 @@ export function useLabelActions({
     setTemplates(nextTemplates);
     persistUserTemplates(nextTemplates);
     applySavedLabels(labels);
+  }
+
+  async function saveTemplateAndUpdateAnnotations() {
+    if (selectedTemplateId !== projectTemplateId) {
+      await saveTemplate();
+      return;
+    }
+    await saveProjectLabels(labels, true);
   }
 
   function cancelLabelChanges() {
@@ -204,14 +222,44 @@ export function useLabelActions({
     saveLabelConfigs(nextLabels).catch(reportError);
   }
 
-  function saveProjectLabels(nextLabels: LabelConfig[]) {
+  async function saveProjectLabels(nextLabels: LabelConfig[], updateAnnotations: boolean) {
     if (!activeProjectConfig || !activeProjectConfigPath) {
       applySavedLabels(nextLabels);
       return;
     }
 
+    const change = analyzeLabelTemplateChange(savedLabels, nextLabels, annotationsByImage);
+    if (change.ambiguousNames.length > 0) {
+      setError(`标签名称重复，无法安全匹配：${change.ambiguousNames.join("、")}`);
+      return;
+    }
+
+    const summary = formatLabelTemplateChange(change);
+    const needsAnnotationUpdate =
+      change.deleted.some((item) => item.count > 0) ||
+      change.remapped.some((item) => item.count > 0);
+
+    if (!updateAnnotations && needsAnnotationUpdate) {
+      setError("本次修改会产生悬空标签引用，请使用“保存并更新标注”或取消修改。");
+      return;
+    }
+
+    if (summary && !(await confirmAction(`${summary}\n\n确认保存项目标签模板？`))) {
+      return;
+    }
+
+    const nextAnnotationsByImage = updateAnnotations
+      ? applyLabelTemplateChange(annotationsByImage, change)
+      : annotationsByImage;
+    if (hasDanglingLabels(nextAnnotationsByImage, nextLabels)) {
+      setError("保存后仍会产生悬空标签引用，已取消保存。");
+      return;
+    }
+
     const nextConfig = { ...activeProjectConfig, labels: nextLabels };
-    replaceMissingAnnotationLabels(nextLabels);
+    if (updateAnnotations) {
+      replaceAnnotations(nextAnnotationsByImage);
+    }
     setActiveProjectConfig(nextConfig);
     applyProjectTemplate(activeProjectConfig.template, nextLabels);
     saveProjectConfig(activeProjectConfigPath, nextConfig).catch(reportError);
@@ -242,6 +290,7 @@ export function useLabelActions({
     deleteTemplate,
     newTemplate,
     saveTemplate,
+    saveTemplateAndUpdateAnnotations,
     saveTemplateAs,
     selectCurrentLabel,
     selectTemplate,

@@ -149,6 +149,7 @@ function App() {
     deleteTemplate,
     newTemplate,
     saveTemplate,
+    saveTemplateAndUpdateAnnotations,
     saveTemplateAs,
     selectCurrentLabel,
     selectTemplate,
@@ -156,6 +157,7 @@ function App() {
   } = useLabelActions({
     activeProjectConfig,
     activeProjectConfigPath,
+    annotationsByImage,
     currentLabelId,
     isLabelDirty,
     labels,
@@ -167,6 +169,7 @@ function App() {
     templates,
     usedLabelIds,
     replaceLabel,
+    replaceAnnotations,
     setActiveProjectConfig,
     setCurrentLabelId,
     setError,
@@ -1013,6 +1016,7 @@ function App() {
       resetZoom={resetZoom}
       saveProjectExport={saveWithFeedback}
       saveTemplate={saveTemplate}
+      saveTemplateAndUpdateAnnotations={saveTemplateAndUpdateAnnotations}
       saveTemplateAs={saveTemplateAs}
       selectAdjacentImage={selectAdjacentImage}
       selectAdjacentUnannotatedImage={selectAdjacentUnannotatedImage}

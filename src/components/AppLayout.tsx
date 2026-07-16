@@ -1,4 +1,10 @@
-import { useRef, useState, type MouseEvent as ReactMouseEvent, type MutableRefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type MutableRefObject,
+} from "react";
 import { Image as KonvaImage, Layer, Line, Rect, Stage, Transformer } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
@@ -14,6 +20,7 @@ import {
   ModeHelpOverlay,
   type OverlayCorner,
 } from "./canvas/CanvasChrome";
+import { ImageSearchDialog } from "./sidebar/ImageSearchDialog";
 import {
   isLargeImage,
   isPointNearCanvasRect,
@@ -29,7 +36,7 @@ import type { ImageFile } from "../lib/tauri-api";
 import type { ShortcutActionId, ShortcutMap } from "../lib/defaults/shortcuts";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../lib/defaults/display";
 import type { AppUpdateProgress, AppUpdateStatus } from "../lib/updater";
-import { isUserTemplate } from "../lib/app-utils";
+import { isEditableTarget, isUserTemplate } from "../lib/app-utils";
 
 interface AppLayoutProps {
   activeProjectConfig: ProjectConfig | null;
@@ -106,6 +113,7 @@ interface AppLayoutProps {
   resetZoom: () => void;
   saveProjectExport: () => void;
   saveTemplate: () => void;
+  saveTemplateAndUpdateAnnotations: () => void;
   saveTemplateAs: () => void;
   selectAdjacentImage: (delta: number) => void;
   selectAdjacentUnannotatedImage: (delta: 1 | -1) => void;
@@ -204,6 +212,7 @@ export function AppLayout({
   resetZoom,
   saveProjectExport,
   saveTemplate,
+  saveTemplateAndUpdateAnnotations,
   saveTemplateAs,
   selectAdjacentImage,
   selectAdjacentUnannotatedImage,
@@ -228,6 +237,7 @@ export function AppLayout({
 }: AppLayoutProps) {
   const menuRef = useRef<HTMLDetailsElement | null>(null);
   const [canvasPointer, setCanvasPointer] = useState<{ x: number; y: number } | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const selectedImageIndex = images.findIndex((image) => image.path === selectedPath);
   const currentImageNumber = selectedImageIndex >= 0 ? selectedImageIndex + 1 : 0;
   const annotatedCount = images.filter(
@@ -242,6 +252,23 @@ export function AppLayout({
     images
       .slice(selectedImageIndex + 1)
       .some((image) => (annotationsByImage[image.path] ?? []).length === 0);
+  useEffect(() => {
+    function openSearch(event: KeyboardEvent) {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        event.key.toLowerCase() === "f" &&
+        images.length > 0 &&
+        !isEditableTarget(event.target)
+      ) {
+        event.preventDefault();
+        setIsSearchOpen(true);
+      }
+    }
+
+    window.addEventListener("keydown", openSearch);
+    return () => window.removeEventListener("keydown", openSearch);
+  }, [images.length]);
 
   function closeMenu() {
     menuRef.current?.removeAttribute("open");
@@ -409,7 +436,6 @@ export function AppLayout({
               ↷
             </button>
           </div>
-          {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
         </div>
 
         <ExportPanel
@@ -443,6 +469,7 @@ export function AppLayout({
             onChangeLabels={updateLabels}
             onDeleteTemplate={deleteTemplate}
             onNewTemplate={newTemplate}
+            onSaveAndUpdateTemplate={saveTemplateAndUpdateAnnotations}
             onSaveTemplate={saveTemplate}
             onSaveTemplateAs={saveTemplateAs}
             onSelectTemplate={selectTemplate}
@@ -488,10 +515,22 @@ export function AppLayout({
           <div className="border-b border-slate-800 px-4 py-2">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-slate-200">图片列表</h2>
-              <span className="text-xs text-slate-500">
-                已标注 {annotatedCount} / 未标注 {images.length - annotatedCount} / 总数{" "}
-                {images.length}
-              </span>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-xs text-slate-500">
+                  已标注 {annotatedCount} / 未标注 {images.length - annotatedCount} / 总数{" "}
+                  {images.length}
+                </span>
+                <button
+                  aria-label="搜索图片"
+                  className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={images.length === 0}
+                  title="搜索图片（Ctrl+F）"
+                  type="button"
+                  onClick={() => setIsSearchOpen(true)}
+                >
+                  🔍
+                </button>
+              </div>
             </div>
             <div className="mt-2 flex items-center gap-2">
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
@@ -672,6 +711,24 @@ export function AppLayout({
         <div className="pointer-events-none fixed left-1/2 top-5 z-[70] -translate-x-1/2 rounded-full border border-emerald-400/40 bg-emerald-500/90 px-4 py-2 text-sm font-medium text-white shadow-2xl">
           保存完成
         </div>
+      )}
+
+      {error && (
+        <div
+          className="pointer-events-none fixed left-1/2 top-5 z-[80] max-w-xl -translate-x-1/2 rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-sm text-red-100 shadow-2xl"
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
+
+      {isSearchOpen && (
+        <ImageSearchDialog
+          images={images}
+          selectedPath={selectedPath}
+          onClose={() => setIsSearchOpen(false)}
+          onSelectImage={setSelectedPath}
+        />
       )}
 
       {updateMessage && (

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { DEFAULT_LABEL_COLORS } from "../../lib/defaults/labels";
+import { PROJECT_TEMPLATE_ID } from "../../lib/importers";
 import { confirmAction } from "../../lib/tauri-api";
 import type { LabelConfig, LabelTemplate } from "../../types/annotation";
 
@@ -15,6 +16,7 @@ interface LabelSettingsProps {
   onChangeLabels: (labels: LabelConfig[]) => void;
   onDeleteTemplate: () => void;
   onNewTemplate: () => void;
+  onSaveAndUpdateTemplate: () => void;
   onSaveTemplate: () => void;
   onSaveTemplateAs: () => void;
   onSelectTemplate: (templateId: string) => void;
@@ -32,6 +34,7 @@ export function LabelSettings({
   onChangeLabels,
   onDeleteTemplate,
   onNewTemplate,
+  onSaveAndUpdateTemplate,
   onSaveTemplate,
   onSaveTemplateAs,
   onSelectTemplate,
@@ -90,7 +93,7 @@ export function LabelSettings({
 
     if (
       usedLabelIds.has(label.id) &&
-      !(await confirmAction(`「${label.name}」已被矩形框使用，删除后这些框会改为第一个可用标签。`))
+      !(await confirmAction(`「${label.name}」已被矩形框使用，保存时需要处理这些标注。`))
     ) {
       return;
     }
@@ -155,6 +158,16 @@ export function LabelSettings({
               >
                 保存
               </button>
+              {selectedTemplateId === PROJECT_TEMPLATE_ID && (
+                <button
+                  className="rounded bg-emerald-500 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+                  type="button"
+                  disabled={!isDirty}
+                  onClick={onSaveAndUpdateTemplate}
+                >
+                  保存并更新标注
+                </button>
+              )}
               <button
                 className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
                 type="button"
