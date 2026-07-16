@@ -3,6 +3,8 @@ import type { InteractionMode } from "../../components/canvas/types";
 export type LabelDisplaySettings = Record<InteractionMode, boolean>;
 
 export interface HelpDisplaySettings {
+  showAnnotationCrosshairCursor: boolean;
+  showAnnotationGuideLines: boolean;
   showLabelShortcuts: boolean;
   showModeHelp: boolean;
 }
@@ -14,6 +16,8 @@ export const DEFAULT_LABEL_DISPLAY_SETTINGS: LabelDisplaySettings = {
 };
 
 export const DEFAULT_HELP_DISPLAY_SETTINGS: HelpDisplaySettings = {
+  showAnnotationCrosshairCursor: true,
+  showAnnotationGuideLines: true,
   showLabelShortcuts: true,
   showModeHelp: true,
 };
@@ -75,6 +79,14 @@ function parseHelpDisplaySettings(value: unknown): HelpDisplaySettings {
 
   const record = value as Record<string, unknown>;
   return {
+    showAnnotationCrosshairCursor: readBoolean(
+      record.showAnnotationCrosshairCursor,
+      DEFAULT_HELP_DISPLAY_SETTINGS.showAnnotationCrosshairCursor,
+    ),
+    showAnnotationGuideLines: readBoolean(
+      record.showAnnotationGuideLines,
+      DEFAULT_HELP_DISPLAY_SETTINGS.showAnnotationGuideLines,
+    ),
     showLabelShortcuts: readBoolean(
       record.showLabelShortcuts,
       DEFAULT_HELP_DISPLAY_SETTINGS.showLabelShortcuts,

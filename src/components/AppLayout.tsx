@@ -1,5 +1,5 @@
 import { useRef, useState, type MouseEvent as ReactMouseEvent, type MutableRefObject } from "react";
-import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
+import { Image as KonvaImage, Layer, Line, Rect, Stage, Transformer } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
@@ -14,7 +14,12 @@ import {
   ModeHelpOverlay,
   type OverlayCorner,
 } from "./canvas/CanvasChrome";
-import { isLargeImage, type CanvasRect } from "./canvas/geometry";
+import {
+  isLargeImage,
+  isPointNearCanvasRect,
+  toCanvasRect,
+  type CanvasRect,
+} from "./canvas/geometry";
 import type { CanvasContextMenu as CanvasContextMenuState, ImageLayout } from "./canvas/types";
 import type { InteractionMode } from "./canvas/types";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
@@ -240,6 +245,44 @@ export function AppLayout({
     canvasPointer && canvasPointer.x > canvasSize.width - 360 && canvasPointer.y < 220
       ? "bottom-right"
       : "top-right";
+  const isPointerInImage =
+    canvasPointer !== null &&
+    imageLayout !== null &&
+    canvasPointer.x >= imageLayout.x &&
+    canvasPointer.y >= imageLayout.y &&
+    canvasPointer.x <= imageLayout.x + imageLayout.width &&
+    canvasPointer.y <= imageLayout.y + imageLayout.height;
+  const isPointerOnAnnotation =
+    canvasPointer !== null &&
+    imageLayout !== null &&
+    annotations.some((annotation) =>
+      isPointNearCanvasRect(canvasPointer, toCanvasRect(annotation.points, imageLayout), 8),
+    );
+  const isAnnotatingPointer =
+    !isPanning &&
+    isPointerInImage &&
+    (interactionMode === "annotate" || (interactionMode === "default" && !isPointerOnAnnotation));
+  const annotationGuideLines =
+    helpDisplaySettings.showAnnotationGuideLines && isAnnotatingPointer && canvasPointer && imageLayout
+      ? {
+          horizontal: [
+            imageLayout.x,
+            canvasPointer.y,
+            imageLayout.x + imageLayout.width,
+            canvasPointer.y,
+          ],
+          vertical: [
+            canvasPointer.x,
+            imageLayout.y,
+            canvasPointer.x,
+            imageLayout.y + imageLayout.height,
+          ],
+        }
+      : null;
+  const canvasCursorClass =
+    helpDisplaySettings.showAnnotationCrosshairCursor && isAnnotatingPointer
+      ? "cursor-crosshair"
+      : "";
 
   return (
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
@@ -470,7 +513,7 @@ export function AppLayout({
 
       <div
         ref={canvasHostRef}
-        className={`relative h-full min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : ""}`}
+        className={`relative h-full min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : canvasCursorClass}`}
         onMouseLeave={() => setCanvasPointer(null)}
         onMouseMove={updateCanvasPointer}
       >
@@ -518,6 +561,26 @@ export function AppLayout({
                 {draftRect && (
                   <Rect {...draftRect} dash={[6, 4]} stroke={currentLabel.color} strokeWidth={2} />
                 )}
+                {annotationGuideLines && (
+                  <>
+                    <Line
+                      listening={false}
+                      opacity={0.9}
+                      perfectDrawEnabled={false}
+                      points={annotationGuideLines.horizontal}
+                      stroke="#facc15"
+                      strokeWidth={1}
+                    />
+                    <Line
+                      listening={false}
+                      opacity={0.9}
+                      perfectDrawEnabled={false}
+                      points={annotationGuideLines.vertical}
+                      stroke="#facc15"
+                      strokeWidth={1}
+                    />
+                  </>
+                )}
                 <Transformer
                   ref={transformerRef}
                   keepRatio={false}
@@ -535,7 +598,11 @@ export function AppLayout({
               />
             )}
             {interactionMode === "default" && helpDisplaySettings.showLabelShortcuts && (
-              <LabelShortcutOverlay corner={labelShortcutCorner} labels={labels} />
+              <LabelShortcutOverlay
+                corner={labelShortcutCorner}
+                currentLabelId={currentLabel.id}
+                labels={labels}
+              />
             )}
             {labelSwitchHint && (
               <div className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700/80 bg-slate-950/85 px-4 py-2 text-sm text-slate-100 shadow-xl">

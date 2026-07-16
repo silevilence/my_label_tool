@@ -96,6 +96,37 @@ export function ShortcutSettings({
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <label className="flex items-start gap-2 rounded border border-slate-800 bg-slate-950 p-2 text-sm text-slate-200">
               <input
+                checked={helpDisplaySettings.showAnnotationCrosshairCursor}
+                className="mt-1"
+                type="checkbox"
+                onChange={(event) =>
+                  onChangeHelpDisplaySetting(
+                    "showAnnotationCrosshairCursor",
+                    event.target.checked,
+                  )
+                }
+              />
+              <span>
+                <span className="block">标注时使用十字光标</span>
+                <span className="block text-xs text-slate-500">指向已有框时仍用普通选择</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 rounded border border-slate-800 bg-slate-950 p-2 text-sm text-slate-200">
+              <input
+                checked={helpDisplaySettings.showAnnotationGuideLines}
+                className="mt-1"
+                type="checkbox"
+                onChange={(event) =>
+                  onChangeHelpDisplaySetting("showAnnotationGuideLines", event.target.checked)
+                }
+              />
+              <span>
+                <span className="block">显示十字辅助线</span>
+                <span className="block text-xs text-slate-500">辅助对齐当前鼠标位置</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 rounded border border-slate-800 bg-slate-950 p-2 text-sm text-slate-200">
+              <input
                 checked={helpDisplaySettings.showModeHelp}
                 className="mt-1"
                 type="checkbox"

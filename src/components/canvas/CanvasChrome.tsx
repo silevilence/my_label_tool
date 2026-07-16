@@ -45,11 +45,16 @@ export function ModeHelpOverlay({
 }
 
 interface LabelShortcutOverlayProps {
+  currentLabelId: string;
   corner: OverlayCorner;
   labels: LabelConfig[];
 }
 
-export function LabelShortcutOverlay({ corner, labels }: LabelShortcutOverlayProps) {
+export function LabelShortcutOverlay({
+  currentLabelId,
+  corner,
+  labels,
+}: LabelShortcutOverlayProps) {
   const labelShortcuts = labels.filter((label) => label.shortcut);
   if (labelShortcuts.length === 0) {
     return null;
@@ -59,7 +64,12 @@ export function LabelShortcutOverlay({ corner, labels }: LabelShortcutOverlayPro
     <div className={`canvas-floating-panel pointer-events-none absolute top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}>
       <div className="font-medium text-sky-200">标签快捷键</div>
       {labelShortcuts.map((label) => (
-        <div className="flex gap-2" key={label.id}>
+        <div
+          className={`flex gap-2 rounded px-1 ${
+            label.id === currentLabelId ? "bg-sky-500/25 text-sky-100" : ""
+          }`}
+          key={label.id}
+        >
           <span className="min-w-5 text-slate-400">{label.shortcut}</span>
           <span>{label.name}</span>
         </div>
