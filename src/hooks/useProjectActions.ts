@@ -175,6 +175,7 @@ export function useProjectActions({
 
   async function updateProjectConfig(format: ProjectConfig["format"], annotationPath: string) {
     const configPath = activeProjectConfigPath || projectConfigPath(folderPath);
+    const template = projectConfigTemplate();
     const nextConfig: ProjectConfig = {
       schemaVersion: 1,
       format,
@@ -182,12 +183,14 @@ export function useProjectActions({
       exportedAt: new Date().toISOString(),
       imageFolder: folderPath,
       labels,
-      template: projectConfigTemplate(),
+      template,
       exportOptions: { format },
     };
 
     setActiveProjectConfig(nextConfig);
     setActiveProjectConfigPath(configPath);
+    setProjectTemplateId(template.id);
+    applyProjectTemplate(template, labels);
     await saveProjectConfig(configPath, nextConfig);
   }
 

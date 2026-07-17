@@ -452,7 +452,7 @@ export function AppLayout({
           onSaveProject={saveProjectExport}
         />
 
-        <div className="scrollbar-dark min-h-0 flex-1 overflow-y-auto">
+        <div className="scrollbar-dark min-h-0 max-h-[45vh] overflow-y-auto">
           <LabelSettings
             canSaveTemplate={
               isUserTemplate(selectedTemplateId) || selectedTemplateId === projectTemplateId
@@ -511,7 +511,7 @@ export function AppLayout({
           </section>
         </div>
 
-        <section className="flex max-h-72 min-h-44 shrink-0 flex-col border-t border-slate-800 bg-slate-900">
+        <section className="flex min-h-44 flex-1 flex-col border-t border-slate-800 bg-slate-900">
           <div className="border-b border-slate-800 px-4 py-2">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-slate-200">图片列表</h2>
