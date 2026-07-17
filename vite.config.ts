@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -27,6 +28,25 @@ export default defineConfig(async () => ({
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
+    },
+  },
+  test: {
+    environment: "jsdom",
+    coverage: {
+      provider: "v8",
+      include: [
+        "src/components/canvas/geometry.ts",
+        "src/lib/**/*.ts",
+        "src/store/**/*.ts",
+        "src/types/annotation.ts",
+      ],
+      exclude: ["src/lib/defaults/**/*.ts", "src/lib/tauri-api.ts", "src/lib/updater.ts"],
+      thresholds: {
+        lines: 90,
+        functions: 90,
+        branches: 75,
+        statements: 90,
+      },
     },
   },
 }));

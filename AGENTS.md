@@ -182,7 +182,10 @@ interface LabelTemplate {
 
 ## 7. 测试要求
 
-- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/mod.rs` 的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举等）。前端尚无自动化测试。
+- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/mod.rs` 的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步等纯逻辑。
+- **覆盖率目标**：前端可黑盒测试的纯逻辑层（导入/导出、store、几何计算、配置解析等）通过 `npm run test:coverage` 保持 90% 以上行覆盖率；Tauri API 封装、更新器、UI 组件、纯默认配置等特殊文件可在覆盖率配置中排除，但新增复杂逻辑时必须补测。
+- 新功能必须补充相关测试；问题修复尽可能补充回归测试，避免只修当前手动路径。
+- 任务完成前必须运行测试并通过：改动较小时可跑新增/相关测试，提交前至少跑 `npm run typecheck`、`npm run lint`、`npm run test:coverage`、`cargo clippy --manifest-path src-tauri/Cargo.toml`；涉及 Rust 逻辑时同时跑 `cargo test --manifest-path src-tauri/Cargo.toml`。
 - Rust 端：核心导出逻辑（`exporters` 对应的 Rust 序列化部分）必须有单元测试，覆盖至少一个真实标注样例的输入输出。
 - 前端：标注数据的增删改（store actions）需要有基本的单元测试（Vitest），画布交互允许暂缓自动化测试，但需手动验证清单（见下）。
 - **手动验证清单**（每次涉及画布交互改动后必须过一遍）：
