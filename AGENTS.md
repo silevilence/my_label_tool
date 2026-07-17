@@ -76,20 +76,20 @@ my_label_tool/
 │   ├── components/                 # UI 组件
 │   │   ├── canvas/                 # Konva 画布（CanvasChrome）、几何计算（geometry）、交互类型
 │   │   ├── settings/               # 导出面板、标签设置（弹窗）、快捷键设置
-│   │   ├── sidebar/                # 侧边栏（预留，当前仅 .gitkeep）
+│   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
 │   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态）
 │   ├── types/                      # 核心类型（annotation、export）
 │   ├── lib/                        # tauri-api 封装、导入导出、工具函数
-│   │   ├── defaults/               # 导出模板、标签、快捷键默认值
+│   │   ├── defaults/               # 导出模板、标签、快捷键、显示设置默认值
 │   │   ├── exporters/              # COCO / VOC / YOLO / 自定义导出
 │   │   ├── importers.ts            # 多格式导入 + 项目配置（ProjectConfig）解析
 │   │   ├── tauri-api.ts            # 所有 Tauri command 调用封装
 │   │   └── app-utils.ts            # 路径、图片尺寸、项目配置等工具函数
-│   └── hooks/                      # useLabelActions、useProjectActions
+│   └── hooks/                      # 画布交互、图片加载、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
 │   ├── src/                        # 入口、commands、models
-│   ├── capabilities/               # Tauri 权限（core:default + dialog:default）
+│   ├── capabilities/               # Tauri 权限（core/dialog/process/updater:default）
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── .github/workflows/              # GitHub Actions 发布工作流（release.yml）
@@ -123,12 +123,17 @@ my_label_tool/
 ```typescript
 // src/types/annotation.ts — 实际代码中的类型定义
 
+// 标注图形类型；polyline 为后期可能扩展项，当前未实现
+type AnnotationShapeType = "rect" | "polygon" | "point";
+// 标签适用的图形类型；"any" 表示兼容所有图形
+type LabelShapeType = AnnotationShapeType | "any";
+
 // 单个标注图形
 interface AnnotationShape {
   id: string;
-  type: "rect";                              // 当前仅实现 rect，后续扩展 "polygon" | "point" | "polyline"
+  type: AnnotationShapeType;                // rect | polygon | point
   labelId: string;                           // 关联 LabelConfig.id
-  points: number[];                          // 原图像素坐标 [x, y, width, height]
+  points: number[];                          // 原图像素坐标，格式随 type 变化（见下方坐标约定）
   attributes?: Record<string, string | number | boolean>;
   frameIndex?: number;                       // 视频标注预留，图片标注阶段恒为 0
 }
@@ -139,7 +144,7 @@ interface LabelConfig {
   name: string;
   color: string;                             // hex 色值，如 "#38bdf8"
   shortcut?: string;                         // 单键快捷键，如 "1" "q"（仅限 [a-z0-9] 单字符）
-  shapeType: AnnotationShape["type"];         // 当前恒为 "rect"
+  shapeType: LabelShapeType;                 // any | rect | polygon | point
 }
 
 // 标签模板（一组 LabelConfig 的集合）
@@ -150,7 +155,7 @@ interface LabelTemplate {
 }
 ```
 
-**坐标约定**：`points` 存储原图像素坐标，不使用归一化坐标。矩形格式为 `[x, y, width, height]`。画布渲染时通过 `imageLayout.scale` 缩放到屏幕坐标。
+**坐标约定**：`points` 存储原图像素坐标，不使用归一化坐标。矩形格式为 `[x, y, width, height]`，多边形为 `[x1, y1, x2, y2, ...]`（顶点序列），关键点为 `[x, y]`。画布渲染时通过 `imageLayout.scale` 缩放到屏幕坐标。新增坐标计算功能时必须遵守此约定，不得引入归一化坐标。
 
 **视频标注扩展预留**：`AnnotationShape.frameIndex` 字段现在就加上，即使图片阶段用不到，避免后期做视频标注时重构数据结构。
 
@@ -263,4 +268,4 @@ Refs: ROADMAP OPDS 书源服务构建与分发
 - 禁止引入需要联网才能使用的第三方服务/SDK 作为核心功能依赖。
 - 禁止为了"看起来完整"而使用占位符/mock 数据替代真实实现后不做标记；如确需占位，必须在代码中用 `// TODO(annotool):` 标记并说明原因。
 - 禁止跳过 `npm run lint` / `cargo clippy` 直接提交。
-- `AnnotationShape.points` 使用**原图像素坐标**，格式 `[x, y, width, height]`。新增坐标计算功能时必须遵守此约定，不得引入归一化坐标。
+- `AnnotationShape.points` 使用**原图像素坐标**，不使用归一化坐标；矩形为 `[x, y, width, height]`，多边形为 `[x1, y1, x2, y2, ...]`，关键点为 `[x, y]`。新增坐标计算功能时必须遵守此约定，不得引入归一化坐标。
