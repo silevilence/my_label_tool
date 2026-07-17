@@ -7,6 +7,7 @@ import type { ShortcutMap } from "./defaults/shortcuts";
 export interface ImageFile {
   path: string;
   name: string;
+  size?: number;
 }
 
 export interface TextFileEntry {

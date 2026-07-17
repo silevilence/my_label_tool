@@ -566,7 +566,9 @@ export function AppLayout({
 
       {isSearchOpen && (
         <ImageSearchDialog
+          annotationsByImage={annotationsByImage}
           images={images}
+          labels={labels}
           selectedPath={selectedPath}
           onClose={() => setIsSearchOpen(false)}
           onSelectImage={setSelectedPath}

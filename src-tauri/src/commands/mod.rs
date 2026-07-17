@@ -15,6 +15,7 @@ use crate::models::annotation::{LabelConfig, LabelTemplate};
 pub struct ImageFile {
     path: String,
     name: String,
+    size: u64,
 }
 
 #[derive(Serialize)]
@@ -42,6 +43,7 @@ pub fn list_image_files(folder_path: PathBuf) -> Result<Vec<ImageFile>, String> 
         let path = entry.map_err(|error| error.to_string())?.path();
 
         if is_loadable_image(&path) {
+            let size = path.metadata().map_err(|error| error.to_string())?.len();
             let name = path
                 .file_name()
                 .and_then(|name| name.to_str())
@@ -51,6 +53,7 @@ pub fn list_image_files(folder_path: PathBuf) -> Result<Vec<ImageFile>, String> 
             images.push(ImageFile {
                 path: path.to_string_lossy().into_owned(),
                 name,
+                size,
             });
         }
     }
@@ -344,6 +347,7 @@ mod tests {
 
         assert_eq!(images.len(), 1);
         assert_eq!(images[0].name, "image.png");
+        assert_eq!(images[0].size, 8);
         let _ = fs::remove_dir_all(dir);
     }
 
