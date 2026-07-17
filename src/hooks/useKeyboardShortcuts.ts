@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import { normalizeShortcutKey } from "../components/settings/ShortcutSettings";
+import { formatShortcut, normalizeShortcutKey } from "../components/settings/ShortcutSettings";
 import { isEditableTarget } from "../lib/app-utils";
-import type { ShortcutMap } from "../lib/defaults/shortcuts";
-import type { LabelConfig } from "../types/annotation";
+import { SHORTCUT_ACTIONS, type ShortcutMap } from "../lib/defaults/shortcuts";
+import type { AnnotationShapeType, LabelConfig } from "../types/annotation";
 
 interface UseKeyboardShortcutsParams {
   labels: LabelConfig[];
@@ -14,8 +14,11 @@ interface UseKeyboardShortcutsParams {
   redo: () => void;
   save: () => void;
   selectAdjacentImage: (delta: number) => void;
+  selectShapeType: (shapeType: AnnotationShapeType) => void;
+  undoPolygonPoint: () => boolean;
   undo: () => void;
   zoomFromKeyboard: (delta: 1 | -1) => void;
+  onShortcutConflict: (message: string) => void;
 }
 
 export function useKeyboardShortcuts({
@@ -28,8 +31,11 @@ export function useKeyboardShortcuts({
   redo,
   save,
   selectAdjacentImage,
+  selectShapeType,
+  undoPolygonPoint,
   undo,
   zoomFromKeyboard,
+  onShortcutConflict,
 }: UseKeyboardShortcutsParams) {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -63,6 +69,19 @@ export function useKeyboardShortcuts({
       if (key === "Delete" && selectedPath && selectedShapeId) {
         event.preventDefault();
         deleteSelectedShape();
+        notifyConfigConflict(key);
+        return;
+      }
+      if (key === shortcuts.undoPolygonPoint && undoPolygonPoint()) {
+        event.preventDefault();
+        return;
+      }
+
+      const label = labels.find((item) => item.shortcut === key);
+      if (label) {
+        event.preventDefault();
+        changeCurrentLabel(label.id);
+        notifyConfigConflict(key);
         return;
       }
 
@@ -86,11 +105,29 @@ export function useKeyboardShortcuts({
         zoomFromKeyboard(-1);
         return;
       }
-
-      const label = labels.find((item) => item.shortcut === key);
-      if (label) {
+      if (key === shortcuts.selectRectTool) {
         event.preventDefault();
-        changeCurrentLabel(label.id);
+        selectShapeType("rect");
+        return;
+      }
+      if (key === shortcuts.selectPolygonTool) {
+        event.preventDefault();
+        selectShapeType("polygon");
+        return;
+      }
+      if (key === shortcuts.selectPointTool) {
+        event.preventDefault();
+        selectShapeType("point");
+        return;
+      }
+
+      function notifyConfigConflict(shortcut: string) {
+        const action = SHORTCUT_ACTIONS.find((item) => shortcuts[item.id] === shortcut);
+        if (action) {
+          onShortcutConflict(
+            `快捷键 ${formatShortcut(shortcut)} 同时绑定了「${action.label}」，已按更高优先级处理。`,
+          );
+        }
       }
     }
 
@@ -103,10 +140,13 @@ export function useKeyboardShortcuts({
     redo,
     save,
     selectAdjacentImage,
+    selectShapeType,
     selectedPath,
     selectedShapeId,
     shortcuts,
     undo,
+    undoPolygonPoint,
     zoomFromKeyboard,
+    onShortcutConflict,
   ]);
 }

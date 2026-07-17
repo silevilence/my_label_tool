@@ -14,6 +14,8 @@ import { LabelSettings } from "./settings/LabelSettings";
 import { ShortcutSettings } from "./settings/ShortcutSettings";
 import {
   AnnotationRect,
+  AnnotationPoint,
+  AnnotationPolygon,
   CanvasContextMenu,
   DeleteAnnotationDialog,
   LabelShortcutOverlay,
@@ -21,15 +23,17 @@ import {
   type OverlayCorner,
 } from "./canvas/CanvasChrome";
 import { ImageSearchDialog } from "./sidebar/ImageSearchDialog";
-import {
-  isLargeImage,
-  isPointNearCanvasRect,
-  toCanvasRect,
-  type CanvasRect,
-} from "./canvas/geometry";
+import { isLargeImage, isPointNearAnnotation, type CanvasRect } from "./canvas/geometry";
 import type { CanvasContextMenu as CanvasContextMenuState, ImageLayout } from "./canvas/types";
 import type { InteractionMode } from "./canvas/types";
-import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
+import {
+  SHAPE_TYPE_LABELS,
+  isLabelCompatibleWithShape,
+  type AnnotationShape,
+  type AnnotationShapeType,
+  type LabelConfig,
+  type LabelTemplate,
+} from "../types/annotation";
 import type { ExportFormatId } from "../types/export";
 import type { ProjectConfig } from "../lib/importers";
 import type { ImageFile } from "../lib/tauri-api";
@@ -50,7 +54,9 @@ interface AppLayoutProps {
   contextAnnotation: AnnotationShape | null;
   contextMenu: CanvasContextMenuState | null;
   currentLabel: LabelConfig;
+  currentShapeType: AnnotationShapeType;
   customMappingText: string;
+  draftPolygonPoints: number[] | null;
   draftRect: CanvasRect | null;
   error: string;
   folderPath: string;
@@ -80,6 +86,7 @@ interface AppLayoutProps {
   selectedShapeId: string | null;
   selectedTemplateId: string;
   showSaveSuccess: boolean;
+  transientMessage: string;
   shortcuts: ShortcutMap;
   templates: LabelTemplate[];
   transformerRef: MutableRefObject<KonvaTransformer | null>;
@@ -103,7 +110,13 @@ interface AppLayoutProps {
   handleStageMouseMove: (event: KonvaEventObject<MouseEvent>) => void;
   handleStageMouseUp: () => void;
   handleStageWheel: (event: KonvaEventObject<WheelEvent>) => void;
+  handlePointDragEnd: (annotation: AnnotationShape, event: KonvaEventObject<DragEvent>) => void;
   handleTransformEnd: (annotation: AnnotationShape) => void;
+  handleVertexDragEnd: (
+    annotation: AnnotationShape,
+    vertexIndex: number,
+    event: KonvaEventObject<DragEvent>,
+  ) => void;
   importAnnotations: () => void;
   installUpdate: () => void;
   newTemplate: () => void;
@@ -119,6 +132,7 @@ interface AppLayoutProps {
   selectAdjacentUnannotatedImage: (delta: 1 | -1) => void;
   selectCurrentLabel: (labelId: string) => void;
   selectShape: (annotationId: string | null) => void;
+  selectShapeType: (shapeType: AnnotationShapeType) => void;
   selectTemplate: (templateId: string) => void;
   setAnnotationToDelete: (annotation: AnnotationShape | null) => void;
   setContextMenu: (contextMenu: CanvasContextMenuState | null) => void;
@@ -149,7 +163,9 @@ export function AppLayout({
   contextAnnotation,
   contextMenu,
   currentLabel,
+  currentShapeType,
   customMappingText,
+  draftPolygonPoints,
   draftRect,
   error,
   folderPath,
@@ -179,6 +195,7 @@ export function AppLayout({
   selectedShapeId,
   selectedTemplateId,
   showSaveSuccess,
+  transientMessage,
   shortcuts,
   templates,
   transformerRef,
@@ -202,7 +219,9 @@ export function AppLayout({
   handleStageMouseMove,
   handleStageMouseUp,
   handleStageWheel,
+  handlePointDragEnd,
   handleTransformEnd,
+  handleVertexDragEnd,
   importAnnotations,
   installUpdate,
   newTemplate,
@@ -218,6 +237,7 @@ export function AppLayout({
   selectAdjacentUnannotatedImage,
   selectCurrentLabel,
   selectShape,
+  selectShapeType,
   selectTemplate,
   setAnnotationToDelete,
   setContextMenu,
@@ -252,6 +272,10 @@ export function AppLayout({
     images
       .slice(selectedImageIndex + 1)
       .some((image) => (annotationsByImage[image.path] ?? []).length === 0);
+  const compatibleCurrentLabels = labels.filter((label) =>
+    isLabelCompatibleWithShape(label, currentShapeType),
+  );
+  const currentToolLabels = compatibleCurrentLabels.length > 0 ? compatibleCurrentLabels : labels;
   useEffect(() => {
     function openSearch(event: KeyboardEvent) {
       if (
@@ -296,14 +320,17 @@ export function AppLayout({
     canvasPointer !== null &&
     imageLayout !== null &&
     annotations.some((annotation) =>
-      isPointNearCanvasRect(canvasPointer, toCanvasRect(annotation.points, imageLayout), 8),
+      isPointNearAnnotation(canvasPointer, annotation, imageLayout, 8),
     );
   const isAnnotatingPointer =
     !isPanning &&
     isPointerInImage &&
     (interactionMode === "annotate" || (interactionMode === "default" && !isPointerOnAnnotation));
   const annotationGuideLines =
-    helpDisplaySettings.showAnnotationGuideLines && isAnnotatingPointer && canvasPointer && imageLayout
+    helpDisplaySettings.showAnnotationGuideLines &&
+    isAnnotatingPointer &&
+    canvasPointer &&
+    imageLayout
       ? {
           horizontal: [
             imageLayout.x,
@@ -476,6 +503,24 @@ export function AppLayout({
           />
 
           <section className="border-b border-slate-800 p-4">
+            <div className="mb-3 grid grid-cols-3 gap-2">
+              {(["rect", "polygon", "point"] as const).map((shapeType) => {
+                return (
+                  <button
+                    className={`rounded border px-2 py-1.5 text-xs font-medium ${
+                      currentShapeType === shapeType
+                        ? "border-sky-400 bg-sky-500 text-white"
+                        : "border-slate-700 text-slate-300 hover:bg-slate-800"
+                    }`}
+                    key={shapeType}
+                    type="button"
+                    onClick={() => selectShapeType(shapeType)}
+                  >
+                    {SHAPE_TYPE_LABELS[shapeType]}
+                  </button>
+                );
+              })}
+            </div>
             <label className="block text-sm text-slate-300">
               当前标签（新框使用）
               <select
@@ -483,7 +528,7 @@ export function AppLayout({
                 value={currentLabel.id}
                 onChange={(event) => selectCurrentLabel(event.target.value)}
               >
-                {labels.map((label) => (
+                {currentToolLabels.map((label) => (
                   <option key={label.id} value={label.id}>
                     {label.shortcut ? `${label.name} (${label.shortcut})` : label.name}
                   </option>
@@ -499,6 +544,9 @@ export function AppLayout({
               {currentLabel.shortcut && (
                 <span className="text-xs text-slate-500">快捷键 {currentLabel.shortcut}</span>
               )}
+              <span className="ml-auto text-xs text-slate-500">
+                {SHAPE_TYPE_LABELS[currentShapeType]}
+              </span>
             </div>
             <button
               className="mt-3 w-full rounded border border-red-500/60 px-3 py-2 text-sm font-medium text-red-200 hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -602,27 +650,53 @@ export function AppLayout({
                   x={imageLayout.x}
                   y={imageLayout.y}
                 />
-                {annotations.map((annotation) => (
-                  <AnnotationRect
-                    annotation={annotation}
-                    imageLayout={imageLayout}
-                    interactionMode={interactionMode}
-                    isHighlighted={annotation.id === highlightedShapeId}
-                    isSelected={annotation.id === selectedShapeId}
-                    isPanning={isPanning}
-                    key={annotation.id}
-                    label={labelById.get(annotation.labelId) ?? labels[0]}
-                    rectRef={selectedRectRef}
-                    showLabel={labelDisplaySettings[interactionMode]}
-                    onContextMenu={openContextMenu}
-                    onDragEnd={handleDragEnd}
-                    onPanStart={startPanning}
-                    onSelect={selectShape}
-                    onTransformEnd={handleTransformEnd}
-                  />
-                ))}
+                {annotations.map((annotation) => {
+                  const label = labelById.get(annotation.labelId) ?? labels[0];
+                  const commonProps = {
+                    annotation,
+                    imageLayout,
+                    interactionMode,
+                    isHighlighted: annotation.id === highlightedShapeId,
+                    isSelected: annotation.id === selectedShapeId,
+                    isPanning,
+                    key: annotation.id,
+                    label,
+                    showLabel: labelDisplaySettings[interactionMode],
+                    onContextMenu: openContextMenu,
+                    onPanStart: startPanning,
+                    onSelect: selectShape,
+                  };
+
+                  if (annotation.type === "polygon") {
+                    return (
+                      <AnnotationPolygon {...commonProps} onVertexDragEnd={handleVertexDragEnd} />
+                    );
+                  }
+
+                  if (annotation.type === "point") {
+                    return <AnnotationPoint {...commonProps} onPointDragEnd={handlePointDragEnd} />;
+                  }
+
+                  return (
+                    <AnnotationRect
+                      {...commonProps}
+                      rectRef={selectedRectRef}
+                      onDragEnd={handleDragEnd}
+                      onTransformEnd={handleTransformEnd}
+                    />
+                  );
+                })}
                 {draftRect && (
                   <Rect {...draftRect} dash={[6, 4]} stroke={currentLabel.color} strokeWidth={2} />
+                )}
+                {draftPolygonPoints && (
+                  <Line
+                    dash={[6, 4]}
+                    listening={false}
+                    points={draftPolygonPoints}
+                    stroke={currentLabel.color}
+                    strokeWidth={2}
+                  />
                 )}
                 {annotationGuideLines && (
                   <>
@@ -687,7 +761,8 @@ export function AppLayout({
                 <div>正在加载图片...</div>
               </div>
             ) : selectedImage ? (
-              imageLoadError || (loadedImage ? "画布区域尺寸异常，无法显示图片。" : "正在加载图片...")
+              imageLoadError ||
+              (loadedImage ? "画布区域尺寸异常，无法显示图片。" : "正在加载图片...")
             ) : (
               "选择文件夹后，在这里预览图片。"
             )}
@@ -710,6 +785,12 @@ export function AppLayout({
       {showSaveSuccess && (
         <div className="pointer-events-none fixed left-1/2 top-5 z-[70] -translate-x-1/2 rounded-full border border-emerald-400/40 bg-emerald-500/90 px-4 py-2 text-sm font-medium text-white shadow-2xl">
           保存完成
+        </div>
+      )}
+
+      {transientMessage && (
+        <div className="pointer-events-none fixed left-1/2 top-16 z-[70] -translate-x-1/2 rounded-full border border-amber-300/50 bg-amber-500/90 px-4 py-2 text-sm font-medium text-slate-950 shadow-2xl">
+          {transientMessage}
         </div>
       )}
 

@@ -1,4 +1,6 @@
 import type { ExportData } from "../../types/export";
+import type { AnnotationShape } from "../../types/annotation";
+import { annotationBbox } from "../../components/canvas/geometry";
 
 interface CocoImage {
   id: number;
@@ -14,6 +16,9 @@ interface CocoAnnotation {
   bbox: number[];
   area: number;
   iscrowd: 0;
+  segmentation?: number[][];
+  keypoints?: number[];
+  num_keypoints?: number;
 }
 
 interface CocoCategory {
@@ -40,14 +45,14 @@ export function exportCoco(data: ExportData): CocoExport {
     })),
     annotations: data.images.flatMap((image, imageIndex) =>
       image.annotations.map((annotation) => {
-        const [, , width, height] = annotation.points;
         return {
           id: annotationId++,
           image_id: imageIndex + 1,
           category_id: categoryIdByLabel.get(annotation.labelId) ?? 0,
-          bbox: annotation.points,
-          area: width * height,
+          bbox: annotationBbox(annotation),
+          area: annotationArea(annotation),
           iscrowd: 0,
+          ...annotationShapeFields(annotation),
         };
       }),
     ),
@@ -56,4 +61,37 @@ export function exportCoco(data: ExportData): CocoExport {
       name: label.name,
     })),
   };
+}
+
+function annotationArea(annotation: AnnotationShape): number {
+  if (annotation.type === "polygon") {
+    let area = 0;
+    for (
+      let index = 0, previous = annotation.points.length - 2;
+      index < annotation.points.length;
+      previous = index, index += 2
+    ) {
+      area +=
+        annotation.points[previous] * annotation.points[index + 1] -
+        annotation.points[index] * annotation.points[previous + 1];
+    }
+    return Math.abs(area / 2);
+  }
+
+  const [, , width, height] = annotationBbox(annotation);
+  return width * height;
+}
+
+function annotationShapeFields(
+  annotation: AnnotationShape,
+): Pick<CocoAnnotation, "segmentation" | "keypoints" | "num_keypoints"> {
+  if (annotation.type === "polygon") {
+    return { segmentation: [annotation.points] };
+  }
+
+  if (annotation.type === "point") {
+    return { keypoints: [annotation.points[0], annotation.points[1], 2], num_keypoints: 1 };
+  }
+
+  return {};
 }

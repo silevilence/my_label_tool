@@ -1,6 +1,11 @@
 import { DEFAULT_LABEL_COLORS } from "./defaults/labels";
 import type { TextFileEntry } from "./tauri-api";
-import type { AnnotationShape, LabelConfig } from "../types/annotation";
+import type {
+  AnnotationShape,
+  AnnotationShapeType,
+  LabelConfig,
+  LabelShapeType,
+} from "../types/annotation";
 import type { ExportFormatId } from "../types/export";
 
 export const PROJECT_CONFIG_NAME = "my-label-tool.project.json";
@@ -406,8 +411,9 @@ function parseLabels(value: unknown): LabelConfig[] {
         ? label.color
         : DEFAULT_LABEL_COLORS[index % DEFAULT_LABEL_COLORS.length];
     const shortcut = typeof label.shortcut === "string" ? label.shortcut : undefined;
+    const shapeType = parseLabelShapeType(label.shapeType, "any");
 
-    return { id, name, color, shortcut, shapeType: "rect" };
+    return { id, name, color, shortcut, shapeType };
   });
 }
 
@@ -422,9 +428,11 @@ function parseAnnotations(value: unknown, field: string): AnnotationShape[] {
       throw new Error(`${field}[${index}] 缺少 labelId`);
     }
 
+    const type = parseAnnotationShapeType(annotation.type, "rect");
     const points = numberArray(annotation.points, `${field}[${index}].points`);
-    if (points.length < 4) {
-      throw new Error(`${field}[${index}].points 至少需要 4 个数字`);
+    const minPointCount = type === "rect" ? 4 : type === "polygon" ? 6 : 2;
+    if (points.length < minPointCount) {
+      throw new Error(`${field}[${index}].points 至少需要 ${minPointCount} 个数字`);
     }
 
     return {
@@ -432,9 +440,9 @@ function parseAnnotations(value: unknown, field: string): AnnotationShape[] {
         typeof annotation.id === "string" && annotation.id
           ? annotation.id
           : `${field}-${index + 1}`,
-      type: "rect",
+      type,
       labelId,
-      points: points.slice(0, 4),
+      points: points.slice(0, type === "rect" ? 4 : undefined),
       attributes: parseAttributes(annotation.attributes),
       frameIndex: typeof annotation.frameIndex === "number" ? annotation.frameIndex : 0,
     };
@@ -479,6 +487,19 @@ function makeLabel(id: string, name: string, index: number): LabelConfig {
     color: DEFAULT_LABEL_COLORS[index % DEFAULT_LABEL_COLORS.length],
     shapeType: "rect",
   };
+}
+
+function parseAnnotationShapeType(
+  value: unknown,
+  fallback: AnnotationShapeType,
+): AnnotationShapeType {
+  return value === "polygon" || value === "point" || value === "rect" ? value : fallback;
+}
+
+function parseLabelShapeType(value: unknown, fallback: LabelShapeType): LabelShapeType {
+  return value === "any" || value === "polygon" || value === "point" || value === "rect"
+    ? value
+    : fallback;
 }
 
 function parseOptionalYoloLabels(

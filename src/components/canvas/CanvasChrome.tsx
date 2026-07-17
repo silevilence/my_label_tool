@@ -1,10 +1,14 @@
 import type { MutableRefObject, ReactNode } from "react";
-import { Label as KonvaLabel, Rect, Tag, Text } from "react-konva";
+import { Circle, Label as KonvaLabel, Line, Rect, Tag, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
-import type { AnnotationShape, LabelConfig } from "../../types/annotation";
+import {
+  isLabelCompatibleWithShape,
+  type AnnotationShape,
+  type LabelConfig,
+} from "../../types/annotation";
 import type { ShortcutMap } from "../../lib/defaults/shortcuts";
-import { toCanvasRect } from "./geometry";
+import { toCanvasPoints, toCanvasRect } from "./geometry";
 import { INTERACTION_MODE_HELP, type ImageLayout, type InteractionMode } from "./types";
 
 interface DeleteAnnotationDialogProps {
@@ -19,16 +23,14 @@ interface ModeHelpOverlayProps {
   shortcuts: ShortcutMap;
 }
 
-export function ModeHelpOverlay({
-  corner,
-  mode,
-  shortcuts,
-}: ModeHelpOverlayProps) {
+export function ModeHelpOverlay({ corner, mode, shortcuts }: ModeHelpOverlayProps) {
   const help = INTERACTION_MODE_HELP[mode];
   const shortcutTips = SHORTCUT_TIPS[mode](shortcuts);
 
   return (
-    <div className={`canvas-floating-panel pointer-events-none absolute top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}>
+    <div
+      className={`canvas-floating-panel pointer-events-none absolute top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}
+    >
       <div className="font-medium text-sky-200">{help.title}</div>
       {help.tips.map((tip) => (
         <div key={tip}>{tip}</div>
@@ -61,7 +63,9 @@ export function LabelShortcutOverlay({
   }
 
   return (
-    <div className={`canvas-floating-panel pointer-events-none absolute top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}>
+    <div
+      className={`canvas-floating-panel pointer-events-none absolute top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}
+    >
       <div className="font-medium text-sky-200">标签快捷键</div>
       {labelShortcuts.map((label) => (
         <div
@@ -184,6 +188,10 @@ export function CanvasContextMenu({
   onZoomOut,
 }: CanvasContextMenuProps) {
   const openSubmenusUp = y > window.innerHeight / 2;
+  const matchingLabels = annotation
+    ? labels.filter((label) => isLabelCompatibleWithShape(label, annotation.type))
+    : labels;
+  const compatibleLabels = matchingLabels.length > 0 ? matchingLabels : labels;
 
   return (
     <div
@@ -226,7 +234,7 @@ export function CanvasContextMenu({
         <ContextMenuGroup title="标签操作">
           <ContextSubMenu label="修改" openUp={openSubmenusUp}>
             <div className="max-h-72 overflow-y-auto py-1">
-              {labels.map((label) => (
+              {compatibleLabels.map((label) => (
                 <button
                   className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800 ${
                     label.id === annotation.labelId ? "text-sky-300" : ""
@@ -407,15 +415,195 @@ export function AnnotationRect({
         onTransformEnd={() => onTransformEnd(annotation)}
       />
       {showLabel && (
-        <KonvaLabel
-          listening={false}
-          x={rect.x}
-          y={Math.max(imageLayout.y, rect.y - 22)}
-        >
+        <KonvaLabel listening={false} x={rect.x} y={Math.max(imageLayout.y, rect.y - 22)}>
           <Tag fill={`${label.color}dd`} cornerRadius={4} />
           <Text fill="#ffffff" fontSize={12} padding={4} text={label.name} />
         </KonvaLabel>
       )}
     </>
   );
+}
+
+interface AnnotationPolygonProps {
+  annotation: AnnotationShape;
+  imageLayout: ImageLayout;
+  interactionMode: InteractionMode;
+  isHighlighted: boolean;
+  isPanning: boolean;
+  isSelected: boolean;
+  label: LabelConfig;
+  showLabel: boolean;
+  onContextMenu: (event: KonvaEventObject<MouseEvent>, annotationId: string) => void;
+  onPanStart: (event: KonvaEventObject<MouseEvent>) => void;
+  onSelect: (annotationId: string) => void;
+  onVertexDragEnd: (
+    annotation: AnnotationShape,
+    vertexIndex: number,
+    event: KonvaEventObject<DragEvent>,
+  ) => void;
+}
+
+export function AnnotationPolygon({
+  annotation,
+  imageLayout,
+  interactionMode,
+  isHighlighted,
+  isPanning,
+  isSelected,
+  label,
+  showLabel,
+  onContextMenu,
+  onPanStart,
+  onSelect,
+  onVertexDragEnd,
+}: AnnotationPolygonProps) {
+  const points = toCanvasPoints(annotation.points, imageLayout);
+  const labelX = Math.min(...points.filter((_, index) => index % 2 === 0));
+  const labelY = Math.min(...points.filter((_, index) => index % 2 === 1));
+
+  return (
+    <>
+      <Line
+        closed
+        fill={`${label.color}22`}
+        hitStrokeWidth={12}
+        perfectDrawEnabled={false}
+        points={points}
+        shadowBlur={isHighlighted ? 10 : 0}
+        shadowColor="#facc15"
+        stroke={isHighlighted ? "#facc15" : label.color}
+        strokeWidth={isHighlighted || isSelected ? 3 : 2}
+        onClick={(event) => {
+          if (interactionMode !== "default" || event.evt.ctrlKey || event.evt.shiftKey) {
+            return;
+          }
+          onSelect(annotation.id);
+        }}
+        onContextMenu={(event) => {
+          event.cancelBubble = true;
+          onContextMenu(event, annotation.id);
+        }}
+        onMouseDown={(event) =>
+          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
+        }
+      />
+      {isSelected &&
+        points
+          .filter((_, index) => index % 2 === 0)
+          .map((x, index) => (
+            <Circle
+              draggable={!isPanning && interactionMode === "default"}
+              fill="#ffffff"
+              key={`${annotation.id}-${index}`}
+              radius={5}
+              stroke={label.color}
+              strokeWidth={2}
+              x={x}
+              y={points[index * 2 + 1]}
+              onDragEnd={(event) => onVertexDragEnd(annotation, index, event)}
+            />
+          ))}
+      {showLabel && (
+        <KonvaLabel listening={false} x={labelX} y={Math.max(imageLayout.y, labelY - 22)}>
+          <Tag fill={`${label.color}dd`} cornerRadius={4} />
+          <Text fill="#ffffff" fontSize={12} padding={4} text={label.name} />
+        </KonvaLabel>
+      )}
+    </>
+  );
+}
+
+interface AnnotationPointProps {
+  annotation: AnnotationShape;
+  imageLayout: ImageLayout;
+  interactionMode: InteractionMode;
+  isHighlighted: boolean;
+  isPanning: boolean;
+  isSelected: boolean;
+  label: LabelConfig;
+  showLabel: boolean;
+  onContextMenu: (event: KonvaEventObject<MouseEvent>, annotationId: string) => void;
+  onPanStart: (event: KonvaEventObject<MouseEvent>) => void;
+  onPointDragEnd: (annotation: AnnotationShape, event: KonvaEventObject<DragEvent>) => void;
+  onSelect: (annotationId: string) => void;
+}
+
+export function AnnotationPoint({
+  annotation,
+  imageLayout,
+  interactionMode,
+  isHighlighted,
+  isPanning,
+  isSelected,
+  label,
+  showLabel,
+  onContextMenu,
+  onPanStart,
+  onPointDragEnd,
+  onSelect,
+}: AnnotationPointProps) {
+  const [x, y] = toCanvasPoints(annotation.points, imageLayout);
+
+  return (
+    <>
+      <Circle
+        draggable={!isPanning && interactionMode === "default"}
+        fill={`${label.color}dd`}
+        hitStrokeWidth={12}
+        radius={isSelected ? 7 : 5}
+        shadowBlur={isHighlighted ? 10 : 0}
+        shadowColor="#facc15"
+        stroke={isHighlighted ? "#facc15" : "#ffffff"}
+        strokeWidth={isHighlighted || isSelected ? 3 : 2}
+        x={x}
+        y={y}
+        onClick={(event) => {
+          if (interactionMode !== "default" || event.evt.ctrlKey || event.evt.shiftKey) {
+            return;
+          }
+          onSelect(annotation.id);
+        }}
+        onContextMenu={(event) => {
+          event.cancelBubble = true;
+          onContextMenu(event, annotation.id);
+        }}
+        onDragEnd={(event) => onPointDragEnd(annotation, event)}
+        onMouseDown={(event) =>
+          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
+        }
+      />
+      {showLabel && (
+        <KonvaLabel listening={false} x={x + 8} y={Math.max(imageLayout.y, y - 22)}>
+          <Tag fill={`${label.color}dd`} cornerRadius={4} />
+          <Text fill="#ffffff" fontSize={12} padding={4} text={label.name} />
+        </KonvaLabel>
+      )}
+    </>
+  );
+}
+
+function handleShapeMouseDown(
+  event: KonvaEventObject<MouseEvent>,
+  interactionMode: InteractionMode,
+  annotationId: string,
+  onSelect: (annotationId: string) => void,
+  onPanStart: (event: KonvaEventObject<MouseEvent>) => void,
+) {
+  if (event.evt.button === 1) {
+    event.evt.preventDefault();
+    event.cancelBubble = true;
+    return;
+  }
+  if (event.evt.button === 2 && event.evt.ctrlKey) {
+    event.cancelBubble = true;
+    onPanStart(event);
+    return;
+  }
+  if (event.evt.button !== 0 || event.evt.ctrlKey || event.evt.shiftKey) {
+    return;
+  }
+  if (interactionMode === "default") {
+    event.cancelBubble = true;
+    onSelect(annotationId);
+  }
 }

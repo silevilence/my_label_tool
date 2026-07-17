@@ -49,8 +49,9 @@ interface UseProjectActionsParams {
   labels: LabelConfig[];
   selectedExportFormatId: ExportFormatId;
   applyProjectTemplate: (template: ProjectConfig["template"], labels: LabelConfig[]) => void;
+  clearProjectTemplate: () => void;
   replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
-  setActiveProjectConfig: (config: ProjectConfig) => void;
+  setActiveProjectConfig: (config: ProjectConfig | null) => void;
   setActiveProjectConfigPath: (path: string) => void;
   setError: (message: string) => void;
   setProjectTemplateId: (templateId: string) => void;
@@ -67,6 +68,7 @@ export function useProjectActions({
   labels,
   selectedExportFormatId,
   applyProjectTemplate,
+  clearProjectTemplate,
   replaceAnnotations,
   setActiveProjectConfig,
   setActiveProjectConfigPath,
@@ -122,6 +124,7 @@ export function useProjectActions({
     }
 
     if (selectedExportFormatId === "yolo") {
+      ensureYoloCompatible(exportData);
       const outputDir = await selectExportFolder();
       if (!outputDir) {
         return null;
@@ -169,6 +172,7 @@ export function useProjectActions({
     } else if (config.format === "voc") {
       await exportTextFiles(config.annotationPath, exportVoc(exportData));
     } else {
+      ensureYoloCompatible(exportData);
       await exportTextFiles(config.annotationPath, exportYolo(exportData));
     }
   }
@@ -264,10 +268,18 @@ export function useProjectActions({
     const configs = await listTextFiles(imageFolder, "json");
     const config = configs.find((file) => file.name.toLowerCase() === PROJECT_CONFIG_NAME);
     if (!config) {
+      clearProjectConfig();
       return;
     }
 
     await loadProjectConfigImport(config.path, currentImages, false);
+  }
+
+  function clearProjectConfig() {
+    setActiveProjectConfig(null);
+    setActiveProjectConfigPath("");
+    setProjectTemplateId("");
+    clearProjectTemplate();
   }
 
   async function loadProjectConfigImport(
@@ -374,6 +386,19 @@ export function useProjectActions({
     );
 
     return { labels, images: exportImages };
+  }
+
+  function ensureYoloCompatible(data: ExportData) {
+    const unsupportedCount = data.images.reduce(
+      (total, image) =>
+        total + image.annotations.filter((annotation) => annotation.type !== "rect").length,
+      0,
+    );
+    if (unsupportedCount > 0) {
+      throw new Error(
+        `YOLO 只支持矩形标注，当前有 ${unsupportedCount} 个非矩形标注。请改用 JSON/COCO/Custom，或先删除这些标注。`,
+      );
+    }
   }
 
   function withProjectTemplate(config: ProjectConfig): ProjectConfig {

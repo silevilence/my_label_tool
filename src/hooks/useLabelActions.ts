@@ -8,6 +8,7 @@ import {
   hasDanglingLabels,
 } from "../lib/label-template-sync";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
+import { isLabelCompatibleWithShape } from "../types/annotation";
 import type { ProjectConfig } from "../lib/importers";
 
 interface UseLabelActionsParams {
@@ -74,8 +75,20 @@ export function useLabelActions({
   }
 
   function selectCurrentLabel(labelId: string) {
+    const label = labels.find((item) => item.id === labelId);
     setCurrentLabelId(labelId);
-    if (selectedShapeId) {
+    const selectedAnnotation = (annotationsByImage[selectedPath] ?? []).find(
+      (annotation) => annotation.id === selectedShapeId,
+    );
+    const hasCompatibleLabels = selectedAnnotation
+      ? labels.some((item) => isLabelCompatibleWithShape(item, selectedAnnotation.type))
+      : false;
+    if (
+      selectedShapeId &&
+      selectedAnnotation &&
+      label &&
+      (!hasCompatibleLabels || isLabelCompatibleWithShape(label, selectedAnnotation.type))
+    ) {
       updateAnnotation(selectedPath, selectedShapeId, { labelId });
     }
   }
@@ -213,6 +226,18 @@ export function useLabelActions({
     setIsLabelDirty(false);
   }
 
+  function clearProjectTemplate() {
+    if (!projectTemplateId) {
+      return;
+    }
+
+    setTemplates((items) => items.filter((item) => item.id !== projectTemplateId));
+    if (selectedTemplateId === projectTemplateId) {
+      setSelectedTemplateId(DEFAULT_LABEL_TEMPLATES[0].id);
+      setIsLabelDirty(false);
+    }
+  }
+
   function applySavedLabels(nextLabels: LabelConfig[]) {
     replaceMissingAnnotationLabels(nextLabels);
     setLabels(nextLabels);
@@ -286,6 +311,7 @@ export function useLabelActions({
 
   return {
     applyProjectTemplate,
+    clearProjectTemplate,
     cancelLabelChanges,
     deleteTemplate,
     newTemplate,

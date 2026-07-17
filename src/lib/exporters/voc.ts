@@ -13,21 +13,23 @@ export function exportVoc(data: ExportData): TextExportFile[] {
       `    <height>${image.height}</height>`,
       "    <depth>3</depth>",
       "  </size>",
-      ...image.annotations.flatMap((annotation) => {
-        const [x, y, width, height] = annotation.points;
-        const label = labelById.get(annotation.labelId);
-        return [
-          "  <object>",
-          `    <name>${escapeXml(label?.name ?? annotation.labelId)}</name>`,
-          "    <bndbox>",
-          `      <xmin>${Math.round(x)}</xmin>`,
-          `      <ymin>${Math.round(y)}</ymin>`,
-          `      <xmax>${Math.round(x + width)}</xmax>`,
-          `      <ymax>${Math.round(y + height)}</ymax>`,
-          "    </bndbox>",
-          "  </object>",
-        ];
-      }),
+      ...image.annotations
+        .filter((annotation) => annotation.type === "rect")
+        .flatMap((annotation) => {
+          const [x, y, width, height] = annotation.points;
+          const label = labelById.get(annotation.labelId);
+          return [
+            "  <object>",
+            `    <name>${escapeXml(label?.name ?? annotation.labelId)}</name>`,
+            "    <bndbox>",
+            `      <xmin>${Math.round(x)}</xmin>`,
+            `      <ymin>${Math.round(y)}</ymin>`,
+            `      <xmax>${Math.round(x + width)}</xmax>`,
+            `      <ymax>${Math.round(y + height)}</ymax>`,
+            "    </bndbox>",
+            "  </object>",
+          ];
+        }),
       "</annotation>",
       "",
     ].join("\n"),

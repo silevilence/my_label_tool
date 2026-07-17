@@ -12,52 +12,46 @@ import type {
   PanState,
 } from "./components/canvas/types";
 import {
-  clamp,
+  annotationBounds,
   clampContextMenuPosition,
+  clampPoint,
   clampRect,
   fitImageLayout,
   getImagePoint,
-  getFitScale,
   getInteractionMode,
-  isPointNearCanvasRect,
+  isPointNearAnnotation,
   normalizeRectPoints,
   toCanvasRect,
 } from "./components/canvas/geometry";
+import { useAppUpdate } from "./hooks/useAppUpdate";
+import { useExportFormatWarning } from "./hooks/useExportFormatWarning";
+import { useImageNavigation } from "./hooks/useImageNavigation";
 import { useLabelActions } from "./hooks/useLabelActions";
 import { useLabelDisplaySettings } from "./hooks/useLabelDisplaySettings";
 import { useImageLoader } from "./hooks/useImageLoader";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useOpenFolder } from "./hooks/useOpenFolder";
+import { usePolygonDraft } from "./hooks/usePolygonDraft";
 import { useProjectActions } from "./hooks/useProjectActions";
 import { useSaveFeedback } from "./hooks/useSaveFeedback";
+import { useShortcutsConfig } from "./hooks/useShortcutsConfig";
+import { useShapeToolSelection } from "./hooks/useShapeToolSelection";
+import { useTransientMessage } from "./hooks/useTransientMessage";
+import { useZoomControls } from "./hooks/useZoomControls";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
-import {
-  DEFAULT_SHORTCUTS,
-  type ShortcutActionId,
-  type ShortcutMap,
-} from "./lib/defaults/shortcuts";
-import { mergeShortcuts, newAnnotationId } from "./lib/app-utils";
-import {
-  checkAppUpdate,
-  installAppUpdate,
-  type AppUpdateProgress,
-  type AppUpdateStatus,
-} from "./lib/updater";
+import { isEditableTarget, newAnnotationId } from "./lib/app-utils";
 import {
   confirmAction,
-  listImageFiles,
   loadLabelConfigs,
   loadLabelTemplates,
-  loadShortcuts,
-  saveShortcuts,
-  selectImageFolder,
   type ImageFile,
 } from "./lib/tauri-api";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "./types/annotation";
+import { isLabelCompatibleWithShape } from "./types/annotation";
 import type { ExportFormatId } from "./types/export";
 import type { ProjectConfig } from "./lib/importers";
-import type { Update } from "@tauri-apps/plugin-updater";
 import "./App.css";
 
 function App() {
@@ -77,6 +71,7 @@ function App() {
   const [annotationToDelete, setAnnotationToDelete] = useState<AnnotationShape | null>(null);
   const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("default");
+  const [currentShapeType, setCurrentShapeType] = useState<AnnotationShape["type"]>("rect");
   const [highlightedShapeId, setHighlightedShapeId] = useState<string | null>(null);
   const [labels, setLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
   const [savedLabels, setSavedLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
@@ -91,12 +86,7 @@ function App() {
   const [customMappingText, setCustomMappingText] = useState(
     JSON.stringify(DEFAULT_CUSTOM_EXPORT_MAPPING, null, 2),
   );
-  const [shortcuts, setShortcuts] = useState<ShortcutMap>(DEFAULT_SHORTCUTS);
   const [isShortcutSettingsOpen, setIsShortcutSettingsOpen] = useState(false);
-  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
-  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>("idle");
-  const [updateMessage, setUpdateMessage] = useState("");
-  const [updateProgress, setUpdateProgress] = useState<AppUpdateProgress | null>(null);
   const [error, setError] = useState("");
 
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
@@ -114,6 +104,14 @@ function App() {
   const canRedo = useAnnotationStore((state) => state.canRedo);
   const annotations = annotationsByImage[selectedPath] ?? [];
   const selectedShape = annotations.find((annotation) => annotation.id === selectedShapeId) ?? null;
+  const {
+    clearPolygonDraft,
+    draftPolygonPoints,
+    polygonPoints,
+    setPolygonCursorPoint,
+    setPolygonPoints,
+    undoPolygonDraftPoint,
+  } = usePolygonDraft(imageView);
 
   const labelById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
   const labelShortcuts = useMemo(
@@ -134,6 +132,27 @@ function App() {
     images,
     selectedPath,
   );
+  const { selectAdjacentImage, selectAdjacentUnannotatedImage } = useImageNavigation({
+    annotationsByImage,
+    images,
+    selectedPath,
+    setSelectedPath,
+  });
+  const { fitImageHeight, fitImageWidth, resetZoom, setImageScale, zoomAt, zoomFromKeyboard } =
+    useZoomControls({
+      canvasSize,
+      loadedImage,
+      setImageView,
+    });
+  const {
+    checkForUpdates,
+    installUpdate,
+    setUpdateMessage,
+    updateMessage,
+    updateProgress,
+    updateStatus,
+  } = useAppUpdate(setError);
+  const { shortcuts, updateShortcut } = useShortcutsConfig(setError);
   const {
     helpDisplaySettings,
     labelDisplaySettings,
@@ -145,6 +164,7 @@ function App() {
 
   const {
     applyProjectTemplate,
+    clearProjectTemplate,
     cancelLabelChanges,
     deleteTemplate,
     newTemplate,
@@ -181,6 +201,11 @@ function App() {
     updateAnnotation,
   });
 
+  const { message: transientMessage, showMessage } = useTransientMessage();
+  const showErrorMessage = (message: string) => {
+    setError("");
+    showMessage(message);
+  };
   const {
     createProjectFromExternalYolo,
     exportSelectedFormat,
@@ -197,14 +222,35 @@ function App() {
     labels,
     selectedExportFormatId,
     applyProjectTemplate,
+    clearProjectTemplate,
     replaceAnnotations,
     setActiveProjectConfig,
     setActiveProjectConfigPath,
-    setError,
+    setError: showErrorMessage,
     setProjectTemplateId,
     setSelectedExportFormatId,
   });
   const { isSaving, saveWithFeedback, showSaveSuccess } = useSaveFeedback(saveProjectExport);
+  const changeExportFormat = useExportFormatWarning({
+    annotationsByImage,
+    setSelectedExportFormatId,
+    showMessage,
+  });
+  const { changeCurrentLabel, selectShapeType } = useShapeToolSelection({
+    currentLabelId,
+    labelById,
+    labels,
+    selectCurrentLabel,
+    setCurrentShapeType,
+    showLabelSwitchHint,
+  });
+  const openFolder = useOpenFolder({
+    maybeLoadProjectConfig,
+    setError,
+    setFolderPath,
+    setImages,
+    setSelectedPath,
+  });
 
   useEffect(() => {
     const host = canvasHostRef.current;
@@ -259,36 +305,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void checkForUpdates(true);
-    }, 1500);
-
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    loadShortcuts()
-      .then((savedShortcuts) => {
-        if (!cancelled) {
-          setShortcuts(mergeShortcuts(savedShortcuts));
-        }
-      })
-      .catch((caughtError: unknown) => {
-        if (!cancelled) {
-          setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!labelById.has(currentLabelId)) {
+    const label = labelById.get(currentLabelId);
+    if (!label) {
       setCurrentLabelId(labels[0].id);
+      if (labels[0].shapeType !== "any") {
+        setCurrentShapeType(labels[0].shapeType);
+      }
     }
   }, [currentLabelId, labelById, labels]);
 
@@ -304,8 +326,9 @@ function App() {
   useEffect(() => {
     selectShape(null);
     setDrawingRect(null);
+    clearPolygonDraft();
     setHighlightedShapeId(null);
-  }, [selectShape, selectedPath]);
+  }, [clearPolygonDraft, selectShape, selectedPath]);
 
   useEffect(() => {
     function updateMode(event: KeyboardEvent) {
@@ -328,6 +351,7 @@ function App() {
 
   useEffect(() => {
     setDrawingRect(null);
+    setPolygonCursorPoint(null);
     if (interactionMode !== "select") {
       setHighlightedShapeId(null);
     }
@@ -352,9 +376,28 @@ function App() {
       return;
     }
 
-    transformer.nodes(selectedShape && selectedRectRef.current ? [selectedRectRef.current] : []);
+    transformer.nodes(
+      selectedShape?.type === "rect" && selectedRectRef.current ? [selectedRectRef.current] : [],
+    );
     transformer.getLayer()?.batchDraw();
   }, [selectedShape]);
+
+  useEffect(() => {
+    function finishPolygonFromKeyboard(event: KeyboardEvent) {
+      if (isEditableTarget(event.target) || currentShapeType !== "polygon") {
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        completePolygon();
+      } else if (event.key === "Escape") {
+        clearPolygonDraft();
+      }
+    }
+
+    window.addEventListener("keydown", finishPolygonFromKeyboard);
+    return () => window.removeEventListener("keydown", finishPolygonFromKeyboard);
+  }, [clearPolygonDraft, currentShapeType, polygonPoints, selectedPath, currentLabel]);
 
   useKeyboardShortcuts({
     labels,
@@ -366,8 +409,11 @@ function App() {
     redo,
     save: () => void saveWithFeedback(),
     selectAdjacentImage,
+    selectShapeType,
+    undoPolygonPoint,
     undo,
     zoomFromKeyboard,
+    onShortcutConflict: showMessage,
   });
 
   useEffect(() => {
@@ -418,199 +464,6 @@ function App() {
 
   const imageLayout = imageView;
 
-  async function openFolder() {
-    setError("");
-
-    try {
-      const path = await selectImageFolder();
-      if (!path) {
-        return;
-      }
-
-      const nextImages = await listImageFiles(path);
-      setFolderPath(path);
-      setImages(nextImages);
-      setSelectedPath(nextImages[0]?.path ?? "");
-      await maybeLoadProjectConfig(path, nextImages);
-    } catch (caughtError: unknown) {
-      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
-    }
-  }
-
-  async function checkForUpdates(silent = false) {
-    if (updateStatus === "checking" || updateStatus === "downloading") {
-      return;
-    }
-
-    setUpdateStatus("checking");
-    setUpdateProgress(null);
-    if (!silent) {
-      setUpdateMessage("正在检查更新...");
-    }
-
-    try {
-      const update = await checkAppUpdate();
-      setPendingUpdate(update);
-
-      if (!update) {
-        setUpdateStatus(silent ? "idle" : "not-available");
-        setUpdateMessage(silent ? "" : "已是最新版本。");
-        return;
-      }
-
-      setUpdateStatus("available");
-      setUpdateMessage(
-        `发现新版本 ${update.version}，当前版本 ${update.currentVersion}。${summarizeUpdateBody(update.body)}`,
-      );
-    } catch (caughtError: unknown) {
-      setPendingUpdate(null);
-      setUpdateStatus(silent ? "idle" : "error");
-      setUpdateMessage(
-        silent
-          ? ""
-          : `检查更新失败：${caughtError instanceof Error ? caughtError.message : String(caughtError)}`,
-      );
-    }
-  }
-
-  async function installUpdate() {
-    if (!pendingUpdate || updateStatus === "downloading") {
-      return;
-    }
-
-    setUpdateStatus("downloading");
-    setUpdateMessage(`正在下载并安装 ${pendingUpdate.version}...`);
-
-    try {
-      await installAppUpdate(pendingUpdate, setUpdateProgress);
-      setUpdateStatus("installed");
-      setUpdateMessage("更新已安装，正在重启...");
-    } catch (caughtError: unknown) {
-      setUpdateStatus("error");
-      setUpdateMessage(
-        `安装更新失败：${caughtError instanceof Error ? caughtError.message : String(caughtError)}`,
-      );
-    }
-  }
-
-  function selectAdjacentImage(delta: number) {
-    if (images.length === 0) {
-      return;
-    }
-
-    const index = Math.max(
-      0,
-      images.findIndex((image) => image.path === selectedPath),
-    );
-    const nextIndex = Math.min(images.length - 1, Math.max(0, index + delta));
-    if (nextIndex !== index) {
-      setSelectedPath(images[nextIndex].path);
-    }
-  }
-
-  function selectAdjacentUnannotatedImage(delta: 1 | -1) {
-    const index = images.findIndex((image) => image.path === selectedPath);
-    if (index < 0) {
-      return;
-    }
-
-    const nextIndex = findAdjacentUnannotatedIndex(index, delta);
-    if (nextIndex >= 0) {
-      setSelectedPath(images[nextIndex].path);
-    }
-  }
-
-  function findAdjacentUnannotatedIndex(index: number, delta: 1 | -1) {
-    for (
-      let nextIndex = index + delta;
-      nextIndex >= 0 && nextIndex < images.length;
-      nextIndex += delta
-    ) {
-      if ((annotationsByImage[images[nextIndex].path] ?? []).length === 0) {
-        return nextIndex;
-      }
-    }
-
-    return -1;
-  }
-
-  function zoomFromKeyboard(delta: 1 | -1) {
-    zoomAt({ x: canvasSize.width / 2, y: canvasSize.height / 2 }, delta > 0 ? 1.12 : 1 / 1.12);
-  }
-
-  function setImageScale(scale: number) {
-    if (!loadedImage) {
-      return;
-    }
-
-    const width = loadedImage.naturalWidth * scale;
-    const height = loadedImage.naturalHeight * scale;
-    setImageView({
-      scale,
-      width,
-      height,
-      x: (canvasSize.width - width) / 2,
-      y: (canvasSize.height - height) / 2,
-    });
-  }
-
-  function fitImageWidth() {
-    if (loadedImage) {
-      setImageScale(canvasSize.width / loadedImage.naturalWidth);
-    }
-  }
-
-  function fitImageHeight() {
-    if (loadedImage) {
-      setImageScale(canvasSize.height / loadedImage.naturalHeight);
-    }
-  }
-
-  function resetZoom() {
-    if (loadedImage) {
-      setImageView(fitImageLayout(loadedImage, canvasSize));
-    }
-  }
-
-  function zoomAt(point: { x: number; y: number }, factor: number) {
-    if (!loadedImage) {
-      return;
-    }
-
-    setImageView((layout) => {
-      if (!layout) {
-        return layout;
-      }
-
-      const fitScale = getFitScale(loadedImage, canvasSize);
-      const nextScale = clamp(layout.scale * factor, fitScale * 0.25, fitScale * 8);
-      if (nextScale === layout.scale) {
-        return layout;
-      }
-
-      const imageX = (point.x - layout.x) / layout.scale;
-      const imageY = (point.y - layout.y) / layout.scale;
-      return {
-        scale: nextScale,
-        width: loadedImage.naturalWidth * nextScale,
-        height: loadedImage.naturalHeight * nextScale,
-        x: point.x - imageX * nextScale,
-        y: point.y - imageY * nextScale,
-      };
-    });
-  }
-
-  function updateShortcut(actionId: ShortcutActionId, shortcut: string) {
-    const nextShortcuts = { ...shortcuts, [actionId]: shortcut };
-    setShortcuts(nextShortcuts);
-    saveShortcuts(nextShortcuts).catch(reportError);
-  }
-
-  function changeCurrentLabel(labelId: string) {
-    selectCurrentLabel(labelId);
-    showLabelSwitchHint(labelId);
-  }
-
   function openContextMenu(event: KonvaEventObject<MouseEvent>, annotationId?: string) {
     event.evt.preventDefault();
     if (event.evt.ctrlKey || suppressContextMenuRef.current) {
@@ -633,6 +486,19 @@ function App() {
   }
 
   function changeAnnotationLabel(annotationId: string, labelId: string) {
+    const annotation = annotations.find((item) => item.id === annotationId);
+    const label = labelById.get(labelId);
+    const hasCompatibleLabels = labels.some((item) =>
+      isLabelCompatibleWithShape(item, annotation?.type ?? "rect"),
+    );
+    if (
+      !annotation ||
+      !label ||
+      (hasCompatibleLabels && !isLabelCompatibleWithShape(label, annotation.type))
+    ) {
+      return;
+    }
+
     updateAnnotation(selectedPath, annotationId, { labelId });
     setContextMenu(null);
   }
@@ -641,6 +507,7 @@ function App() {
     if (selectedPath && selectedShapeId) {
       deleteAnnotation(selectedPath, selectedShapeId);
       setDrawingRect(null);
+      clearPolygonDraft();
     }
   }
 
@@ -664,6 +531,7 @@ function App() {
     ) {
       clearImageAnnotations(selectedPath);
       setDrawingRect(null);
+      clearPolygonDraft();
       setContextMenu(null);
     }
   }
@@ -679,15 +547,12 @@ function App() {
     }
 
     const selected = annotations.find((annotation) => annotation.id === selectedShapeId);
-    if (
-      selected &&
-      isPointNearCanvasRect(pointer, toCanvasRect(selected.points, imageLayout), 16)
-    ) {
+    if (selected && isPointNearAnnotation(pointer, selected, imageLayout, 16)) {
       return selected.id;
     }
 
     return annotations.find((annotation) =>
-      isPointNearCanvasRect(pointer, toCanvasRect(annotation.points, imageLayout), 8),
+      isPointNearAnnotation(pointer, annotation, imageLayout, 8),
     )?.id;
   }
 
@@ -701,15 +566,14 @@ function App() {
 
     return annotations
       .map((annotation, index) => {
-        const [, , width, height] = annotation.points;
+        const bounds = annotationBounds(annotation);
         return {
           annotation,
-          area: width * height,
+          area: bounds.width * bounds.height,
           index,
-          rect: toCanvasRect(annotation.points, imageLayout),
         };
       })
-      .filter((item) => isPointNearCanvasRect(pointer, item.rect, tolerance))
+      .filter((item) => isPointNearAnnotation(pointer, item.annotation, imageLayout, tolerance))
       .sort((a, b) => a.area - b.area || b.index - a.index)
       .map((item) => item.annotation.id);
   }
@@ -762,6 +626,7 @@ function App() {
     if (event.evt.button === 1) {
       event.evt.preventDefault();
       setDrawingRect(null);
+      setPolygonCursorPoint(null);
       return;
     }
 
@@ -805,7 +670,39 @@ function App() {
     }
 
     selectShape(null);
+    setDrawingRect(null);
+
+    if (currentShapeType === "point") {
+      addAnnotation(selectedPath, {
+        id: newAnnotationId(),
+        type: "point",
+        labelId: currentLabel.id,
+        points: [point.x, point.y],
+        frameIndex: 0,
+      });
+      return;
+    }
+
+    if (currentShapeType === "polygon") {
+      if (event.evt.detail >= 2) {
+        completePolygon();
+        return;
+      }
+
+      const nextPoints = [...(polygonPoints ?? []), point.x, point.y];
+      setPolygonPoints(nextPoints);
+      setPolygonCursorPoint(point);
+      return;
+    }
+
     setDrawingRect({ startX: point.x, startY: point.y, currentX: point.x, currentY: point.y });
+  }
+
+  function undoPolygonPoint() {
+    if (currentShapeType !== "polygon" || !polygonPoints || polygonPoints.length === 0) {
+      return false;
+    }
+    return undoPolygonDraftPoint();
   }
 
   function handleStageMouseMove(event: KonvaEventObject<MouseEvent>) {
@@ -819,7 +716,7 @@ function App() {
       return;
     }
 
-    if (!drawingRect || !imageLayout || !loadedImage) {
+    if (!imageLayout || !loadedImage) {
       return;
     }
 
@@ -828,7 +725,12 @@ function App() {
       return;
     }
 
-    setDrawingRect({ ...drawingRect, currentX: point.x, currentY: point.y });
+    if (drawingRect) {
+      setDrawingRect({ ...drawingRect, currentX: point.x, currentY: point.y });
+    }
+    if (polygonPoints) {
+      setPolygonCursorPoint(point);
+    }
   }
 
   function handleStageMouseUp() {
@@ -856,6 +758,29 @@ function App() {
       points,
       frameIndex: 0,
     });
+  }
+
+  function completePolygon() {
+    if (!selectedPath || !polygonPoints || polygonPoints.length < 6) {
+      return;
+    }
+
+    addPolygon(polygonPoints);
+  }
+
+  function addPolygon(points: number[]) {
+    if (!selectedPath) {
+      return;
+    }
+
+    addAnnotation(selectedPath, {
+      id: newAnnotationId(),
+      type: "polygon",
+      labelId: currentLabel.id,
+      points,
+      frameIndex: 0,
+    });
+    clearPolygonDraft();
   }
 
   function startPanning(event: KonvaEventObject<MouseEvent>) {
@@ -897,6 +822,43 @@ function App() {
     });
   }
 
+  function handlePointDragEnd(annotation: AnnotationShape, event: KonvaEventObject<DragEvent>) {
+    if (!imageLayout || !loadedImage) {
+      return;
+    }
+
+    const point = clampPoint(
+      {
+        x: (event.target.x() - imageLayout.x) / imageLayout.scale,
+        y: (event.target.y() - imageLayout.y) / imageLayout.scale,
+      },
+      loadedImage,
+    );
+    updateAnnotation(selectedPath, annotation.id, { points: [point.x, point.y] });
+  }
+
+  function handleVertexDragEnd(
+    annotation: AnnotationShape,
+    vertexIndex: number,
+    event: KonvaEventObject<DragEvent>,
+  ) {
+    if (!imageLayout || !loadedImage) {
+      return;
+    }
+
+    const point = clampPoint(
+      {
+        x: (event.target.x() - imageLayout.x) / imageLayout.scale,
+        y: (event.target.y() - imageLayout.y) / imageLayout.scale,
+      },
+      loadedImage,
+    );
+    const points = [...annotation.points];
+    points[vertexIndex * 2] = point.x;
+    points[vertexIndex * 2 + 1] = point.y;
+    updateAnnotation(selectedPath, annotation.id, { points });
+  }
+
   function handleTransformEnd(annotation: AnnotationShape) {
     const node = selectedRectRef.current;
     if (!node || !imageLayout || !loadedImage) {
@@ -920,19 +882,6 @@ function App() {
     });
   }
 
-  function reportError(caughtError: unknown) {
-    setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
-  }
-
-  function summarizeUpdateBody(body?: string) {
-    const summary = body?.replace(/\s+/g, " ").trim();
-    if (!summary) {
-      return "";
-    }
-
-    return ` 发布说明：${summary.length > 160 ? `${summary.slice(0, 160)}...` : summary}`;
-  }
-
   const draftRect =
     drawingRect && imageLayout ? toCanvasRect(normalizeRectPoints(drawingRect), imageLayout) : null;
   const contextAnnotation =
@@ -953,7 +902,9 @@ function App() {
       contextAnnotation={contextAnnotation}
       contextMenu={contextMenu}
       currentLabel={currentLabel}
+      currentShapeType={currentShapeType}
       customMappingText={customMappingText}
+      draftPolygonPoints={draftPolygonPoints}
       draftRect={draftRect}
       error={error}
       folderPath={folderPath}
@@ -983,6 +934,7 @@ function App() {
       selectedShapeId={selectedShapeId}
       selectedTemplateId={selectedTemplateId}
       showSaveSuccess={showSaveSuccess}
+      transientMessage={transientMessage}
       shortcuts={shortcuts}
       templates={templates}
       transformerRef={transformerRef}
@@ -1006,7 +958,9 @@ function App() {
       handleStageMouseMove={handleStageMouseMove}
       handleStageMouseUp={handleStageMouseUp}
       handleStageWheel={handleStageWheel}
+      handlePointDragEnd={handlePointDragEnd}
       handleTransformEnd={handleTransformEnd}
+      handleVertexDragEnd={handleVertexDragEnd}
       importAnnotations={importAnnotations}
       installUpdate={() => void installUpdate()}
       newTemplate={newTemplate}
@@ -1022,6 +976,7 @@ function App() {
       selectAdjacentUnannotatedImage={selectAdjacentUnannotatedImage}
       selectCurrentLabel={changeCurrentLabel}
       selectShape={selectShape}
+      selectShapeType={selectShapeType}
       selectTemplate={selectTemplate}
       setAnnotationToDelete={setAnnotationToDelete}
       setContextMenu={setContextMenu}
@@ -1030,7 +985,7 @@ function App() {
       setImageScale={setImageScale}
       setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
       setLabelDisplaySetting={setLabelDisplaySetting}
-      setSelectedExportFormatId={setSelectedExportFormatId}
+      setSelectedExportFormatId={changeExportFormat}
       setSelectedPath={setSelectedPath}
       setUpdateMessage={setUpdateMessage}
       startPanning={startPanning}

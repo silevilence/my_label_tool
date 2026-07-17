@@ -1,4 +1,5 @@
 import type { CustomExportMapping, ExportData } from "../../types/export";
+import { annotationBbox } from "../../components/canvas/geometry";
 
 export function exportCustom(data: ExportData, mapping: Required<CustomExportMapping>) {
   const labelById = new Map(data.labels.map((label) => [label.id, label]));
@@ -11,7 +12,9 @@ export function exportCustom(data: ExportData, mapping: Required<CustomExportMap
         [mapping.imageName]: image.name,
         [mapping.labelId]: annotation.labelId,
         [mapping.labelName]: label?.name ?? annotation.labelId,
-        [mapping.bbox]: annotation.points,
+        [mapping.bbox]: annotationBbox(annotation),
+        type: annotation.type,
+        points: annotation.points,
         [mapping.attributes]: annotation.attributes ?? {},
       };
     }),

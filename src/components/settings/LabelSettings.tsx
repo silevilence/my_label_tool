@@ -2,7 +2,12 @@ import { useState } from "react";
 import { DEFAULT_LABEL_COLORS } from "../../lib/defaults/labels";
 import { PROJECT_TEMPLATE_ID } from "../../lib/importers";
 import { confirmAction } from "../../lib/tauri-api";
-import type { LabelConfig, LabelTemplate } from "../../types/annotation";
+import {
+  LABEL_SHAPE_TYPES,
+  LABEL_SHAPE_TYPE_LABELS,
+  type LabelConfig,
+  type LabelTemplate,
+} from "../../types/annotation";
 
 interface LabelSettingsProps {
   labels: LabelConfig[];
@@ -93,7 +98,7 @@ export function LabelSettings({
 
     if (
       usedLabelIds.has(label.id) &&
-      !(await confirmAction(`「${label.name}」已被矩形框使用，保存时需要处理这些标注。`))
+      !(await confirmAction(`「${label.name}」已被标注使用，保存时需要处理这些标注。`))
     ) {
       return;
     }
@@ -198,7 +203,7 @@ export function LabelSettings({
             <div className="mt-4 space-y-2">
               {labels.map((label) => (
                 <div
-                  className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2"
+                  className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2"
                   key={label.id}
                 >
                   <input
@@ -222,6 +227,22 @@ export function LabelSettings({
                     aria-label={`${label.name} 快捷键`}
                     onChange={(event) => updateShortcut(label.id, event.target.value)}
                   />
+                  <select
+                    className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
+                    value={label.shapeType}
+                    aria-label={`${label.name} 图形类型`}
+                    onChange={(event) =>
+                      patchLabel(label.id, {
+                        shapeType: event.target.value as LabelConfig["shapeType"],
+                      })
+                    }
+                  >
+                    {LABEL_SHAPE_TYPES.map((shapeType) => (
+                      <option key={shapeType} value={shapeType}>
+                        {LABEL_SHAPE_TYPE_LABELS[shapeType]}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:bg-red-500 hover:text-white"
                     type="button"

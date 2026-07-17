@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   SHORTCUT_ACTIONS,
   type ShortcutActionId,
@@ -29,6 +29,7 @@ export function ShortcutSettings({
   onClose,
 }: ShortcutSettingsProps) {
   const [recordingActionId, setRecordingActionId] = useState<ShortcutActionId | null>(null);
+  const labelShortcutSet = useMemo(() => new Set(labelShortcuts), [labelShortcuts]);
 
   useEffect(() => {
     if (!recordingActionId) {
@@ -59,18 +60,13 @@ export function ShortcutSettings({
         return;
       }
 
-      if (labelShortcuts.includes(shortcut)) {
-        window.alert(`快捷键 ${formatShortcut(shortcut)} 已被标签使用。`);
-        return;
-      }
-
       onChangeShortcut(actionId, shortcut);
       setRecordingActionId(null);
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [labelShortcuts, onChangeShortcut, recordingActionId, shortcuts]);
+  }, [onChangeShortcut, recordingActionId, shortcuts]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
@@ -100,10 +96,7 @@ export function ShortcutSettings({
                 className="mt-1"
                 type="checkbox"
                 onChange={(event) =>
-                  onChangeHelpDisplaySetting(
-                    "showAnnotationCrosshairCursor",
-                    event.target.checked,
-                  )
+                  onChangeHelpDisplaySetting("showAnnotationCrosshairCursor", event.target.checked)
                 }
               />
               <span>
@@ -168,9 +161,7 @@ export function ShortcutSettings({
                   checked={labelDisplaySettings[option.id]}
                   className="mt-1"
                   type="checkbox"
-                  onChange={(event) =>
-                    onChangeLabelDisplaySetting(option.id, event.target.checked)
-                  }
+                  onChange={(event) => onChangeLabelDisplaySetting(option.id, event.target.checked)}
                 />
                 <span>
                   <span className="block">{option.label}</span>
@@ -188,6 +179,16 @@ export function ShortcutSettings({
               <div>
                 <p className="text-sm font-medium text-slate-100">{action.label}</p>
                 <p className="text-xs text-slate-500">{action.description}</p>
+                {labelShortcutSet.has(shortcuts[action.id]) && (
+                  <p className="mt-1 text-xs text-amber-300">
+                    与当前标签快捷键冲突；实际使用时标签优先。
+                  </p>
+                )}
+                {isFixedShortcut(shortcuts[action.id]) && (
+                  <p className="mt-1 text-xs text-amber-300">
+                    与固定快捷键冲突；实际使用时固定动作优先。
+                  </p>
+                )}
               </div>
               <kbd className="rounded bg-slate-950 px-2 py-1 text-xs text-slate-200">
                 {recordingActionId === action.id
@@ -223,16 +224,26 @@ export function normalizeShortcutKey(key: string): string {
   return key.length === 1 ? key.toLowerCase() : key;
 }
 
-function formatShortcut(shortcut: string): string {
+export function formatShortcut(shortcut: string): string {
+  if (shortcut === " ") {
+    return "Space";
+  }
+  if (shortcut === "\t" || shortcut === "Tab") {
+    return "Tab";
+  }
   if (shortcut === "ArrowLeft") {
     return "←";
   }
   if (shortcut === "ArrowRight") {
     return "→";
   }
-  return shortcut.toUpperCase();
+  return shortcut.trim() ? shortcut.toUpperCase() : JSON.stringify(shortcut);
 }
 
 function isModifierKey(key: string): boolean {
   return ["Alt", "Control", "Meta", "Shift"].includes(key);
+}
+
+function isFixedShortcut(shortcut: string): boolean {
+  return shortcut === "Delete";
 }

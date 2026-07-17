@@ -6,6 +6,7 @@ export function exportYolo(data: ExportData): TextExportFile[] {
     path: `${baseName(image.name)}.txt`,
     content:
       image.annotations
+        .filter((annotation) => annotation.type === "rect")
         .map((annotation) => {
           const [x, y, width, height] = annotation.points;
           const classIndex = classIndexByLabel.get(annotation.labelId) ?? 0;
@@ -17,7 +18,8 @@ export function exportYolo(data: ExportData): TextExportFile[] {
             formatNumber(height / image.height),
           ].join(" ");
         })
-        .join("\n") + (image.annotations.length > 0 ? "\n" : ""),
+        .join("\n") +
+      (image.annotations.some((annotation) => annotation.type === "rect") ? "\n" : ""),
   }));
 
   return [
