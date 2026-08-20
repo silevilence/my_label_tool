@@ -76,4 +76,28 @@ export const PRELABEL_ZH_CN = {
   mappingConfigMissingClassName: (field: string) => `${field} 缺少 className`,
   mappingConfigInvalidAction: (field: string) => `${field} 的 action 无效`,
   mappingConfigMissingLabelId: (field: string) => `${field} 缺少 labelId`,
+  executionTitle: "预打标执行",
+  executionNoModel: "请先在模型库中添加并选择模型。",
+  executionModel: (name: string) => `当前模型：${name}`,
+  singleRun: "预打标当前图片（追加）",
+  batchRun: "批量预打标",
+  forceOverwrite: "强制覆盖已有标注",
+  cancelBatch: "中断批量任务",
+  batchDefaultHint: "默认跳过已有标注的图片；每张图片可独立撤销。",
+  singleRunning: "正在处理当前图片…",
+  batchRunning: "正在批量预打标…",
+  batchCancelling: "正在完成当前批次，随后中断…",
+  batchNothingToRun: "没有需要处理的图片。",
+  singleCompleted: (count: number) => `当前图片已追加 ${count} 个标注。`,
+  batchCompleted: (images: number, annotations: number, skippedConflicts: number) =>
+    `批量完成：${images} 张图片，生成 ${annotations} 个标注${
+      skippedConflicts > 0 ? `；${skippedConflicts} 张因执行期间被编辑而跳过` : ""
+    }。`,
+  batchCancelled: (processed: number, total: number) =>
+    `已中断：保留已完成的 ${processed}/${total} 张图片。`,
+  batchFailed: (processed: number, total: number) =>
+    `批量停止：已保留 ${processed}/${total} 张图片的结果。`,
+  inferenceStopped: "预打标未完成。",
+  inferenceFailed: (reason: unknown) => `预打标失败：${String(reason)}`,
+  executionContextChanged: "项目、标签或模型已在执行期间改变，已停止合并旧任务结果。",
 } as const;

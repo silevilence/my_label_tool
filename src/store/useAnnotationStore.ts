@@ -16,6 +16,11 @@ interface AnnotationState {
   ) => void;
   deleteAnnotation: (imagePath: string, annotationId: string) => void;
   clearImageAnnotations: (imagePath: string) => void;
+  insertAnnotationsBatch: (
+    entries: Array<{ imagePath: string; annotations: AnnotationShape[] }>,
+    mode: "append" | "replace",
+    groupId?: string,
+  ) => void;
   undo: () => void;
   redo: () => void;
   replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
@@ -29,9 +34,11 @@ interface AnnotationHistoryEntry {
   after: AnnotationShape[];
   selectedBefore: string | null;
   selectedAfter: string | null;
+  groupId?: string;
 }
 
 const HISTORY_LIMIT = 100;
+let nextHistoryGroupId = 1;
 
 export const useAnnotationStore = create<AnnotationState>((set) => ({
   annotationsByImage: {},
@@ -68,6 +75,25 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
     ),
   clearImageAnnotations: (imagePath) =>
     set((state) => applyImageHistory(state, imagePath, [], null)),
+  insertAnnotationsBatch: (entries, mode, requestedGroupId) => {
+    const groupId = requestedGroupId ?? `store-${nextHistoryGroupId}`;
+    if (requestedGroupId === undefined) {
+      nextHistoryGroupId += 1;
+    }
+    set((state) =>
+      entries.reduce((nextState, entry) => {
+        const before = nextState.annotationsByImage[entry.imagePath] ?? [];
+        const after = mode === "append" ? [...before, ...entry.annotations] : entry.annotations;
+        const selectedAfter =
+          nextState.selectedShapeId &&
+          before.some((annotation) => annotation.id === nextState.selectedShapeId) &&
+          !after.some((annotation) => annotation.id === nextState.selectedShapeId)
+            ? null
+            : nextState.selectedShapeId;
+        return applyImageHistory(nextState, entry.imagePath, after, selectedAfter, groupId);
+      }, state),
+    );
+  },
   undo: () =>
     set((state) => {
       const entry = state.undoStack[state.undoStack.length - 1];
@@ -95,7 +121,7 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
         return state;
       }
 
-      const undoStack = [...state.undoStack, entry].slice(-HISTORY_LIMIT);
+      const undoStack = trimHistory([...state.undoStack, entry]);
       const redoStack = state.redoStack.slice(0, -1);
       return withHistoryFlags({
         ...state,
@@ -139,6 +165,7 @@ function applyImageHistory(
   imagePath: string,
   after: AnnotationShape[],
   selectedAfter: string | null,
+  groupId?: string,
 ): AnnotationState {
   const before = state.annotationsByImage[imagePath] ?? [];
   if (sameAnnotations(before, after)) {
@@ -151,6 +178,7 @@ function applyImageHistory(
     after: cloneAnnotations(after),
     selectedBefore: state.selectedShapeId,
     selectedAfter,
+    groupId,
   };
 
   return withHistoryFlags({
@@ -160,9 +188,23 @@ function applyImageHistory(
       [imagePath]: cloneAnnotations(after),
     },
     selectedShapeId: selectedAfter,
-    undoStack: [...state.undoStack, entry].slice(-HISTORY_LIMIT),
+    undoStack: trimHistory([...state.undoStack, entry]),
     redoStack: [],
   });
+}
+
+function trimHistory(entries: AnnotationHistoryEntry[]): AnnotationHistoryEntry[] {
+  if (entries.length <= HISTORY_LIMIT) {
+    return entries;
+  }
+  let start = entries.length - HISTORY_LIMIT;
+  const boundaryGroupId = entries[start].groupId;
+  if (boundaryGroupId !== undefined) {
+    while (start > 0 && entries[start - 1].groupId === boundaryGroupId) {
+      start -= 1;
+    }
+  }
+  return entries.slice(start);
 }
 
 function withHistoryFlags(

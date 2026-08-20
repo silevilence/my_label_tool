@@ -28,6 +28,7 @@ import { useShapeToolSelection } from "./hooks/useShapeToolSelection";
 import { useTransientMessage } from "./hooks/useTransientMessage";
 import { useZoomControls } from "./hooks/useZoomControls";
 import { usePrelabelModels } from "./hooks/usePrelabelModels";
+import { usePrelabelExecution } from "./hooks/usePrelabelExecution";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
 import { isEditableTarget, saveProjectConfig } from "./lib/app-utils";
@@ -88,6 +89,7 @@ function App() {
   const undo = useAnnotationStore((state) => state.undo);
   const redo = useAnnotationStore((state) => state.redo);
   const replaceAnnotations = useAnnotationStore((state) => state.replaceAnnotations);
+  const insertAnnotationsBatch = useAnnotationStore((state) => state.insertAnnotationsBatch);
   const replaceLabel = useAnnotationStore((state) => state.replaceLabel);
   const selectShape = useAnnotationStore((state) => state.selectShape);
   const canUndo = useAnnotationStore((state) => state.canUndo);
@@ -221,6 +223,16 @@ function App() {
     setSelectedExportFormatId,
   });
   const { isSaving, saveWithFeedback, showSaveSuccess } = useSaveFeedback(saveProjectExport);
+  const prelabelExecution = usePrelabelExecution({
+    activeProjectConfig,
+    annotationsByImage,
+    images,
+    labels,
+    library: prelabelModels.library,
+    selectedPath,
+    insertAnnotationsBatch,
+    setError,
+  });
 
   async function savePrelabelMappings(
     modelId: string,
@@ -591,6 +603,7 @@ function App() {
       setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
       setIsPrelabelSettingsOpen={setIsPrelabelSettingsOpen}
       prelabelModels={prelabelModels}
+      prelabelExecution={prelabelExecution}
       setLabelDisplaySetting={setLabelDisplaySetting}
       setSelectedExportFormatId={changeExportFormat}
       setSelectedPath={setSelectedPath}

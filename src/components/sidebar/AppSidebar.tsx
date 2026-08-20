@@ -14,6 +14,8 @@ import type { ProjectConfig } from "../../lib/importers";
 import type { ImageFile } from "../../lib/tauri-api";
 import { isUserTemplate } from "../../lib/app-utils";
 import { PRELABEL_ZH_CN } from "../../i18n/prelabel.zh-CN";
+import { PrelabelExecutionPanel } from "../settings/PrelabelExecutionPanel";
+import type { usePrelabelExecution } from "../../hooks/usePrelabelExecution";
 
 interface AppSidebarProps {
   activeProjectConfig: ProjectConfig | null;
@@ -30,6 +32,7 @@ interface AppSidebarProps {
   isSaving: boolean;
   labels: LabelConfig[];
   projectTemplateId: string;
+  prelabelExecution: ReturnType<typeof usePrelabelExecution>;
   selectedExportFormatId: ExportFormatId;
   selectedImageButtonRef: MutableRefObject<HTMLButtonElement | null>;
   selectedPath: string;
@@ -79,6 +82,7 @@ export function AppSidebar({
   isSaving,
   labels,
   projectTemplateId,
+  prelabelExecution,
   selectedExportFormatId,
   selectedImageButtonRef,
   selectedPath,
@@ -263,6 +267,11 @@ export function AppSidebar({
         onChangeFormat={setSelectedExportFormatId}
         onExport={exportSelectedFormat}
         onSaveProject={saveProjectExport}
+      />
+
+      <PrelabelExecutionPanel
+        execution={prelabelExecution}
+        hasSelectedImage={Boolean(selectedPath)}
       />
 
       <div className="scrollbar-dark min-h-0 max-h-[45vh] overflow-y-auto">

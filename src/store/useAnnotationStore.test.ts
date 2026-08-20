@@ -66,4 +66,100 @@ describe("annotation store", () => {
     useAnnotationStore.getState().replaceLabel("old", "new");
     expect(useAnnotationStore.getState().annotationsByImage["b.jpg"][0].labelId).toBe("new");
   });
+
+  it("inserts batch results as one undo transaction per image", () => {
+    useAnnotationStore.getState().replaceAnnotations({ "a.jpg": [rect] });
+    const a2 = { ...rect, id: "a2" };
+    const b1 = { ...rect, id: "b1" };
+
+    useAnnotationStore.getState().insertAnnotationsBatch(
+      [
+        { imagePath: "a.jpg", annotations: [a2] },
+        { imagePath: "b.jpg", annotations: [b1] },
+      ],
+      "append",
+    );
+
+    expect(useAnnotationStore.getState().annotationsByImage).toMatchObject({
+      "a.jpg": [rect, a2],
+      "b.jpg": [b1],
+    });
+    useAnnotationStore.getState().undo();
+    expect(useAnnotationStore.getState().annotationsByImage["b.jpg"]).toEqual([]);
+    expect(useAnnotationStore.getState().annotationsByImage["a.jpg"]).toEqual([rect, a2]);
+    useAnnotationStore.getState().undo();
+    expect(useAnnotationStore.getState().annotationsByImage["a.jpg"]).toEqual([rect]);
+  });
+
+  it("replaces existing annotations in batch overwrite mode", () => {
+    useAnnotationStore.getState().replaceAnnotations({ "a.jpg": [rect] });
+    const generated = { ...rect, id: "generated" };
+
+    useAnnotationStore
+      .getState()
+      .insertAnnotationsBatch([{ imagePath: "a.jpg", annotations: [generated] }], "replace");
+
+    expect(useAnnotationStore.getState().annotationsByImage["a.jpg"]).toEqual([generated]);
+    useAnnotationStore.getState().undo();
+    expect(useAnnotationStore.getState().annotationsByImage["a.jpg"]).toEqual([rect]);
+  });
+
+  it("preserves unrelated selection and restores removed selection on undo", () => {
+    const selected = { ...rect, id: "selected" };
+    useAnnotationStore.getState().replaceAnnotations({ "a.jpg": [selected], "b.jpg": [] });
+    useAnnotationStore.getState().selectShape(selected.id);
+
+    useAnnotationStore.getState().insertAnnotationsBatch(
+      [{ imagePath: "b.jpg", annotations: [{ ...rect, id: "b" }] }],
+      "append",
+    );
+    expect(useAnnotationStore.getState().selectedShapeId).toBe(selected.id);
+
+    useAnnotationStore
+      .getState()
+      .insertAnnotationsBatch([{ imagePath: "a.jpg", annotations: [] }], "replace");
+    expect(useAnnotationStore.getState().selectedShapeId).toBeNull();
+    useAnnotationStore.getState().undo();
+    expect(useAnnotationStore.getState().selectedShapeId).toBe(selected.id);
+  });
+
+  it("keeps a batch larger than the normal history limit fully undoable", () => {
+    const entries = Array.from({ length: 105 }, (_, index) => ({
+      imagePath: `${index}.jpg`,
+      annotations: [{ ...rect, id: `generated-${index}` }],
+    }));
+
+    useAnnotationStore.getState().insertAnnotationsBatch(entries, "append");
+    expect(useAnnotationStore.getState().undoStack).toHaveLength(105);
+
+    for (let index = 0; index < entries.length; index += 1) {
+      useAnnotationStore.getState().undo();
+    }
+    expect(
+      Object.values(useAnnotationStore.getState().annotationsByImage).every(
+        (annotations) => annotations.length === 0,
+      ),
+    ).toBe(true);
+    expect(useAnnotationStore.getState().canUndo).toBe(false);
+  });
+
+  it("keeps repeated chunks from one large inference task in the same history group", () => {
+    const entries = Array.from({ length: 112 }, (_, index) => ({
+      imagePath: `chunked-${index}.jpg`,
+      annotations: [{ ...rect, id: `chunked-${index}` }],
+    }));
+    const taskGroupId = "inference-task";
+
+    for (let index = 0; index < entries.length; index += 8) {
+      useAnnotationStore
+        .getState()
+        .insertAnnotationsBatch(entries.slice(index, index + 8), "append", taskGroupId);
+    }
+    expect(useAnnotationStore.getState().undoStack).toHaveLength(112);
+
+    for (let index = 0; index < entries.length; index += 1) {
+      useAnnotationStore.getState().undo();
+    }
+    expect(useAnnotationStore.getState().canUndo).toBe(false);
+  });
 });

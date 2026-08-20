@@ -39,6 +39,7 @@ import type { HelpDisplaySettings, LabelDisplaySettings } from "../lib/defaults/
 import type { AppUpdateProgress, AppUpdateStatus } from "../lib/updater";
 import { isEditableTarget } from "../lib/app-utils";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
+import type { usePrelabelExecution } from "../hooks/usePrelabelExecution";
 import type { PrelabelClassMapping } from "../types/prelabel";
 
 interface AppLayoutProps {
@@ -147,6 +148,7 @@ interface AppLayoutProps {
   setIsShortcutSettingsOpen: (isOpen: boolean) => void;
   setIsPrelabelSettingsOpen: (isOpen: boolean) => void;
   prelabelModels: ReturnType<typeof usePrelabelModels>;
+  prelabelExecution: ReturnType<typeof usePrelabelExecution>;
   setSelectedExportFormatId: (format: ExportFormatId) => void;
   setSelectedPath: (path: string) => void;
   setUpdateMessage: (message: string) => void;
@@ -256,6 +258,7 @@ export function AppLayout({
   setIsShortcutSettingsOpen,
   setIsPrelabelSettingsOpen,
   prelabelModels,
+  prelabelExecution,
   setSelectedExportFormatId,
   setSelectedPath,
   setUpdateMessage,
@@ -364,6 +367,7 @@ export function AppLayout({
         isLabelDirty={isLabelDirty}
         isSaving={isSaving}
         labels={labels}
+        prelabelExecution={prelabelExecution}
         projectTemplateId={projectTemplateId}
         selectedExportFormatId={selectedExportFormatId}
         selectedImageButtonRef={selectedImageButtonRef}
