@@ -10,8 +10,19 @@ permissions:
   contents: write
 
 jobs:
+  ci:
+    name: Validate CI
+    uses: ./.github/workflows/ci.yml
+
+  official-models:
+    name: Validate official YOLO models
+    uses: ./.github/workflows/official-models.yml
+
   windows:
     name: Build and publish Windows installer
+    needs:
+      - ci
+      - official-models
     runs-on: windows-latest
 
     steps:

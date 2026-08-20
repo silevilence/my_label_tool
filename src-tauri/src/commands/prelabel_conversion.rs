@@ -550,7 +550,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(Path::new(&result.path), root.join("model.onnx"));
+        assert_eq!(
+            Path::new(&result.path).canonicalize().unwrap(),
+            root.join("model.onnx").canonicalize().unwrap()
+        );
         assert_eq!(fs::read(root.join("model.onnx")).unwrap(), b"valid");
         assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
         fs::remove_dir_all(root).unwrap();
