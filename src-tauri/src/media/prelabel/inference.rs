@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires external ONNX Runtime and ignored YOLOv5 ONNX/image fixtures"]
+    #[ignore = "requires external ONNX Runtime and official YOLOv5 ONNX/image fixtures"]
     fn matches_the_yolov5_fixture_expectations() {
         let runtime = fixture("MY_LABEL_TOOL_ORT_DLL");
         let image = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
@@ -229,14 +229,16 @@ mod tests {
         let v5_first = yolov5.infer_file(&image).unwrap();
         let v5_second = yolov5.infer_file(&image).unwrap();
         assert_eq!(v5_first, v5_second);
-        assert_eq!(v5_first.len(), 1);
-        assert_eq!(v5_first[0].class_index, 0);
-        assert!(v5_first[0].confidence > 0.99);
-        assert_box_close(
-            v5_first[0].points,
-            [133.3125, 265.78125, 16.875, 21.9375],
-            0.1,
+        assert_eq!(v5_first.len(), 4);
+        assert_eq!(
+            v5_first
+                .iter()
+                .map(|item| item.class_index)
+                .collect::<Vec<_>>(),
+            [0, 0, 0, 5]
         );
+        assert!((v5_first[0].confidence - 0.812_13).abs() < 0.02);
+        assert_box_close(v5_first[0].points, [49.944, 398.806, 156.785, 498.689], 5.0);
     }
 
     #[test]

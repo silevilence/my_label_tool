@@ -19,6 +19,7 @@ import {
 } from "../../lib/prelabel-models";
 import {
   createLabelForPrelabelClass,
+  isUnmatchedPrelabelMapping,
   resolvePrelabelClassMappings,
 } from "../../lib/prelabel-mapping";
 import { DEFAULT_LABEL_COLORS } from "../../lib/defaults/labels";
@@ -387,7 +388,7 @@ function ClassMappingPanel({
       ),
     [activeProjectConfig?.prelabelMappings, labels, model.classNames, model.id],
   );
-  const unmatchedCount = resolved.filter((mapping) => !mapping.excluded && !mapping.labelId).length;
+  const unmatchedCount = resolved.filter(isUnmatchedPrelabelMapping).length;
 
   function upsertMapping(next: PrelabelClassMapping): PrelabelClassMapping[] {
     return [

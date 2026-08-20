@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires external ONNX Runtime and an ignored YOLOv5 ONNX fixture"]
+    #[ignore = "requires external ONNX Runtime and an official YOLOv5 ONNX fixture"]
     fn validates_yolov5_model_through_the_command_seam() {
         let runtime_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_ORT_DLL"));
         let yolov5_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLOV5_ONNX"));
@@ -384,7 +384,7 @@ mod tests {
         let yolov5 = validate_model_file(&yolov5_path).unwrap();
         assert_eq!(yolov5.contract.format, YoloModelFormat::YoloV5);
         assert_eq!(yolov5.contract.class_count, 80);
-        assert_eq!(yolov5.contract.output_names.len(), 3);
+        assert_eq!(yolov5.contract.output_names, ["output0"]);
     }
 
     fn temporary_directory(label: &str) -> PathBuf {

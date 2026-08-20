@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createLabelForPrelabelClass,
+  isUnmatchedPrelabelMapping,
   mapPrelabelDetections,
   resolvePrelabelClassMappings,
   updateProjectPrelabelMappings,
@@ -89,6 +90,7 @@ describe("prelabel class mapping", () => {
         frameIndex: 0,
       },
     ]);
+    expect(resolved.filter(isUnmatchedPrelabelMapping)).toHaveLength(1);
   });
 
   it("invalidates stale model snapshots and missing label ids", () => {

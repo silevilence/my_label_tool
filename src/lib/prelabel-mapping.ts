@@ -87,6 +87,10 @@ export function mapPrelabelDetections(
   });
 }
 
+export function isUnmatchedPrelabelMapping(mapping: ResolvedPrelabelClassMapping): boolean {
+  return !mapping.excluded && !mapping.labelId;
+}
+
 export function createLabelForPrelabelClass(
   labels: LabelConfig[],
   className: string,

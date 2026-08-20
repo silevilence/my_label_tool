@@ -99,6 +99,10 @@ pub fn prelabel_model_metadata_failed(path: &str, error: impl std::fmt::Display)
     format!("读取预打标模型文件信息 {path} 失败：{error}")
 }
 
+pub fn prelabel_model_modified_time_failed(path: &str, error: impl std::fmt::Display) -> String {
+    format!("读取预打标模型修改时间 {path} 失败：{error}")
+}
+
 pub fn prelabel_image_file_allocation_failed(
     path: &std::path::Path,
     error: impl std::fmt::Display,

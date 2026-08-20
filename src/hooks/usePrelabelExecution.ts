@@ -1,7 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { runPrelabelInference, type ImageFile } from "../lib/tauri-api";
 import { executePrelabelBatch, selectPrelabelBatchImages } from "../lib/prelabel-execution";
-import { mapPrelabelDetections, resolvePrelabelClassMappings } from "../lib/prelabel-mapping";
+import {
+  isUnmatchedPrelabelMapping,
+  mapPrelabelDetections,
+  resolvePrelabelClassMappings,
+} from "../lib/prelabel-mapping";
 import type { AnnotationShape, LabelConfig } from "../types/annotation";
 import type { ProjectConfig } from "../lib/importers";
 import type { PrelabelModelLibrary } from "../types/prelabel";
@@ -82,9 +86,7 @@ export function usePrelabelExecution({
         : [],
     [activeProjectConfig?.prelabelMappings, currentModel, labels],
   );
-  const unmatchedClassCount = currentMappings.filter(
-    (mapping) => !mapping.excluded && !mapping.labelId,
-  ).length;
+  const unmatchedClassCount = currentMappings.filter(isUnmatchedPrelabelMapping).length;
 
   async function runSingle() {
     if (!currentModel || !selectedPath || runningRef.current) {
@@ -164,11 +166,7 @@ export function usePrelabelExecution({
         infer: (imagePaths) => runPrelabelInference(currentModel, imagePaths),
         toAnnotations: (result) => mapPrelabelDetections(result.detections, mappings),
         commit: (entries) =>
-          insertAnnotationsBatch(
-            entries,
-            forceOverwrite ? "replace" : "append",
-            historyGroupId,
-          ),
+          insertAnnotationsBatch(entries, forceOverwrite ? "replace" : "append", historyGroupId),
         shouldCommit: (entry) =>
           annotationShapesSnapshot(annotationsByImageRef.current[entry.imagePath] ?? []) ===
           expectedAnnotations.get(entry.imagePath),

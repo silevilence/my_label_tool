@@ -24,7 +24,7 @@ pub struct PrelabelImageInference {
 struct SessionCacheKey {
     model: PrelabelModelConfig,
     file_length: u64,
-    modified_at: Option<SystemTime>,
+    modified_at: SystemTime,
 }
 
 struct CachedValue<K, V> {
@@ -76,10 +76,13 @@ fn run_prelabel_inference_blocking(
 fn session_cache_key(model: &PrelabelModelConfig) -> Result<SessionCacheKey, String> {
     let metadata = fs::metadata(&model.path)
         .map_err(|error| crate::i18n::zh_cn::prelabel_model_metadata_failed(&model.path, error))?;
+    let modified_at = metadata.modified().map_err(|error| {
+        crate::i18n::zh_cn::prelabel_model_modified_time_failed(&model.path, error)
+    })?;
     Ok(SessionCacheKey {
         model: model.clone(),
         file_length: metadata.len(),
-        modified_at: metadata.modified().ok(),
+        modified_at,
     })
 }
 

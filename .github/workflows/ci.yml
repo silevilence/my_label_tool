@@ -51,6 +51,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout pinned official YOLOv5 exporter
+        uses: actions/checkout@v4
+        with:
+          repository: ultralytics/yolov5
+          ref: 915bbf294bb74c859f0b41f1c23bc395014ea679
+          path: external-yolov5
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -60,7 +67,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned model tooling
-        run: python -m pip install ultralytics==8.4.123 onnx==1.22.0
+        run: |
+          python -m pip install setuptools==80.9.0 numpy==1.26.4 torch==2.5.1 torchvision==0.20.1
+          python -m pip install ultralytics==8.4.123 onnx==1.22.0 pandas==2.2.3 seaborn==0.13.2 ipython==8.32.0 gitpython==3.1.45 thop==0.1.1.post2209072238
 
       - name: Prepare official ONNX Runtime
         shell: pwsh
@@ -98,6 +107,13 @@ jobs:
         run: |
           $modelDir = Join-Path $env:RUNNER_TEMP "official-yolo-models"
           New-Item -ItemType Directory -Force $modelDir | Out-Null
+          $yolov5Weights = Join-Path $modelDir "yolov5n.pt"
+          Invoke-WebRequest "https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.pt" -OutFile $yolov5Weights
+          $expectedYolov5 = "4F180CF23BA0717ADA0BADD6C685026D73D48F184D00FC159C2641284B2AC0A3"
+          $actualYolov5 = (Get-FileHash $yolov5Weights -Algorithm SHA256).Hash
+          if ($actualYolov5 -ne $expectedYolov5) {
+            throw "Unexpected SHA-256 for official yolov5n.pt: $actualYolov5"
+          }
           Push-Location $modelDir
           try {
             python -c "from ultralytics import YOLO; YOLO('yolo11n.pt').export(format='onnx', imgsz=640, simplify=False); YOLO('yolov8n.pt').export(format='onnx', imgsz=640, simplify=False)"
@@ -105,8 +121,10 @@ jobs:
           } finally {
             Pop-Location
           }
+          python external-yolov5/export.py --weights $yolov5Weights --include onnx --imgsz 640 --opset 12 --device cpu
           "MY_LABEL_TOOL_YOLO_ONNX=$(Join-Path $modelDir 'yolo11n.onnx')" >> $env:GITHUB_ENV
           "MY_LABEL_TOOL_YOLOV8_ONNX=$(Join-Path $modelDir 'yolov8n.onnx')" >> $env:GITHUB_ENV
+          "MY_LABEL_TOOL_YOLOV5_ONNX=$(Join-Path $modelDir 'yolov5n.onnx')" >> $env:GITHUB_ENV
           "MY_LABEL_TOOL_YOLO_PT=$(Join-Path $modelDir 'yolo11n.pt')" >> $env:GITHUB_ENV
           "MY_LABEL_TOOL_YOLO_IMAGE=$(Join-Path $modelDir 'bus.jpg')" >> $env:GITHUB_ENV
           "MY_LABEL_TOOL_ULTRALYTICS_PYTHON=$((Get-Command python).Source)" >> $env:GITHUB_ENV
@@ -115,10 +133,12 @@ jobs:
         run: |
           cargo test --manifest-path src-tauri/Cargo.toml inspects_official_ultralytics_model_when_fixture_is_available -- --ignored
           cargo test --manifest-path src-tauri/Cargo.toml validates_official_v8_and_yolo11_models_through_the_command_seam -- --ignored
+          cargo test --manifest-path src-tauri/Cargo.toml validates_yolov5_model_through_the_command_seam -- --ignored
 
       - name: Verify official inference alignment
         run: |
           cargo test --manifest-path src-tauri/Cargo.toml reuses_a_session_and_matches_official_yolov8_expectations -- --ignored
+          cargo test --manifest-path src-tauri/Cargo.toml matches_the_yolov5_fixture_expectations -- --ignored
           cargo test --manifest-path src-tauri/Cargo.toml reuses_the_command_session_cache_across_frontend_chunks -- --ignored
 
       - name: Verify real PT conversion paths
