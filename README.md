@@ -1,6 +1,6 @@
 # my_label_tool
 
-离线图片标注桌面工具--打开文件夹、画矩形框、绑定标签，支持多格式导入导出与外部数据集建项，Windows 双击即用。
+离线图片标注桌面工具--打开文件夹、画矩形框、绑定标签，支持多格式导入导出、外部数据集建项与可选 AI 预打标，Windows 双击即用。
 
 ## 功能
 
@@ -8,7 +8,7 @@
 
 - **打开图片文件夹**：支持 JPG / PNG / BMP，自动跳过损坏或空文件
 - **方向键切换**：上一张 / 下一张图片；切换时后台预加载下一张，减少空白等待
-- **图片列表搜索**：按 `Ctrl+F` 或点击放大镜按钮，按文件名普通文本或正则表达式搜索并跳转，结果带小图预览
+- **图片列表搜索**：按 `Ctrl+F` 或点击放大镜按钮打开搜索浮窗；支持普通文本、正则表达式与表达式搜索（按文件名、标注标签、类别序号、文件大小组合过滤，支持 `and` / `or` / `not` 与括号分组，如 `@tag(人) and @size(>1MB)`），输入时提供语法高亮与自动补全，表达式无效时保留原搜索结果；结果带小图预览，单击选中、再次点击或按 `Enter` 才切换图片
 - **标注进度统计**：实时显示已标注、未标注与总图片数量，并附完成进度条；可一键跳转下一张 / 上一张未标注图片
 
 **多种标注图形**
@@ -40,6 +40,13 @@
 - **标注导入**：支持导入原生 JSON、COCO、VOC、YOLO 标注；打开文件夹时若存在项目配置文件会提示自动加载
 - **从外部数据集创建项目**：手上只有 YOLO 格式的图片和标注目录时，无需本工具项目文件即可直接导入并生成项目；自动读取 `classes.txt` 生成标签，导入后保存项目配置，再次打开该目录自动按本项目加载
 
+**AI 预打标（可选）**
+
+- **模型库**：添加标准 YOLO 模型（ONNX）或 PyTorch 的 `.pt` 模型，自动识别模型格式、类别数与输入尺寸；`.pt` 模型可在应用内一键转换为 ONNX 并校验（需本机已安装 ultralytics 环境）
+- **ONNX Runtime 按需安装**：推理运行时（约 40–90MB）不随安装包分发，可在设置中一键下载（自动 SHA-256 校验）或手动放置 DLL，放置后即时可用，保持核心安装包轻量
+- **类别映射**：模型类别与项目标签按名称自动匹配，也支持手动绑定已有标签、从类名新建标签或排除类别；未映射的类别运行时自动跳过
+- **单图与批量预打标**：对当前图片追加标注或批量处理整组图片；默认跳过已有标注的图片，可开启强制覆盖；任务可随时中断，每张图片的结果可独立撤销
+
 **操作与效率**
 
 - **撤销 / 重做**：标注的新增、删除、移动、调整均可撤销重做（默认 `Ctrl+Z` / `Ctrl+Y`）
@@ -55,6 +62,8 @@
 | Node.js | ≥ 20（Vite 7 要求） |
 | Rust | stable（建议通过 [rustup](https://rustup.rs/) 安装） |
 | 操作系统 | Windows（主要目标平台）；macOS / Linux 可编译但未充分测试 |
+
+> 预打标为可选功能，不影响核心标注使用：首次使用需在应用内获取 ONNX Runtime（联网一键下载或离线放置 DLL）并导入模型文件；`.pt` 模型一键转换需要本机已安装 Python + ultralytics 环境。
 
 ## 快速开始
 
@@ -108,7 +117,7 @@ npm run test:coverage
 
 1. 从 `changelog.md` 读取对应版本章节作为 Release 说明
 2. 执行前端构建与 Tauri 打包，生成 Windows 安装包（NSIS `.exe` / MSI）
-3. 将安装包上传并发布到对应的 GitHub Release
+3. 将安装包上传并发布到对应的 GitHub Release；同时从官方 wheel 提取并校验 ONNX Runtime DLL（`onnxruntime.dll` 等）作为独立 Release 资源上传，供应用内「预打标模型」设置下载运行时
 
 发布前需确保 `changelog.md` 中已有该 Tag 对应的版本章节，且 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 三处版本号已同步。
 
@@ -119,21 +128,26 @@ my_label_tool/
 ├── src/                            # React 前端
 │   ├── components/                 # 画布、设置面板、侧边栏、工具栏组件
 │   │   ├── canvas/                 # Konva 画布、几何计算、交互类型
-│   │   ├── settings/               # 导出面板、标签设置、快捷键设置
+│   │   ├── settings/               # 导出面板、标签设置、预打标设置/执行、快捷键设置
 │   │   └── sidebar/                # 应用侧边栏、图片搜索弹窗
 │   ├── store/                      # Zustand 状态管理（标注数据 + 全局状态）
-│   ├── types/                      # 核心类型定义（annotation、export）
+│   ├── types/                      # 核心类型定义（annotation、export、prelabel）
 │   ├── lib/                        # Tauri API 封装、导入导出、默认配置
 │   │   ├── defaults/               # 导出模板、标签、快捷键默认值
-│   │   └── exporters/              # COCO / VOC / YOLO / 自定义导出
-│   └── hooks/                      # useLabelActions、useProjectActions
+│   │   ├── exporters/              # COCO / VOC / YOLO / 自定义导出
+│   │   ├── image-search.ts         # 图片表达式搜索语法与匹配
+│   │   └── prelabel-*.ts           # 预打标模型库、类别映射、执行逻辑
+│   ├── i18n/                       # 前端用户可见文案（prelabel.zh-CN.ts）
+│   └── hooks/                      # 画布交互、图片加载、预打标、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
-│   ├── src/                        # 入口、commands、models
+│   ├── src/                        # 入口、commands（含 prelabel*.rs）、models
+│   │   ├── media/                  # ONNX 元数据识别、预打标推理管线
+│   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── capabilities/               # Tauri 权限配置
 │   ├── Cargo.toml
 │   └── tauri.conf.json
-├── .github/workflows/              # GitHub Actions 发布工作流
-├── docs/                           # 文档（build.md：Windows 打包与发布说明）
+├── .github/workflows/              # ci.yml、official-models.yml、release.yml
+├── docs/                           # 文档（build.md、adr/ 含 ONNX Runtime 决策记录）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md                       # AI 开发指南
 └── package.json
@@ -149,5 +163,6 @@ my_label_tool/
 | 画布 / 图形层 | Konva.js + react-konva | 矩形 / 多边形 / 关键点绘制、拖拽、变换 |
 | 样式 | Tailwind CSS 3.x | utility-first CSS |
 | 构建工具 | Vite 7 | 前端打包，开发端口固定 1420 |
-| 后端 | Rust + Tauri commands | 文件系统读写、JSON 导出、标签/模板/快捷键持久化 |
-| 配置持久化 | 本地 JSON 文件 | 保存在 app data 目录，不引入数据库 |
+| 后端 | Rust + Tauri commands | 文件系统读写、JSON 导出、标签/模板/快捷键持久化、预打标推理调度 |
+| 可选运行时 | ONNX Runtime（`ort` 动态加载） | 预打标推理用，应用内按需下载/手动放置，不随安装包分发 |
+| 配置持久化 | 本地 JSON 文件 | 保存在 app data 目录（含预打标模型库），不引入数据库 |

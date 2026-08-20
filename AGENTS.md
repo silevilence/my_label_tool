@@ -28,7 +28,7 @@
 | 画布/图形层      | **Konva.js + react-konva**                            | 处理矩形框、多边形、关键点的绘制、拖拽、变换                                       |
 | 样式             | **Tailwind CSS 3.x**                                  | 禁止裸写大段自定义 CSS，优先 utility class                                         |
 | 构建工具         | **Vite 7**                                            | 前端打包，开发服务器端口固定 1420                                                  |
-| 后端逻辑（Rust） | **Tauri commands**                                    | 负责文件系统读写、导出格式序列化、视频抽帧（后期，通过 `ffmpeg` sidecar 或 crate） |
+| 后端逻辑（Rust） | **Tauri commands**                                    | 负责文件系统读写、导出格式序列化、预打标推理（ONNX Runtime 动态加载）、视频抽帧（后期，通过 `ffmpeg` sidecar 或 crate） |
 | 配置持久化       | 本地 JSON/TOML 文件（标签模板、快捷键配置、导出模板） | 不引入数据库，保持轻量                                                             |
 
 **明确不使用：** Python 相关打包工具（PyInstaller/Nuitka）、Electron（体积/启动速度不达标）、任何需要联网才能运行的组件。
@@ -75,25 +75,30 @@ my_label_tool/
 ├── src/                            # React 前端
 │   ├── components/                 # UI 组件
 │   │   ├── canvas/                 # Konva 画布（CanvasChrome）、几何计算（geometry）、交互类型
-│   │   ├── settings/               # 导出面板、标签设置（弹窗）、快捷键设置
+│   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行、快捷键设置
 │   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
 │   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态）
-│   ├── types/                      # 核心类型（annotation、export）
+│   ├── types/                      # 核心类型（annotation、export、prelabel）
 │   ├── lib/                        # tauri-api 封装、导入导出、工具函数
 │   │   ├── defaults/               # 导出模板、标签、快捷键、显示设置默认值
 │   │   ├── exporters/              # COCO / VOC / YOLO / 自定义导出
 │   │   ├── importers.ts            # 多格式导入 + 项目配置（ProjectConfig）解析
+│   │   ├── image-search.ts         # 图片表达式搜索语法解析与匹配
+│   │   ├── prelabel-*.ts           # 预打标模型库 / 类别映射 / 执行
 │   │   ├── tauri-api.ts            # 所有 Tauri command 调用封装
 │   │   └── app-utils.ts            # 路径、图片尺寸、项目配置等工具函数
-│   └── hooks/                      # 画布交互、图片加载、标签/项目/快捷键等 hooks
+│   ├── i18n/                       # 前端用户可见文案（prelabel.zh-CN.ts）
+│   └── hooks/                      # 画布交互、图片加载、预打标、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
-│   ├── src/                        # 入口、commands、models
+│   ├── src/                        # 入口、commands（含 prelabel*.rs）、models
+│   │   ├── media/                  # 图像/模型处理：onnx_metadata.rs、prelabel/（runtime、pipeline、inference）
+│   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── capabilities/               # Tauri 权限（core/dialog/process/updater:default）
 │   ├── Cargo.toml
 │   └── tauri.conf.json
-├── .github/workflows/              # GitHub Actions 发布工作流（release.yml）
-├── docs/                           # 文档（build.md：Windows 打包与发布说明）
+├── .github/workflows/              # GitHub Actions：ci.yml、official-models.yml、release.yml
+├── docs/                           # 文档（build.md、adr/：ONNX Runtime 决策记录）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md
 └── package.json
@@ -167,7 +172,9 @@ interface LabelTemplate {
 
 **视频标注扩展预留**：`AnnotationShape.frameIndex` 字段现在就加上，即使图片阶段用不到，避免后期做视频标注时重构数据结构。
 
-**项目配置（ProjectConfig）**：导入与项目复用的核心契约，定义在 `lib/importers.ts`。包含 `schemaVersion`（当前恒为 1）、`format`（导入来源格式）、`annotationPath`、`imageFolder`、`exportedAt`、标签快照 `labels`、项目专用模板 `template`（id 固定为 `project-config`，名称「项目临时配置」）与 `exportOptions`。项目配置文件名固定为 `my-label-tool.project.json`，保存在图片目录下；打开图片目录时若存在该文件则提示自动加载。新增导入来源或修改导入流程时，必须同步更新 `ProjectConfig` 与 `parseProjectConfig` 校验逻辑，不得破坏已有配置的兼容性。
+**项目配置（ProjectConfig）**：导入与项目复用的核心契约，定义在 `lib/importers.ts`。包含 `schemaVersion`（当前恒为 1）、`format`（导入来源格式）、`annotationPath`、`imageFolder`、`exportedAt`、标签快照 `labels`、项目专用模板 `template`（id 固定为 `project-config`，名称「项目临时配置」）、`exportOptions` 与预打标类名映射 `prelabelMappings`。项目配置文件名固定为 `my-label-tool.project.json`，保存在图片目录下；打开图片目录时若存在该文件则提示自动加载。新增导入来源或修改导入流程时，必须同步更新 `ProjectConfig` 与 `parseProjectConfig` 校验逻辑，不得破坏已有配置的兼容性。
+
+**预打标模型库（PrelabelModelLibrary）**：定义在 `src/types/prelabel.ts`（Rust 端 `models/prelabel.rs` 字段一一对应）。`PrelabelModelConfig` 保存模型路径、YOLO 格式（yolov5 / yolov8 / yolo11）、类别数、输入尺寸、置信度/IoU 阈值；模型库配置持久化在 app data 目录。模型类别与项目标签的映射 `prelabelMappings` 按模型 id 保存在项目配置（ProjectConfig）中，解析与校验逻辑集中在 `parsePrelabelMappings`，改动时必须同步前后端结构与校验。
 
 ---
 
@@ -184,18 +191,19 @@ interface LabelTemplate {
 
 - 所有 `#[tauri::command]` 函数返回 `Result<T, String>`（或自定义 Error 类型 + `impl Serialize`），禁止 `unwrap()`/`expect()` 出现在 command 函数体内，必须走错误处理。
 - 文件路径处理统一用 `std::path::PathBuf`，不手动拼接字符串路径。
-- 图像/视频处理逻辑（后期）独立成 `src-tauri/src/media/` 模块，不要塞进 `commands/` 里。
+- 图像/视频/模型处理逻辑独立成 `src-tauri/src/media/` 模块（如 `onnx_metadata.rs`、`prelabel/` 下的 runtime / pipeline / inference），不要塞进 `commands/` 里；command 只做参数校验与结果转发。
 
 ### 通用
 
 - 快捷键、标签、导出模板的默认值放在 `src/lib/defaults/` 或对应 Rust 端常量文件中，禁止散落在组件代码里硬编码。
-- 所有用户可见文案（按钮、提示）先留出 i18n 结构（哪怕暂时只有中文一种语言），避免后期国际化时大改。
+- 所有用户可见文案（按钮、提示）放入 i18n 结构：前端新增文案放 `src/i18n/`（参考 `prelabel.zh-CN.ts`），Rust 端错误提示放 `src-tauri/src/i18n/zh_cn.rs`（通过 `use crate::i18n::zh_cn as text` 引用），禁止散落在组件或 command 中硬编码；当前只有中文一种语言。
 - 无特殊情况下，单文件代码禁止超过 1000 行；超过时优先按功能模块拆分到不同文件。
 - 如确实需要单文件超过 1000 行，必须在文件开头用注释说明原因和理由。
 
 ## 7. 测试要求
 
-- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/mod.rs` 的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步等纯逻辑。
+- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、ONNX 元数据解析、预打标推理管线等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、预打标模型库/类别映射/执行等纯逻辑。
+- 预打标真实模型验收：`.github/workflows/official-models.yml` 在 CI 下载官方 YOLOv5n / YOLOv8n / YOLO11n 权重并导出 ONNX，运行被 `#[ignore]` 隔离的元数据、运行时、真实推理与 `.pt` 转换测试；仅当预打标模块、Rust 依赖或工作流本身变化时触发，也可手动触发。涉及预打标推理改动时，先确认这些测试仍能通过。
 - **覆盖率目标**：前端可黑盒测试的纯逻辑层（导入/导出、store、几何计算、配置解析等）通过 `npm run test:coverage` 保持 90% 以上行覆盖率；Tauri API 封装、更新器、UI 组件、纯默认配置等特殊文件可在覆盖率配置中排除，但新增复杂逻辑时必须补测。
 - 新功能必须补充相关测试；问题修复尽可能补充回归测试，避免只修当前手动路径。
 - 任务完成前必须运行测试并通过：改动较小时可跑新增/相关测试，提交前至少跑 `npm run typecheck`、`npm run lint`、`npm run test:coverage`、`cargo clippy --manifest-path src-tauri/Cargo.toml`；涉及 Rust 逻辑时同时跑 `cargo test --manifest-path src-tauri/Cargo.toml`。
