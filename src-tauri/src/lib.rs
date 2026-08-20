@@ -35,7 +35,9 @@ pub fn run() {
             commands::install_onnx_runtime_from_file,
             commands::download_onnx_runtime,
             commands::validate_prelabel_model,
-            commands::run_prelabel_inference
+            commands::run_prelabel_inference,
+            commands::detect_pt_conversion_environment,
+            commands::convert_pt_to_onnx
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

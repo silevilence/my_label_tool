@@ -51,6 +51,20 @@ export interface ModelValidationReport {
   classNames: string[];
 }
 
+export type PtConversionMethod = "yolo-cli" | "python-ultralytics";
+
+export interface PtConversionEnvironment {
+  available: boolean;
+  method: PtConversionMethod | null;
+  executable: string | null;
+  message: string;
+}
+
+export interface PtConversionResult extends OnnxModelSummary {
+  path: string;
+  method: PtConversionMethod;
+}
+
 export interface PrelabelDetection {
   classIndex: number;
   confidence: number;

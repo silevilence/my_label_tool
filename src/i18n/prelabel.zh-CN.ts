@@ -12,6 +12,8 @@ export const PRELABEL_ZH_CN = {
   emptySelection: "选择或添加一个模型以查看配置。",
   ptUnsupported: "暂不直接支持 PyTorch .pt 文件",
   ptInstruction: "请在已安装 ultralytics 的终端执行：",
+  ptConvertNow: "一键转换为 ONNX",
+  ptConverting: "正在转换并校验…",
   copy: "复制",
   importForm: "模型导入表",
   modelName: "模型名称",

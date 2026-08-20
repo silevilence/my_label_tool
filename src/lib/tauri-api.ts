@@ -10,6 +10,8 @@ import type {
   PrelabelImageInference,
   PrelabelModelConfig,
   PrelabelModelLibrary,
+  PtConversionEnvironment,
+  PtConversionResult,
 } from "../types/prelabel";
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
 
@@ -146,6 +148,14 @@ export function inspectOnnxModel(path: string): Promise<OnnxModelSummary> {
 
 export function findConvertedOnnx(ptPath: string): Promise<string | null> {
   return invoke<string | null>("find_converted_onnx", { ptPath });
+}
+
+export function detectPtConversionEnvironment(): Promise<PtConversionEnvironment> {
+  return invoke<PtConversionEnvironment>("detect_pt_conversion_environment");
+}
+
+export function convertPtToOnnx(ptPath: string): Promise<PtConversionResult> {
+  return invoke<PtConversionResult>("convert_pt_to_onnx", { ptPath });
 }
 
 export function loadPrelabelModelLibrary(): Promise<PrelabelModelLibrary> {

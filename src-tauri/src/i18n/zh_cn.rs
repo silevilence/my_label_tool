@@ -219,3 +219,95 @@ pub fn invalid_library(error: impl std::fmt::Display) -> String {
 pub fn unsupported_library_version(version: u32) -> String {
     format!("不支持模型库版本 {version}")
 }
+
+pub const PT_CONVERSION_UNAVAILABLE: &str =
+    "未检测到可用的 yolo 命令或可导入 ultralytics 的 Python 环境";
+pub const PT_CONVERSION_LOCK_FAILED: &str = "模型转换任务锁不可用，请重启应用后重试";
+
+pub fn pt_conversion_available(executable: &str) -> String {
+    format!("可使用 {executable} 转换 .pt 模型")
+}
+
+pub fn pt_file_missing(path: &std::path::Path) -> String {
+    format!(".pt 模型文件不存在：{}", path.display())
+}
+
+pub fn pt_file_resolve_failed(path: &std::path::Path, error: impl std::fmt::Display) -> String {
+    format!("无法解析 .pt 模型路径 {}：{error}", path.display())
+}
+
+pub fn pt_conversion_target_exists(path: &std::path::Path) -> String {
+    format!(
+        "同名 ONNX 文件已存在，未执行转换以免覆盖：{}。可直接检查并加入该文件",
+        path.display()
+    )
+}
+
+pub fn pt_conversion_already_running(path: &std::path::Path) -> String {
+    format!("该模型正在转换：{}", path.display())
+}
+
+pub fn pt_conversion_temp_dir_failed(
+    parent: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> String {
+    format!("无法在 {} 创建隔离转换目录：{error}", parent.display())
+}
+
+pub fn pt_conversion_temp_dir_exhausted(parent: &std::path::Path) -> String {
+    format!("无法在 {} 分配唯一的隔离转换目录", parent.display())
+}
+
+pub fn pt_conversion_stage_failed(path: &std::path::Path, error: impl std::fmt::Display) -> String {
+    format!(
+        "无法复制 .pt 模型到隔离转换目录 {}：{error}",
+        path.display()
+    )
+}
+
+pub fn pt_conversion_start_failed(executable: &str, error: impl std::fmt::Display) -> String {
+    format!("无法启动 {executable} 进行模型转换：{error}")
+}
+
+pub fn pt_conversion_exit_failed(code: Option<i32>, detail: &str) -> String {
+    let code = code.map_or_else(|| "未知".to_string(), |value| value.to_string());
+    if detail.is_empty() {
+        format!("模型转换失败，进程退出码：{code}")
+    } else {
+        format!("模型转换失败，进程退出码：{code}；日志末尾：{detail}")
+    }
+}
+
+pub fn pt_conversion_output_missing(path: &std::path::Path) -> String {
+    format!("转换完成但未找到 ONNX 产物：{}", path.display())
+}
+
+pub fn pt_conversion_publish_failed(
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> String {
+    format!(
+        "ONNX 已在隔离目录通过校验，但无法安全发布到 {}（不会覆盖已有文件）：{error}",
+        path.display()
+    )
+}
+
+pub fn pt_conversion_log_failed(path: &std::path::Path, error: impl std::fmt::Display) -> String {
+    format!("无法创建模型转换日志 {}：{error}", path.display())
+}
+
+pub fn pt_conversion_timed_out(seconds: u64) -> String {
+    format!("模型转换超过 {seconds} 秒，已终止子进程")
+}
+
+pub fn pt_conversion_wait_failed(error: impl std::fmt::Display) -> String {
+    format!("等待模型转换进程失败：{error}")
+}
+
+pub fn pt_conversion_worker_failed(error: impl std::fmt::Display) -> String {
+    format!("模型转换后台任务异常结束：{error}")
+}
+
+pub fn pt_environment_worker_failed(error: impl std::fmt::Display) -> String {
+    format!("转换环境检测后台任务异常结束：{error}")
+}

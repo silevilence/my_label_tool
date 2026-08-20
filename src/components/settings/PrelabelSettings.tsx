@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   confirmAction,
+  convertPtToOnnx,
+  detectPtConversionEnvironment,
   downloadOnnxRuntime,
   findConvertedOnnx,
   getOnnxRuntimeStatus,
@@ -27,6 +29,7 @@ import type {
   PrelabelModelConfig,
   PrelabelModelLibrary,
   PrelabelClassMapping,
+  PtConversionEnvironment,
   ResolvedPrelabelClassMapping,
 } from "../../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
@@ -52,6 +55,7 @@ interface PrelabelSettingsProps {
 interface PtGuidance {
   path: string;
   suggestedOnnxPath: string | null;
+  environment: PtConversionEnvironment;
 }
 
 export function PrelabelSettings({
@@ -88,36 +92,43 @@ export function PrelabelSettings({
     });
   }, []);
 
+  async function loadOnnxDraft(path: string) {
+    const summary = await inspectOnnxModel(path);
+    setDraft(createPrelabelModelConfig(path, summary));
+    setPtGuidance(null);
+  }
+
   async function inspectPath(path: string) {
-    setIsBusy(true);
-    setError("");
-    try {
-      const summary = await inspectOnnxModel(path);
-      setDraft(createPrelabelModelConfig(path, summary));
-      setPtGuidance(null);
-    } catch (reason) {
-      setError(text.importFailed(reason));
-    } finally {
-      setIsBusy(false);
-    }
+    await runLibraryMutation(async () => {
+      try {
+        await loadOnnxDraft(path);
+      } catch (reason) {
+        setError(text.importFailed(reason));
+      }
+    });
   }
 
   async function chooseModel() {
-    const path = await selectPrelabelModelFile();
-    if (!path) {
-      return;
-    }
-    if (/\.pt$/i.test(path)) {
-      setDraft(null);
-      setError("");
-      try {
-        setPtGuidance({ path, suggestedOnnxPath: await findConvertedOnnx(path) });
-      } catch (reason) {
-        setError(String(reason));
+    await runLibraryMutation(async () => {
+      const path = await selectPrelabelModelFile();
+      if (!path) {
+        return;
       }
-      return;
-    }
-    await inspectPath(path);
+      if (/\.pt$/i.test(path)) {
+        setDraft(null);
+        const [suggestedOnnxPath, environment] = await Promise.all([
+          findConvertedOnnx(path),
+          detectPtConversionEnvironment(),
+        ]);
+        setPtGuidance({ path, suggestedOnnxPath, environment });
+        return;
+      }
+      try {
+        await loadOnnxDraft(path);
+      } catch (reason) {
+        setError(text.importFailed(reason));
+      }
+    });
   }
 
   async function runLibraryMutation(action: () => Promise<void>) {
@@ -185,6 +196,22 @@ export function PrelabelSettings({
     }
   }
 
+  async function convertPt(guidance: PtGuidance) {
+    await runLibraryMutation(async () => {
+      const result = await convertPtToOnnx(guidance.path);
+      setDraft(
+        createPrelabelModelConfig(result.path, {
+          format: result.format,
+          classCount: result.classCount,
+          inputWidth: result.inputWidth,
+          inputHeight: result.inputHeight,
+          classNames: result.classNames,
+        }),
+      );
+      setPtGuidance(null);
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 py-6">
       <section className="flex max-h-full w-full max-w-5xl flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
@@ -194,7 +221,8 @@ export function PrelabelSettings({
             <p className="mt-1 text-xs text-slate-400">{text.description}</p>
           </div>
           <button
-            className="rounded border border-slate-700 px-3 py-1 text-sm"
+            className="rounded border border-slate-700 px-3 py-1 text-sm disabled:opacity-50"
+            disabled={isBusy || isRuntimeBusy}
             type="button"
             onClick={onClose}
           >
@@ -227,6 +255,7 @@ export function PrelabelSettings({
                       : "border-slate-800 bg-slate-950 hover:border-slate-600"
                   }`}
                   key={model.id}
+                  disabled={isBusy}
                   type="button"
                   onClick={() => void runLibraryMutation(() => onSelectModel(model.id))}
                 >
@@ -262,6 +291,8 @@ export function PrelabelSettings({
             {ptGuidance && (
               <PtConversionGuidance
                 guidance={ptGuidance}
+                isBusy={isBusy}
+                onConvert={() => void convertPt(ptGuidance)}
                 onInspectSuggested={(path) => void inspectPath(path)}
               />
             )}
@@ -594,9 +625,13 @@ function RuntimeStatusPanel({
 
 function PtConversionGuidance({
   guidance,
+  isBusy,
+  onConvert,
   onInspectSuggested,
 }: {
   guidance: PtGuidance;
+  isBusy: boolean;
+  onConvert: () => void;
   onInspectSuggested: (path: string) => void;
 }) {
   const command = ptConversionCommand(guidance.path);
@@ -604,12 +639,32 @@ function PtConversionGuidance({
     <div className="rounded border border-amber-500/40 bg-amber-500/10 p-4">
       <h3 className="font-medium text-amber-100">{text.ptUnsupported}</h3>
       <p className="mt-2 text-sm text-amber-50/80">{text.ptInstruction}</p>
+      <p
+        className={`mt-3 rounded border p-3 text-sm ${
+          guidance.environment.available
+            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+            : "border-slate-700 bg-slate-950/60 text-slate-400"
+        }`}
+      >
+        {guidance.environment.message}
+      </p>
+      {guidance.environment.available && (
+        <button
+          className="mt-3 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          disabled={isBusy}
+          type="button"
+          onClick={onConvert}
+        >
+          {isBusy ? text.ptConverting : text.ptConvertNow}
+        </button>
+      )}
       <div className="mt-2 flex gap-2">
         <code className="min-w-0 flex-1 overflow-x-auto rounded bg-slate-950 p-2 text-xs text-slate-200">
           {command}
         </code>
         <button
-          className="rounded border border-amber-400/50 px-3 text-xs"
+          className="rounded border border-amber-400/50 px-3 text-xs disabled:opacity-50"
+          disabled={isBusy}
           type="button"
           onClick={() => void navigator.clipboard.writeText(command)}
         >
@@ -618,7 +673,8 @@ function PtConversionGuidance({
       </div>
       {guidance.suggestedOnnxPath && (
         <button
-          className="mt-4 rounded bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-500"
+          className="mt-4 rounded bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-500 disabled:opacity-50"
+          disabled={isBusy}
           type="button"
           onClick={() => onInspectSuggested(guidance.suggestedOnnxPath!)}
         >
