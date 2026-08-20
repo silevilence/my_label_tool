@@ -4,6 +4,11 @@ import type {
   PrelabelModelLibrary,
 } from "../types/prelabel";
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
+import {
+  DEFAULT_PRELABEL_CONFIDENCE_THRESHOLD,
+  DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE,
+  DEFAULT_PRELABEL_IOU_THRESHOLD,
+} from "./defaults/prelabel";
 
 export function modelNameFromPath(path: string): string {
   const fileName = path.split(/[\\/]/).pop() ?? path;
@@ -21,9 +26,15 @@ export function createPrelabelModelConfig(
     id,
     name: modelNameFromPath(path),
     path,
-    inputSizeOverride: null,
-    confidenceThreshold: 0.25,
-    iouThreshold: 0.45,
+    inputSizeOverride:
+      summary.inputWidth === 0 || summary.inputHeight === 0
+        ? [
+            summary.inputWidth || DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE,
+            summary.inputHeight || DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE,
+          ]
+        : null,
+    confidenceThreshold: DEFAULT_PRELABEL_CONFIDENCE_THRESHOLD,
+    iouThreshold: DEFAULT_PRELABEL_IOU_THRESHOLD,
     addedAt,
   };
 }
@@ -85,9 +96,21 @@ export function updateInputSizeOverride(
     return null;
   }
   const current: [number, number] = model.inputSizeOverride ?? [
-    model.inputWidth,
-    model.inputHeight,
+    model.inputWidth || DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE,
+    model.inputHeight || DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE,
   ];
-  current[index] = raw ? Number(raw) : index === 0 ? model.inputWidth : model.inputHeight;
+  current[index] = raw
+    ? Number(raw)
+    : index === 0
+      ? model.inputWidth || DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE
+      : model.inputHeight || DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE;
+  if (
+    model.inputWidth > 0 &&
+    model.inputHeight > 0 &&
+    current[0] === model.inputWidth &&
+    current[1] === model.inputHeight
+  ) {
+    return null;
+  }
   return current;
 }

@@ -100,12 +100,10 @@ fn validate_library(library: &PrelabelModelLibrary) -> Result<(), String> {
         if model.class_count == 0 || model.class_names.len() != model.class_count {
             return Err(text::MODEL_CLASSES_MISMATCH.to_string());
         }
-        if model.input_width == 0
-            || model.input_height == 0
-            || model
-                .input_size_override
-                .is_some_and(|[width, height]| width == 0 || height == 0)
-        {
+        let resolved_input = model
+            .input_size_override
+            .unwrap_or([model.input_width, model.input_height]);
+        if resolved_input[0] == 0 || resolved_input[1] == 0 {
             return Err(text::MODEL_INPUT_SIZE_INVALID.to_string());
         }
         if model.class_names.iter().any(|name| name.trim().is_empty()) {
@@ -179,6 +177,27 @@ mod tests {
         let error = write_prelabel_model_library(&path, &library).unwrap_err();
 
         assert!(error.contains("当前模型"));
+    }
+
+    #[test]
+    fn model_library_accepts_dynamic_metadata_with_a_concrete_override() {
+        let path = std::env::temp_dir().join(format!(
+            "my_label_tool_dynamic_prelabel_models_{}.json",
+            std::process::id()
+        ));
+        let mut library = sample_library();
+        library.models[0].input_width = 0;
+        library.models[0].input_height = 0;
+        library.models[0].input_size_override = Some([1280, 736]);
+
+        write_prelabel_model_library(&path, &library).unwrap();
+        assert_eq!(read_prelabel_model_library(&path).unwrap(), library);
+
+        library.models[0].input_size_override = None;
+        assert!(write_prelabel_model_library(&path, &library)
+            .unwrap_err()
+            .contains("输入尺寸"));
+        let _ = fs::remove_file(path);
     }
 
     #[test]

@@ -19,6 +19,11 @@ export function PrelabelExecutionPanel({
       <p className={`mt-1 text-xs ${currentModel ? "text-slate-400" : "text-amber-300"}`}>
         {currentModel ? text.executionModel(currentModel.name) : text.executionNoModel}
       </p>
+      {execution.unmatchedClassCount > 0 && (
+        <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200">
+          {text.executionUnmatched(execution.unmatchedClassCount)}
+        </p>
+      )}
       <button
         className="mt-3 w-full rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!currentModel || !hasSelectedImage || progress.isRunning}

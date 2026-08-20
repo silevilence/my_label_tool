@@ -100,7 +100,7 @@ pub async fn detect_pt_conversion_environment() -> Result<PtConversionEnvironmen
 
 fn detect_environment() -> PtConversionEnvironment {
     detect_environment_with(|candidate, args| {
-        probe_command(candidate.executable, args, PROBE_TIMEOUT).unwrap_or(false)
+        probe_command(candidate.executable, args, PROBE_TIMEOUT)
     })
 }
 
@@ -246,8 +246,9 @@ impl Drop for TemporaryDirectory {
 }
 
 fn detect_environment_with(
-    mut probe: impl FnMut(ConversionCandidate, &[&str]) -> bool,
+    mut probe: impl FnMut(ConversionCandidate, &[&str]) -> Result<(), String>,
 ) -> PtConversionEnvironment {
+    let mut failures = Vec::new();
     for candidate in CANDIDATES {
         let arguments = match candidate.method {
             PtConversionMethod::YoloCli => ["--help", ""],
@@ -258,20 +259,23 @@ fn detect_environment_with(
         } else {
             &arguments[..]
         };
-        if probe(candidate, arguments) {
-            return PtConversionEnvironment {
-                available: true,
-                method: Some(candidate.method),
-                executable: Some(candidate.executable.to_string()),
-                message: text::pt_conversion_available(candidate.executable),
-            };
+        match probe(candidate, arguments) {
+            Ok(()) => {
+                return PtConversionEnvironment {
+                    available: true,
+                    method: Some(candidate.method),
+                    executable: Some(candidate.executable.to_string()),
+                    message: text::pt_conversion_available(candidate.executable),
+                };
+            }
+            Err(error) => failures.push(format!("{}：{error}", candidate.executable)),
         }
     }
     PtConversionEnvironment {
         available: false,
         method: None,
         executable: None,
-        message: text::PT_CONVERSION_UNAVAILABLE.to_string(),
+        message: text::pt_conversion_unavailable_with_details(&failures),
     }
 }
 
@@ -308,7 +312,7 @@ fn process_compatible_path(path: &Path) -> String {
     path.into_owned()
 }
 
-fn probe_command(executable: &str, arguments: &[&str], timeout: Duration) -> Result<bool, String> {
+fn probe_command(executable: &str, arguments: &[&str], timeout: Duration) -> Result<(), String> {
     let mut child = offline_command(executable)
         .args(arguments)
         .stdin(Stdio::null())
@@ -316,7 +320,11 @@ fn probe_command(executable: &str, arguments: &[&str], timeout: Duration) -> Res
         .stderr(Stdio::null())
         .spawn()
         .map_err(|error| text::pt_conversion_start_failed(executable, error))?;
-    Ok(wait_for_child(&mut child, timeout)?.is_some_and(|status| status.success()))
+    match wait_for_child(&mut child, timeout)? {
+        Some(status) if status.success() => Ok(()),
+        Some(status) => Err(text::pt_probe_exit_failed(status.code())),
+        None => Err(text::pt_probe_timed_out(timeout.as_secs())),
+    }
 }
 
 fn run_conversion_process(
@@ -461,7 +469,11 @@ mod tests {
     #[test]
     fn detects_yolo_cli_before_python() {
         let environment = detect_environment_with(|candidate, arguments| {
-            candidate.executable == "yolo" && arguments == ["--help"]
+            if candidate.executable == "yolo" && arguments == ["--help"] {
+                Ok(())
+            } else {
+                Err("not available".to_string())
+            }
         });
         assert!(environment.available);
         assert_eq!(environment.method, Some(PtConversionMethod::YoloCli));
@@ -471,7 +483,11 @@ mod tests {
     #[test]
     fn falls_back_to_a_python_ultralytics_import_probe() {
         let environment = detect_environment_with(|candidate, arguments| {
-            candidate.executable == "python3" && arguments == ["-c", "import ultralytics"]
+            if candidate.executable == "python3" && arguments == ["-c", "import ultralytics"] {
+                Ok(())
+            } else {
+                Err("not available".to_string())
+            }
         });
         assert!(environment.available);
         assert_eq!(
@@ -483,10 +499,14 @@ mod tests {
 
     #[test]
     fn reports_unavailable_when_all_probes_fail() {
-        let environment = detect_environment_with(|_, _| false);
+        let environment = detect_environment_with(|candidate, _| {
+            Err(format!("{} probe failed", candidate.executable))
+        });
         assert!(!environment.available);
         assert_eq!(environment.method, None);
         assert_eq!(environment.executable, None);
+        assert!(environment.message.contains("yolo probe failed"));
+        assert!(environment.message.contains("python probe failed"));
     }
 
     #[test]

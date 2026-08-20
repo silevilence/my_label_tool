@@ -31,15 +31,8 @@ impl PrelabelSession {
             .map_err(text::model_session_failed)?;
         let contract = validate_session_contract(&session, Some(config.format.clone()))?;
         validate_contract_class_count(config, contract.class_count)?;
-        let [input_width, input_height] = config
-            .input_size_override
-            .unwrap_or([contract.input_width, contract.input_height]);
-        if input_width != contract.input_width || input_height != contract.input_height {
-            return Err(text::prelabel_static_input_override(
-                contract.input_width,
-                contract.input_height,
-            ));
-        }
+        let [input_width, input_height] =
+            resolve_input_size(config.input_size_override, &contract)?;
         Ok(Self {
             session,
             format: contract.format,
@@ -95,6 +88,25 @@ impl PrelabelSession {
             self.iou_threshold,
         )
     }
+}
+
+fn resolve_input_size(
+    input_size_override: Option<[usize; 2]>,
+    contract: &crate::media::prelabel::runtime::ModelTensorContract,
+) -> Result<[usize; 2], String> {
+    let resolved = input_size_override.unwrap_or([contract.input_width, contract.input_height]);
+    if resolved[0] == 0 || resolved[1] == 0 {
+        return Err(text::PRELABEL_DYNAMIC_INPUT_OVERRIDE_REQUIRED.to_string());
+    }
+    if (contract.input_width > 0 && resolved[0] != contract.input_width)
+        || (contract.input_height > 0 && resolved[1] != contract.input_height)
+    {
+        return Err(text::prelabel_static_input_override(
+            contract.input_width,
+            contract.input_height,
+        ));
+    }
+    Ok(resolved)
 }
 
 fn read_image_file_limited(image_path: &Path) -> Result<Vec<u8>, String> {
@@ -165,17 +177,17 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        validate_config_basics, validate_contract_class_count, validate_encoded_image_length,
-        PrelabelSession, MAX_ENCODED_IMAGE_BYTES,
+        resolve_input_size, validate_config_basics, validate_contract_class_count,
+        validate_encoded_image_length, PrelabelSession, MAX_ENCODED_IMAGE_BYTES,
     };
     use crate::{
-        media::prelabel::runtime::load_runtime,
+        media::prelabel::runtime::{load_runtime, ModelTensorContract},
         models::prelabel::{PrelabelModelConfig, YoloModelFormat},
     };
 
     #[test]
-    #[ignore = "requires external ONNX Runtime and ignored ONNX/image fixtures"]
-    fn reuses_sessions_for_v5_v8_and_matches_official_yolov8_expectations() {
+    #[ignore = "requires external ONNX Runtime and ignored official YOLOv8/image fixtures"]
+    fn reuses_a_session_and_matches_official_yolov8_expectations() {
         let runtime = fixture("MY_LABEL_TOOL_ORT_DLL");
         let image = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
         load_runtime(&runtime).unwrap();
@@ -199,6 +211,14 @@ mod tests {
         );
         assert!((first[0].confidence - 0.890_207).abs() < 0.02);
         assert_box_close(first[0].points, [670.449, 380.558, 139.47, 499.093], 5.0);
+    }
+
+    #[test]
+    #[ignore = "requires external ONNX Runtime and ignored YOLOv5 ONNX/image fixtures"]
+    fn matches_the_yolov5_fixture_expectations() {
+        let runtime = fixture("MY_LABEL_TOOL_ORT_DLL");
+        let image = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
+        load_runtime(&runtime).unwrap();
 
         let mut yolov5 = PrelabelSession::from_config(&config(
             fixture("MY_LABEL_TOOL_YOLOV5_ONNX"),
@@ -251,6 +271,38 @@ mod tests {
         assert!(validate_encoded_image_length(MAX_ENCODED_IMAGE_BYTES + 1)
             .unwrap_err()
             .contains("编码文件"));
+    }
+
+    #[test]
+    fn resolves_dynamic_input_overrides_but_rejects_static_dimension_changes() {
+        let dynamic = contract(0, 0);
+        assert_eq!(
+            resolve_input_size(Some([1280, 736]), &dynamic).unwrap(),
+            [1280, 736]
+        );
+        assert!(resolve_input_size(None, &dynamic)
+            .unwrap_err()
+            .contains("动态输入"));
+
+        let static_contract = contract(640, 640);
+        assert_eq!(
+            resolve_input_size(None, &static_contract).unwrap(),
+            [640, 640]
+        );
+        assert!(resolve_input_size(Some([1280, 640]), &static_contract)
+            .unwrap_err()
+            .contains("固定"));
+    }
+
+    fn contract(input_width: usize, input_height: usize) -> ModelTensorContract {
+        ModelTensorContract {
+            format: YoloModelFormat::YoloV8,
+            class_count: 80,
+            input_width,
+            input_height,
+            input_name: "images".to_string(),
+            output_names: vec!["output0".to_string()],
+        }
     }
 
     fn config(path: PathBuf, format: YoloModelFormat, confidence: f32) -> PrelabelModelConfig {

@@ -226,8 +226,7 @@ fn decode_v8_single(
             output.data[candidate * features + feature]
         }
     };
-    let scores_are_probabilities = (0..candidates)
-        .all(|candidate| (4..features).all(|feature| is_probability(value(candidate, feature))));
+    let scores_are_probabilities = score_matrix_is_probabilities(candidates, 4, features, value);
     let mut detections = Vec::new();
     for candidate in 0..candidates {
         let (class_index, confidence) = (4..features)
@@ -280,8 +279,7 @@ fn decode_v5_single(
             output.data[feature * candidates + candidate]
         }
     };
-    let scores_are_probabilities = (0..candidates)
-        .all(|candidate| (4..features).all(|feature| is_probability(value(candidate, feature))));
+    let scores_are_probabilities = score_matrix_is_probabilities(candidates, 4, features, value);
     let mut detections = Vec::new();
     for candidate in 0..candidates {
         let objectness = activate_score(value(candidate, 4), scores_are_probabilities);
@@ -442,14 +440,34 @@ fn intersection_over_union(left: [f32; 4], right: [f32; 4]) -> f32 {
 
 fn activate_score(value: f32, already_probability: bool) -> f32 {
     if already_probability {
-        value
+        if value.is_finite() {
+            value.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
     } else {
         sigmoid(value)
     }
 }
 
-fn is_probability(value: f32) -> bool {
-    value.is_finite() && (0.0..=1.0).contains(&value)
+fn score_matrix_is_probabilities(
+    candidates: usize,
+    feature_start: usize,
+    feature_end: usize,
+    value: impl Fn(usize, usize) -> f32,
+) -> bool {
+    let mut total = 0_usize;
+    let mut outliers = 0_usize;
+    for candidate in 0..candidates {
+        for feature in feature_start..feature_end {
+            total += 1;
+            let score = value(candidate, feature);
+            if !score.is_finite() || !(0.0..=1.0).contains(&score) {
+                outliers += 1;
+            }
+        }
+    }
+    total > 0 && outliers <= (total / 1_000).max(1)
 }
 
 fn sigmoid(value: f32) -> f32 {
@@ -598,6 +616,41 @@ mod tests {
 
         assert_eq!(detections.len(), 1);
         assert!((detections[0].confidence - 0.880_797).abs() < 1e-5);
+    }
+
+    #[test]
+    fn one_outlier_does_not_flip_probability_outputs_to_sigmoid() {
+        let mut data = vec![0.0; 5 * 10];
+        data[0] = 50.0;
+        data[10] = 50.0;
+        data[20] = 20.0;
+        data[30] = 20.0;
+        data[40] = 0.9;
+        data[49] = -0.01;
+        let transform = LetterboxTransform {
+            original_width: 100,
+            original_height: 100,
+            input_width: 100,
+            input_height: 100,
+            scale: 1.0,
+            pad_x: 0.0,
+            pad_y: 0.0,
+        };
+
+        let detections = decode_outputs(
+            YoloModelFormat::YoloV8,
+            &[RawTensor {
+                shape: vec![1, 5, 10],
+                data,
+            }],
+            &transform,
+            0.8,
+            0.5,
+        )
+        .unwrap();
+
+        assert_eq!(detections.len(), 1);
+        assert!((detections[0].confidence - 0.9).abs() < 1e-6);
     }
 
     #[test]

@@ -46,8 +46,8 @@ pub fn validate_tensor_contract(
         || input.dimensions.len() != 4
         || !matches!(input.dimensions[0], 1 | -1)
         || input.dimensions[1] != 3
-        || input.dimensions[2] <= 0
-        || input.dimensions[3] <= 0
+        || !matches!(input.dimensions[2], -1 | 1..)
+        || !matches!(input.dimensions[3], -1 | 1..)
     {
         return Err(text::YOLO_INPUT_CONTRACT.to_string());
     }
@@ -65,13 +65,19 @@ pub fn validate_tensor_contract(
     Ok(ModelTensorContract {
         format,
         class_count,
-        input_width: usize::try_from(input.dimensions[3])
-            .map_err(|_| text::YOLO_INPUT_CONTRACT.to_string())?,
-        input_height: usize::try_from(input.dimensions[2])
-            .map_err(|_| text::YOLO_INPUT_CONTRACT.to_string())?,
+        input_width: dynamic_input_dimension(input.dimensions[3])?,
+        input_height: dynamic_input_dimension(input.dimensions[2])?,
         input_name: input.name.clone(),
         output_names: outputs.iter().map(|output| output.name.clone()).collect(),
     })
+}
+
+fn dynamic_input_dimension(dimension: i64) -> Result<usize, String> {
+    if dimension == -1 {
+        Ok(0)
+    } else {
+        usize::try_from(dimension).map_err(|_| text::YOLO_INPUT_CONTRACT.to_string())
+    }
 }
 
 fn validate_output_resource_budget(outputs: &[TensorDescriptor]) -> Result<(), String> {
@@ -291,6 +297,18 @@ mod tests {
         assert_eq!(contract.format, YoloModelFormat::Yolo11);
         assert_eq!(contract.class_count, 80);
         assert_eq!((contract.input_width, contract.input_height), (640, 640));
+    }
+
+    #[test]
+    fn accepts_dynamic_spatial_inputs_for_a_runtime_override() {
+        let contract = validate_tensor_contract(
+            &[tensor("images", &[1, 3, -1, -1])],
+            &[tensor("output0", &[1, 84, 8400])],
+            Some(YoloModelFormat::YoloV8),
+        )
+        .unwrap();
+
+        assert_eq!((contract.input_width, contract.input_height), (0, 0));
     }
 
     #[test]

@@ -6,6 +6,7 @@ import type { AnnotationShape, LabelConfig } from "../types/annotation";
 import type { ProjectConfig } from "../lib/importers";
 import type { PrelabelModelLibrary } from "../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../i18n/prelabel.zh-CN";
+import { annotationShapesSnapshot } from "../lib/annotation-utils";
 
 const BATCH_CHUNK_SIZE = 8;
 
@@ -69,18 +70,28 @@ export function usePrelabelExecution({
   );
   const currentModelRef = useRef(currentModel);
   currentModelRef.current = currentModel;
+  const currentMappings = useMemo(
+    () =>
+      currentModel
+        ? resolvePrelabelClassMappings(
+            currentModel.id,
+            currentModel.classNames,
+            labels,
+            activeProjectConfig?.prelabelMappings ?? {},
+          )
+        : [],
+    [activeProjectConfig?.prelabelMappings, currentModel, labels],
+  );
+  const unmatchedClassCount = currentMappings.filter(
+    (mapping) => !mapping.excluded && !mapping.labelId,
+  ).length;
 
   async function runSingle() {
     if (!currentModel || !selectedPath || runningRef.current) {
       return;
     }
     const taskContext = { activeProjectConfig, images, labels, model: currentModel };
-    const mappings = resolvePrelabelClassMappings(
-      currentModel.id,
-      currentModel.classNames,
-      labels,
-      activeProjectConfig?.prelabelMappings ?? {},
-    );
+    const mappings = currentMappings;
     runningRef.current = true;
     cancelRequestedRef.current = false;
     setError("");
@@ -126,16 +137,11 @@ export function usePrelabelExecution({
     }
 
     const taskContext = { activeProjectConfig, images, labels, model: currentModel };
-    const mappings = resolvePrelabelClassMappings(
-      currentModel.id,
-      currentModel.classNames,
-      labels,
-      activeProjectConfig?.prelabelMappings ?? {},
-    );
+    const mappings = currentMappings;
     const expectedAnnotations = new Map(
       targets.map((image) => [
         image.path,
-        JSON.stringify(annotationsByImage[image.path] ?? []),
+        annotationShapesSnapshot(annotationsByImage[image.path] ?? []),
       ]),
     );
     const historyGroupId = crypto.randomUUID();
@@ -164,7 +170,7 @@ export function usePrelabelExecution({
             historyGroupId,
           ),
         shouldCommit: (entry) =>
-          JSON.stringify(annotationsByImageRef.current[entry.imagePath] ?? []) ===
+          annotationShapesSnapshot(annotationsByImageRef.current[entry.imagePath] ?? []) ===
           expectedAnnotations.get(entry.imagePath),
         isContextCurrent: () => isContextCurrent(taskContext),
         isCancelled: () => cancelRequestedRef.current,
@@ -245,5 +251,5 @@ export function usePrelabelExecution({
     );
   }
 
-  return { cancel, currentModel, progress, runBatch, runSingle };
+  return { cancel, currentModel, progress, runBatch, runSingle, unmatchedClassCount };
 }

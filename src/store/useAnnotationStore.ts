@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { annotationShapesEqual } from "../lib/annotation-utils";
 import type { AnnotationShape } from "../types/annotation";
 
 interface AnnotationState {
@@ -49,10 +50,12 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
   canRedo: false,
   addAnnotation: (imagePath, annotation) =>
     set((state) =>
-      applyImageHistory(state, imagePath, [
-        ...(state.annotationsByImage[imagePath] ?? []),
-        annotation,
-      ], null),
+      applyImageHistory(
+        state,
+        imagePath,
+        [...(state.annotationsByImage[imagePath] ?? []), annotation],
+        null,
+      ),
     ),
   updateAnnotation: (imagePath, annotationId, patch) =>
     set((state) => {
@@ -168,7 +171,7 @@ function applyImageHistory(
   groupId?: string,
 ): AnnotationState {
   const before = state.annotationsByImage[imagePath] ?? [];
-  if (sameAnnotations(before, after)) {
+  if (annotationShapesEqual(before, after)) {
     return state;
   }
 
@@ -207,9 +210,7 @@ function trimHistory(entries: AnnotationHistoryEntry[]): AnnotationHistoryEntry[
   return entries.slice(start);
 }
 
-function withHistoryFlags(
-  state: Omit<AnnotationState, "canUndo" | "canRedo">,
-): AnnotationState {
+function withHistoryFlags(state: Omit<AnnotationState, "canUndo" | "canRedo">): AnnotationState {
   return {
     ...state,
     canUndo: state.undoStack.length > 0,
@@ -223,8 +224,4 @@ function cloneAnnotations(annotations: AnnotationShape[]): AnnotationShape[] {
     points: [...annotation.points],
     attributes: annotation.attributes ? { ...annotation.attributes } : undefined,
   }));
-}
-
-function sameAnnotations(left: AnnotationShape[], right: AnnotationShape[]): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }

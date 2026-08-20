@@ -76,6 +76,25 @@ describe("prelabel model imports", () => {
     expect(updateInputSizeOverride({ ...config, inputSizeOverride: [1280, 720] }, 0, "")).toEqual([
       640, 720,
     ]);
+    expect(updateInputSizeOverride({ ...config, inputSizeOverride: [640, 720] }, 1, "")).toBeNull();
+  });
+
+  it("creates a usable default override for dynamic spatial dimensions", () => {
+    const config = createPrelabelModelConfig(
+      "C:/models/dynamic.onnx",
+      {
+        format: "yolov8",
+        classCount: 1,
+        inputWidth: 0,
+        inputHeight: 0,
+        classNames: ["person"],
+      },
+      "dynamic-model",
+      "2026-08-20T00:00:00.000Z",
+    );
+
+    expect(config.inputSizeOverride).toEqual([640, 640]);
+    expect(updateInputSizeOverride(config, 0, "1280")).toEqual([1280, 640]);
   });
 });
 

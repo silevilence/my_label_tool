@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Type, lint, coverage, and Rust checks
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Frontend coverage
+        run: npm run test:coverage
+
+      - name: Rust clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  official-models:
+    name: Official YOLO model integration
+    needs: checks
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned model tooling
+        run: python -m pip install ultralytics==8.4.123 onnx==1.22.0
+
+      - name: Prepare official ONNX Runtime
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "onnxruntime-package"
+          $assetDir = Join-Path $env:RUNNER_TEMP "onnxruntime-assets"
+          python -m pip download onnxruntime==1.24.3 --only-binary=:all: --no-deps --dest $packageDir
+          $wheel = Get-ChildItem $packageDir -Filter "*.whl" | Select-Object -First 1
+          if (-not $wheel) {
+            throw "ONNX Runtime wheel was not downloaded."
+          }
+          Copy-Item $wheel.FullName (Join-Path $packageDir "onnxruntime.zip")
+          Expand-Archive (Join-Path $packageDir "onnxruntime.zip") (Join-Path $packageDir "extracted")
+          New-Item -ItemType Directory -Force $assetDir | Out-Null
+          $expected = @{
+            "onnxruntime.dll" = "E6ABE8B3FE7EB38E0424FA366EB7EDAC2090AC2D211592C26D674F928B44F785"
+            "onnxruntime_providers_shared.dll" = "1647771B4593C729DF99A4A86E66AAD6A77C9E6E3C8EFD97322EF42EF9B1CC0B"
+          }
+          foreach ($name in $expected.Keys) {
+            $source = Get-ChildItem (Join-Path $packageDir "extracted") -Recurse -Filter $name | Select-Object -First 1
+            if (-not $source) {
+              throw "Missing $name in the official ONNX Runtime wheel."
+            }
+            $actual = (Get-FileHash $source.FullName -Algorithm SHA256).Hash
+            if ($actual -ne $expected[$name]) {
+              throw "Unexpected SHA-256 for ${name}: $actual"
+            }
+            Copy-Item $source.FullName (Join-Path $assetDir $name)
+          }
+          "MY_LABEL_TOOL_ORT_DLL=$(Join-Path $assetDir 'onnxruntime.dll')" >> $env:GITHUB_ENV
+          "MY_LABEL_TOOL_ORT_DIR=$assetDir" >> $env:GITHUB_ENV
+
+      - name: Export official Ultralytics fixtures
+        shell: pwsh
+        run: |
+          $modelDir = Join-Path $env:RUNNER_TEMP "official-yolo-models"
+          New-Item -ItemType Directory -Force $modelDir | Out-Null
+          Push-Location $modelDir
+          try {
+            python -c "from ultralytics import YOLO; YOLO('yolo11n.pt').export(format='onnx', imgsz=640, simplify=False); YOLO('yolov8n.pt').export(format='onnx', imgsz=640, simplify=False)"
+            Invoke-WebRequest "https://ultralytics.com/images/bus.jpg" -OutFile "bus.jpg"
+          } finally {
+            Pop-Location
+          }
+          "MY_LABEL_TOOL_YOLO_ONNX=$(Join-Path $modelDir 'yolo11n.onnx')" >> $env:GITHUB_ENV
+          "MY_LABEL_TOOL_YOLOV8_ONNX=$(Join-Path $modelDir 'yolov8n.onnx')" >> $env:GITHUB_ENV
+          "MY_LABEL_TOOL_YOLO_PT=$(Join-Path $modelDir 'yolo11n.pt')" >> $env:GITHUB_ENV
+          "MY_LABEL_TOOL_YOLO_IMAGE=$(Join-Path $modelDir 'bus.jpg')" >> $env:GITHUB_ENV
+          "MY_LABEL_TOOL_ULTRALYTICS_PYTHON=$((Get-Command python).Source)" >> $env:GITHUB_ENV
+
+      - name: Verify official metadata and runtime contract
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml inspects_official_ultralytics_model_when_fixture_is_available -- --ignored
+          cargo test --manifest-path src-tauri/Cargo.toml validates_official_v8_and_yolo11_models_through_the_command_seam -- --ignored
+
+      - name: Verify official inference alignment
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml reuses_a_session_and_matches_official_yolov8_expectations -- --ignored
+          cargo test --manifest-path src-tauri/Cargo.toml reuses_the_command_session_cache_across_frontend_chunks -- --ignored
+
+      - name: Verify real PT conversion paths
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml converts_official_pt_with_real_ultralytics_when_fixture_available -- --ignored
+          cargo test --manifest-path src-tauri/Cargo.toml detects_real_environment_and_runs_the_complete_conversion_command_path -- --ignored

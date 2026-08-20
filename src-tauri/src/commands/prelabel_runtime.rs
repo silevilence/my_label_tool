@@ -357,12 +357,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires external ONNX Runtime and ignored ONNX fixtures"]
-    fn validates_official_and_v5_v8_sample_models_through_the_command_seam() {
+    #[ignore = "requires external ONNX Runtime and ignored official ONNX fixtures"]
+    fn validates_official_v8_and_yolo11_models_through_the_command_seam() {
         let runtime_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_ORT_DLL"));
         let official_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLO_ONNX"));
         let yolov8_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLOV8_ONNX"));
-        let yolov5_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLOV5_ONNX"));
 
         load_runtime(&runtime_path).unwrap();
         let official = validate_model_file(&official_path).unwrap();
@@ -373,7 +372,15 @@ mod tests {
         assert_eq!(yolov8.contract.format, YoloModelFormat::YoloV8);
         assert_eq!(yolov8.contract.class_count, 80);
         assert_eq!(yolov8.contract.output_names, ["output0"]);
+    }
 
+    #[test]
+    #[ignore = "requires external ONNX Runtime and an ignored YOLOv5 ONNX fixture"]
+    fn validates_yolov5_model_through_the_command_seam() {
+        let runtime_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_ORT_DLL"));
+        let yolov5_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLOV5_ONNX"));
+
+        load_runtime(&runtime_path).unwrap();
         let yolov5 = validate_model_file(&yolov5_path).unwrap();
         assert_eq!(yolov5.contract.format, YoloModelFormat::YoloV5);
         assert_eq!(yolov5.contract.class_count, 80);

@@ -21,8 +21,6 @@ pub const ONNX_NAMES_UNPARSABLE: &str = "无法解析 ONNX names 元数据";
 pub const ONNX_NAMES_INDEX_INVALID: &str = "ONNX names 包含无效类别序号";
 pub const ONNX_NAMES_EMPTY: &str = "ONNX names 包含空类名";
 pub const ONNX_NAMES_NOT_CONTIGUOUS: &str = "ONNX names 类别序号必须从 0 连续排列";
-pub const INPUT_HEIGHT: &str = "输入高度";
-pub const INPUT_WIDTH: &str = "输入宽度";
 pub const MODEL_ID_INVALID: &str = "模型 id 不能为空且不能重复";
 pub const MODEL_NAME_OR_PATH_EMPTY: &str = "模型名称和路径不能为空";
 pub const MODEL_CLASSES_MISMATCH: &str = "模型类别数与类名表不一致";
@@ -42,6 +40,8 @@ pub const RUNTIME_AVAILABLE: &str = "ONNX Runtime 已就绪";
 pub const MODEL_METADATA_RUNTIME_MISMATCH: &str = "ONNX 元数据与运行时张量信息不一致";
 pub const MODEL_FORMAT_RUNTIME_MISMATCH: &str = "ONNX 元数据中的 YOLO 版本与运行时输出结构不一致";
 pub const PRELABEL_INPUT_SIZE_INVALID: &str = "预打标输入尺寸必须是有效的正整数";
+pub const PRELABEL_DYNAMIC_INPUT_OVERRIDE_REQUIRED: &str =
+    "动态输入模型必须配置有效的输入宽度和高度";
 pub const PRELABEL_INPUT_SIZE_TOO_LARGE: &str =
     "预打标输入尺寸过大，单边不得超过 4096 且总像素不得超过 16777216";
 pub const PRELABEL_EMPTY_IMAGE: &str = "无法对空图片执行预打标";
@@ -55,6 +55,7 @@ pub const PRELABEL_SOURCE_IMAGE_TOO_LARGE: &str =
     "源图片解码为 RGB 后超过 128 MiB，已拒绝处理以避免内存耗尽";
 pub const PRELABEL_ENCODED_IMAGE_TOO_LARGE: &str =
     "源图片编码文件超过 128 MiB，已拒绝读取以避免内存耗尽";
+pub const PRELABEL_SESSION_CACHE_LOCK_FAILED: &str = "预打标模型会话缓存不可用，请重启应用后重试";
 
 pub fn prelabel_image_decode_failed(error: impl std::fmt::Display) -> String {
     format!("图片解码失败：{error}")
@@ -69,7 +70,17 @@ pub fn prelabel_allocation_failed(error: impl std::fmt::Display) -> String {
 }
 
 pub fn prelabel_static_input_override(width: usize, height: usize) -> String {
-    format!("当前模型输入尺寸固定为 {width}×{height}，不能使用不同的输入尺寸覆盖")
+    let width = if width == 0 {
+        "动态".to_string()
+    } else {
+        width.to_string()
+    };
+    let height = if height == 0 {
+        "动态".to_string()
+    } else {
+        height.to_string()
+    };
+    format!("当前模型输入尺寸为 {width}×{height}；固定维度不能使用不同的尺寸覆盖")
 }
 
 pub fn prelabel_class_names_count_mismatch(class_count: usize, names_count: usize) -> String {
@@ -82,6 +93,10 @@ pub fn prelabel_model_class_count_mismatch(configured: usize, runtime: usize) ->
 
 pub fn prelabel_image_read_failed(path: &std::path::Path, error: impl std::fmt::Display) -> String {
     format!("读取待推理图片 {} 失败：{error}", path.display())
+}
+
+pub fn prelabel_model_metadata_failed(path: &str, error: impl std::fmt::Display) -> String {
+    format!("读取预打标模型文件信息 {path} 失败：{error}")
 }
 
 pub fn prelabel_image_file_allocation_failed(
@@ -200,10 +215,6 @@ pub fn onnx_names_count_mismatch(actual: usize, inferred: usize) -> String {
     format!("ONNX names 包含 {actual} 个类，但输出张量推断为 {inferred} 个类")
 }
 
-pub fn dynamic_dimension(label: &str) -> String {
-    format!("{label}为动态维度，请在导入表中手动覆盖")
-}
-
 pub fn read_onnx_failed(error: impl std::fmt::Display) -> String {
     format!("无法读取 ONNX 模型：{error}")
 }
@@ -226,6 +237,29 @@ pub const PT_CONVERSION_LOCK_FAILED: &str = "模型转换任务锁不可用，�
 
 pub fn pt_conversion_available(executable: &str) -> String {
     format!("可使用 {executable} 转换 .pt 模型")
+}
+
+pub fn pt_conversion_unavailable_with_details(failures: &[String]) -> String {
+    if failures.is_empty() {
+        PT_CONVERSION_UNAVAILABLE.to_string()
+    } else {
+        format!(
+            "{}。探测详情：{}",
+            PT_CONVERSION_UNAVAILABLE,
+            failures.join("；")
+        )
+    }
+}
+
+pub fn pt_probe_exit_failed(code: Option<i32>) -> String {
+    format!(
+        "探测进程退出码 {}",
+        code.map_or_else(|| "未知".to_string(), |value| value.to_string())
+    )
+}
+
+pub fn pt_probe_timed_out(seconds: u64) -> String {
+    format!("探测超过 {seconds} 秒，已终止进程")
 }
 
 pub fn pt_file_missing(path: &std::path::Path) -> String {

@@ -33,8 +33,9 @@ export const PRELABEL_ZH_CN = {
   importFailed: (reason: unknown) => `无法导入模型：${String(reason)}`,
   removeConfirmation: (name: string) => `确定从模型库移除「${name}」吗？模型文件不会被删除。`,
   suggestedOnnx: (path: string) => `使用同目录转换产物：${path}`,
+  dynamicDimension: "动态",
   modelSummary: (classCount: number, width: number, height: number) =>
-    `${classCount} 类 · ${width}×${height}`,
+    `${classCount} 类 · ${width || "动态"}×${height || "动态"}`,
   runtimeTitle: "ONNX Runtime",
   runtimeDescription: "运行时按需放入应用数据目录，不随安装包分发；放置后可立即检测。",
   runtimeChecking: "正在检测运行时…",
@@ -46,7 +47,7 @@ export const PRELABEL_ZH_CN = {
   runtimeManual: "手动选择 DLL",
   runtimeDownloadConfirmation:
     "将从本项目 GitHub Release 下载 ONNX Runtime，并执行 SHA-256 校验。是否继续？",
-  runtimeDirectoryLabel: "约定目录",
+  runtimeDirectory: (path: string) => `约定目录：${path}`,
   runtimeOperationFailed: (reason: unknown) => `ONNX Runtime 操作失败：${String(reason)}`,
   validateModel: "校验模型",
   modelValidationPassed: (format: string, classes: number, width: number, height: number) =>
@@ -81,6 +82,7 @@ export const PRELABEL_ZH_CN = {
   executionTitle: "预打标执行",
   executionNoModel: "请先在模型库中添加并选择模型。",
   executionModel: (name: string) => `当前模型：${name}`,
+  executionUnmatched: (count: number) => `有 ${count} 个模型类尚未映射，运行时将跳过这些类别。`,
   singleRun: "预打标当前图片（追加）",
   batchRun: "批量预打标",
   forceOverwrite: "强制覆盖已有标注",

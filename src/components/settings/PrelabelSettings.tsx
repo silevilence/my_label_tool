@@ -87,9 +87,11 @@ export function PrelabelSettings({
 
   useEffect(() => setEditingModel(currentModel), [currentModel]);
   useEffect(() => {
-    void getOnnxRuntimeStatus().then(setRuntimeStatus).catch((reason: unknown) => {
-      setError(String(reason));
-    });
+    void getOnnxRuntimeStatus()
+      .then(setRuntimeStatus)
+      .catch((reason: unknown) => {
+        setError(String(reason));
+      });
   }, []);
 
   async function loadOnnxDraft(path: string) {
@@ -174,6 +176,10 @@ export function PrelabelSettings({
     }
   }
 
+  async function refreshRuntime() {
+    await runRuntimeAction(getOnnxRuntimeStatus);
+  }
+
   async function validateModel(model: PrelabelModelConfig) {
     setIsRuntimeBusy(true);
     setError("");
@@ -184,8 +190,8 @@ export function PrelabelSettings({
         text.modelValidationPassed(
           formatLabel(report.format),
           report.classCount,
-          report.inputWidth,
-          report.inputHeight,
+          report.inputWidth || model.inputSizeOverride?.[0] || model.inputWidth,
+          report.inputHeight || model.inputSizeOverride?.[1] || model.inputHeight,
         ),
       );
       setRuntimeStatus(await getOnnxRuntimeStatus());
@@ -282,6 +288,7 @@ export function PrelabelSettings({
               status={runtimeStatus}
               onDownload={() => void downloadRuntime()}
               onInstall={() => void installRuntimeManually()}
+              onRefresh={() => void refreshRuntime()}
             />
             {modelValidation && (
               <p className="mb-4 rounded border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
@@ -380,9 +387,7 @@ function ClassMappingPanel({
       ),
     [activeProjectConfig?.prelabelMappings, labels, model.classNames, model.id],
   );
-  const unmatchedCount = resolved.filter(
-    (mapping) => !mapping.excluded && !mapping.labelId,
-  ).length;
+  const unmatchedCount = resolved.filter((mapping) => !mapping.excluded && !mapping.labelId).length;
 
   function upsertMapping(next: PrelabelClassMapping): PrelabelClassMapping[] {
     return [
@@ -567,11 +572,13 @@ function RuntimeStatusPanel({
   status,
   onDownload,
   onInstall,
+  onRefresh,
 }: {
   isBusy: boolean;
   status: OnnxRuntimeStatus | null;
   onDownload: () => void;
   onInstall: () => void;
+  onRefresh: () => void;
 }) {
   const available = status?.state === "available";
   return (
@@ -584,7 +591,7 @@ function RuntimeStatusPanel({
           </p>
           {status && (
             <p className="mt-2 break-all text-xs text-slate-500">
-              {text.runtimeDirectoryLabel}：{status.runtimeDirectory}
+              {text.runtimeDirectory(status.runtimeDirectory)}
             </p>
           )}
         </div>
@@ -616,6 +623,14 @@ function RuntimeStatusPanel({
             >
               {text.runtimeManual}
             </button>
+            <button
+              className="rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 disabled:opacity-50"
+              disabled={isBusy}
+              type="button"
+              onClick={onRefresh}
+            >
+              {text.runtimeRefresh}
+            </button>
           </div>
         </>
       )}
@@ -635,6 +650,7 @@ function PtConversionGuidance({
   onInspectSuggested: (path: string) => void;
 }) {
   const command = ptConversionCommand(guidance.path);
+  const suggestedOnnxPath = guidance.suggestedOnnxPath;
   return (
     <div className="rounded border border-amber-500/40 bg-amber-500/10 p-4">
       <h3 className="font-medium text-amber-100">{text.ptUnsupported}</h3>
@@ -671,14 +687,14 @@ function PtConversionGuidance({
           {text.copy}
         </button>
       </div>
-      {guidance.suggestedOnnxPath && (
+      {suggestedOnnxPath && (
         <button
           className="mt-4 rounded bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-500 disabled:opacity-50"
           disabled={isBusy}
           type="button"
-          onClick={() => onInspectSuggested(guidance.suggestedOnnxPath!)}
+          onClick={() => onInspectSuggested(suggestedOnnxPath)}
         >
-          {text.suggestedOnnx(guidance.suggestedOnnxPath)}
+          {text.suggestedOnnx(suggestedOnnxPath)}
         </button>
       )}
     </div>
@@ -710,7 +726,10 @@ function ModelImportForm({
     model.confidenceThreshold > 1 ||
     !Number.isFinite(model.iouThreshold) ||
     model.iouThreshold < 0 ||
-    model.iouThreshold > 1;
+    model.iouThreshold > 1 ||
+    !(model.inputSizeOverride ?? [model.inputWidth, model.inputHeight]).every(
+      (dimension) => Number.isSafeInteger(dimension) && dimension > 0,
+    );
   return (
     <div>
       <div className="flex items-start justify-between gap-4">
@@ -763,7 +782,7 @@ function ModelImportForm({
           <input
             className={inputClass}
             min="1"
-            placeholder={String(model.inputWidth)}
+            placeholder={model.inputWidth ? String(model.inputWidth) : text.dynamicDimension}
             type="number"
             value={model.inputSizeOverride?.[0] ?? ""}
             onChange={(event) =>
@@ -778,7 +797,7 @@ function ModelImportForm({
           <input
             className={inputClass}
             min="1"
-            placeholder={String(model.inputHeight)}
+            placeholder={model.inputHeight ? String(model.inputHeight) : text.dynamicDimension}
             type="number"
             value={model.inputSizeOverride?.[1] ?? ""}
             onChange={(event) =>

@@ -113,6 +113,14 @@ my_label_tool/
 | `load_label_configs` / `save_label_configs` | 标签配置持久化（app data 目录 `labels.json`） |
 | `load_label_templates` / `save_label_templates` | 标签模板持久化（`label-templates.json`） |
 | `load_shortcuts` / `save_shortcuts` | 快捷键配置持久化（`shortcuts.json`） |
+| `inspect_onnx_model` / `find_converted_onnx` | 解析 YOLO ONNX 元数据；为 `.pt` 查找同目录转换产物 |
+| `load_prelabel_model_library` / `save_prelabel_model_library` | 预打标模型库持久化（`prelabel-models.json`） |
+| `get_onnx_runtime_status` | 重新检测并按需加载应用数据目录中的 ONNX Runtime |
+| `install_onnx_runtime_from_file` | 校验并成对安装手动选择的 Runtime DLL |
+| `download_onnx_runtime` | 经确认后下载、校验并安装项目 Release 中的 Runtime DLL |
+| `validate_prelabel_model` | 通过 ONNX Runtime 校验模型张量契约与元数据一致性 |
+| `run_prelabel_inference` | 复用模型会话批量执行预处理、推理与后处理 |
+| `detect_pt_conversion_environment` / `convert_pt_to_onnx` | 探测本地 Ultralytics 并离线、安全地转换 `.pt` |
 
 ---
 

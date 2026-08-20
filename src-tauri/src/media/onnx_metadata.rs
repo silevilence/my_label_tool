@@ -49,8 +49,8 @@ pub fn inspect_onnx_bytes(bytes: &[u8], file_name: &str) -> Result<OnnxModelSumm
     };
     let class_count = class_names.len();
 
-    let input_height = positive_dimension(&input_shape, 2, text::INPUT_HEIGHT)?;
-    let input_width = positive_dimension(&input_shape, 3, text::INPUT_WIDTH)?;
+    let input_height = input_dimension(&input_shape, 2)?;
+    let input_width = input_dimension(&input_shape, 3)?;
 
     Ok(OnnxModelSummary {
         format,
@@ -212,6 +212,12 @@ fn infer_output_contract(
     file_name: &str,
     outputs: &[Vec<u64>],
 ) -> Result<(YoloModelFormat, usize), String> {
+    if outputs.iter().any(|shape| {
+        matches!(shape.as_slice(), [1, candidates, 6] if (1..=300).contains(candidates))
+            || matches!(shape.as_slice(), [1, 6, candidates] if (1..=300).contains(candidates))
+    }) {
+        return Err(text::YOLO_EMBEDDED_NMS.to_string());
+    }
     if outputs.len() == 3
         && outputs.iter().all(|shape| {
             shape.len() == 5
@@ -254,11 +260,8 @@ fn placeholder_names(class_count: usize) -> Vec<String> {
         .collect()
 }
 
-fn positive_dimension(shape: &[u64], index: usize, label: &str) -> Result<usize, String> {
-    usize::try_from(shape[index])
-        .ok()
-        .filter(|value| *value > 0)
-        .ok_or_else(|| text::dynamic_dimension(label))
+fn input_dimension(shape: &[u64], index: usize) -> Result<usize, String> {
+    usize::try_from(shape[index]).map_err(|_| text::YOLO_INPUT_CONTRACT.to_string())
 }
 
 fn parse_class_names(raw: &str) -> Result<Vec<String>, String> {
@@ -476,6 +479,35 @@ mod tests {
         let error = inspect_onnx_bytes(&bytes, "classifier.onnx").unwrap_err();
 
         assert!(error.contains("YOLO"));
+    }
+
+    #[test]
+    fn preserves_dynamic_input_dimensions_for_an_import_override() {
+        let bytes = model(
+            &[1, 3, 0, 0],
+            &[1, 84, 8400],
+            "Ultralytics YOLOv8 model",
+            None,
+        );
+
+        let summary = inspect_onnx_bytes(&bytes, "dynamic-yolov8.onnx").unwrap();
+
+        assert_eq!((summary.input_width, summary.input_height), (0, 0));
+    }
+
+    #[test]
+    fn rejects_embedded_nms_during_metadata_only_import() {
+        let bytes = model(
+            &[1, 3, 640, 640],
+            &[1, 300, 6],
+            "Ultralytics YOLOv8 model",
+            None,
+        );
+
+        let error = inspect_onnx_bytes(&bytes, "nms-yolov8.onnx").unwrap_err();
+
+        assert!(error.contains("NMS"));
+        assert!(error.contains("标准导出"));
     }
 
     #[test]
