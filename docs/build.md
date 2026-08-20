@@ -83,6 +83,26 @@ powershell -NoProfile -Command "npm.cmd run tauri -- signer generate -w $env:USE
 4. Release workflow 成功后，Release assets 中应包含安装包、签名文件与 `latest.json`。
 5. 用已安装旧版本的 Windows 机器点击“检查更新”，确认能发现并安装新版本。
 
+## ONNX Runtime 按需安装
+
+预打标功能使用 ONNX Runtime 1.24.3。运行时不打进应用安装包；发布工作流从
+Microsoft 官方 `onnxruntime` Python wheel 提取以下文件，校验固定 SHA-256 后作为独立
+Release assets 上传：
+
+- `onnxruntime.dll`：`e6abe8b3fe7eb38e0424fa366eb7edac2090ac2d211592c26d674f928b44f785`
+- `onnxruntime_providers_shared.dll`：`1647771b4593c729df99a4a86e66aad6a77c9e6e3c8efd97322ef42ef9b1cc0b`
+
+用户首次校验或运行模型前，在“预打标模型”设置中选择一种安装方式：
+
+1. 确认后从本项目最新 GitHub Release 下载，应用会再次校验 SHA-256。
+2. 离线获取同版本的两个 DLL，放在同一目录，点击“手动选择 DLL”并选择
+   `onnxruntime.dll`。应用会要求 provider DLL 同时存在，并对两者执行相同的固定
+   SHA-256 校验后再成对安装。
+
+目标目录会显示在设置页中，结构为应用数据目录下的
+`onnxruntime/1.24.3/`。文件放置完成后无需重启，点击模型的“校验模型”即可加载。
+运行时动态加载是进程级操作；若要替换已加载的 DLL 版本，应先退出应用。
+
 ## 发布前手动验证
 
 至少验证一次：

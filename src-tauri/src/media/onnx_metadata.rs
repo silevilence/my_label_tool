@@ -23,18 +23,15 @@ pub fn inspect_onnx_bytes(bytes: &[u8], file_name: &str) -> Result<OnnxModelSumm
         .into_iter()
         .find(|shape| shape.len() == 4)
         .ok_or_else(|| text::ONNX_MISSING_IMAGE_INPUT.to_string())?;
-    let output_shape = value_info_shapes(graph, 12)?
-        .into_iter()
-        .find(|shape| shape.len() == 3)
-        .ok_or_else(|| text::ONNX_MISSING_DETECTION_OUTPUT.to_string())?;
+    let output_shapes = value_info_shapes(graph, 12)?;
 
     let metadata = metadata_properties(bytes)?;
     let description = metadata
         .get("description")
         .map(String::as_str)
         .unwrap_or_default();
-    let format = detect_format(description, file_name, &output_shape)?;
-    let inferred_class_count = infer_class_count(&format, &output_shape)?;
+    let (format, inferred_class_count) =
+        infer_output_contract(description, file_name, &output_shapes)?;
     let parsed_names = metadata
         .get("names")
         .map(|value| parse_class_names(value))
@@ -210,6 +207,36 @@ fn detect_format(
     Err(text::ONNX_UNRECOGNIZED_YOLO.to_string())
 }
 
+fn infer_output_contract(
+    description: &str,
+    file_name: &str,
+    outputs: &[Vec<u64>],
+) -> Result<(YoloModelFormat, usize), String> {
+    if outputs.len() == 3
+        && outputs.iter().all(|shape| {
+            shape.len() == 5
+                && shape[0] == 1
+                && shape[1] == 3
+                && shape[2] > 0
+                && shape[3] > 0
+                && shape[4] >= 6
+        })
+        && outputs.windows(2).all(|pair| pair[0][4] == pair[1][4])
+    {
+        let class_count = usize::try_from(outputs[0][4] - 5)
+            .map_err(|_| text::YOLO_CLASS_COUNT_TOO_LARGE.to_string())?;
+        return Ok((YoloModelFormat::YoloV5, class_count));
+    }
+
+    let output = outputs
+        .iter()
+        .find(|shape| shape.len() == 3)
+        .ok_or_else(|| text::ONNX_MISSING_DETECTION_OUTPUT.to_string())?;
+    let format = detect_format(description, file_name, output)?;
+    let class_count = infer_class_count(&format, output)?;
+    Ok((format, class_count))
+}
+
 fn infer_class_count(format: &YoloModelFormat, output: &[u64]) -> Result<usize, String> {
     let raw_count = if matches!(format, YoloModelFormat::YoloV5) {
         output[2].checked_sub(5)
@@ -348,15 +375,29 @@ mod tests {
         length_delimited(14, &entry)
     }
 
-    fn model(input: &[u64], output: &[u64], description: &str, names: Option<&str>) -> Vec<u8> {
+    fn model_with_outputs(
+        input: &[u64],
+        outputs: &[&[u64]],
+        description: &str,
+        names: Option<&str>,
+    ) -> Vec<u8> {
         let mut graph = length_delimited(11, &value_info("images", input));
-        graph.extend(length_delimited(12, &value_info("output0", output)));
+        for (index, output) in outputs.iter().enumerate() {
+            graph.extend(length_delimited(
+                12,
+                &value_info(&format!("output{index}"), output),
+            ));
+        }
         let mut model = length_delimited(7, &graph);
         model.extend(metadata("description", description));
         if let Some(names) = names {
             model.extend(metadata("names", names));
         }
         model
+    }
+
+    fn model(input: &[u64], output: &[u64], description: &str, names: Option<&str>) -> Vec<u8> {
+        model_with_outputs(input, &[output], description, names)
     }
 
     #[test]
@@ -391,6 +432,25 @@ mod tests {
         assert_eq!(summary.input_width, 640);
         assert_eq!(summary.input_height, 320);
         assert_eq!(summary.class_names, vec!["class_0", "class_1", "class_2"]);
+    }
+
+    #[test]
+    fn inspects_three_branch_yolov5_exports() {
+        let small = [1, 3, 80, 80, 8];
+        let medium = [1, 3, 40, 40, 8];
+        let large = [1, 3, 20, 20, 8];
+        let bytes = model_with_outputs(
+            &[1, 3, 640, 640],
+            &[&small, &medium, &large],
+            "YOLOv5 export",
+            None,
+        );
+
+        let summary = inspect_onnx_bytes(&bytes, "custom.onnx").unwrap();
+
+        assert_eq!(summary.format, YoloModelFormat::YoloV5);
+        assert_eq!(summary.class_count, 3);
+        assert_eq!(summary.class_names, ["class_0", "class_1", "class_2"]);
     }
 
     #[test]
@@ -434,10 +494,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires an external official Ultralytics ONNX fixture"]
     fn inspects_official_ultralytics_model_when_fixture_is_available() {
-        let Ok(path) = std::env::var("MY_LABEL_TOOL_YOLO_ONNX") else {
-            return;
-        };
+        let path = std::env::var("MY_LABEL_TOOL_YOLO_ONNX")
+            .expect("MY_LABEL_TOOL_YOLO_ONNX must point to an official YOLO ONNX model");
         let fixture_path = std::path::PathBuf::from(path);
         let fixture_path = if fixture_path.is_absolute() {
             fixture_path

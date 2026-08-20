@@ -27,8 +27,41 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup Python for ONNX Runtime assets
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Prepare verified ONNX Runtime assets
+        shell: pwsh
+        run: |
+          python -m pip download onnxruntime==1.24.3 --only-binary=:all: --no-deps --dest runtime-package
+          $wheel = Get-ChildItem runtime-package -Filter "*.whl" | Select-Object -First 1
+          if (-not $wheel) {
+            throw "ONNX Runtime wheel was not downloaded."
+          }
+          Copy-Item $wheel.FullName runtime-package/onnxruntime.zip
+          Expand-Archive runtime-package/onnxruntime.zip runtime-package/extracted
+
+          New-Item -ItemType Directory -Force runtime-assets | Out-Null
+          $expected = @{
+            "onnxruntime.dll" = "E6ABE8B3FE7EB38E0424FA366EB7EDAC2090AC2D211592C26D674F928B44F785"
+            "onnxruntime_providers_shared.dll" = "1647771B4593C729DF99A4A86E66AAD6A77C9E6E3C8EFD97322EF42EF9B1CC0B"
+          }
+          foreach ($name in $expected.Keys) {
+            $source = Get-ChildItem runtime-package/extracted -Recurse -Filter $name | Select-Object -First 1
+            if (-not $source) {
+              throw "Missing $name in the official ONNX Runtime wheel."
+            }
+            $actual = (Get-FileHash $source.FullName -Algorithm SHA256).Hash
+            if ($actual -ne $expected[$name]) {
+              throw "Unexpected SHA-256 for ${name}: $actual"
+            }
+            Copy-Item $source.FullName (Join-Path runtime-assets $name)
+          }
 
       - name: Extract release notes
         id: changelog
@@ -88,5 +121,21 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: ${{ github.ref_name }}
           releaseBody: ${{ steps.changelog.outputs.body }}
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
+
+      - name: Upload ONNX Runtime assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" `
+            runtime-assets/onnxruntime.dll `
+            runtime-assets/onnxruntime_providers_shared.dll `
+            --clobber
+
+      - name: Publish complete release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false

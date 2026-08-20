@@ -29,3 +29,24 @@ export const EMPTY_PRELABEL_MODEL_LIBRARY: PrelabelModelLibrary = {
   currentModelId: null,
   models: [],
 };
+
+export type OnnxRuntimeState = "missing" | "available" | "invalid";
+
+export interface OnnxRuntimeStatus {
+  state: OnnxRuntimeState;
+  version: string;
+  dllPath: string;
+  runtimeDirectory: string;
+  downloadAvailable: boolean;
+  message: string;
+}
+
+export interface ModelValidationReport {
+  format: YoloModelFormat;
+  classCount: number;
+  inputWidth: number;
+  inputHeight: number;
+  inputName: string;
+  outputNames: string[];
+  classNames: string[];
+}

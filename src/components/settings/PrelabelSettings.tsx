@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
-import { findConvertedOnnx, inspectOnnxModel, selectPrelabelModelFile } from "../../lib/tauri-api";
+import {
+  confirmAction,
+  downloadOnnxRuntime,
+  findConvertedOnnx,
+  getOnnxRuntimeStatus,
+  inspectOnnxModel,
+  installOnnxRuntimeFromFile,
+  selectOnnxRuntimeDll,
+  selectPrelabelModelFile,
+  validatePrelabelModel,
+} from "../../lib/tauri-api";
 import {
   createPrelabelModelConfig,
   ptConversionCommand,
   updateInputSizeOverride,
 } from "../../lib/prelabel-models";
-import type { PrelabelModelConfig, PrelabelModelLibrary } from "../../types/prelabel";
+import type {
+  OnnxRuntimeStatus,
+  PrelabelModelConfig,
+  PrelabelModelLibrary,
+} from "../../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
 
 interface PrelabelSettingsProps {
@@ -41,8 +55,16 @@ export function PrelabelSettings({
   const [ptGuidance, setPtGuidance] = useState<PtGuidance | null>(null);
   const [error, setError] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [runtimeStatus, setRuntimeStatus] = useState<OnnxRuntimeStatus | null>(null);
+  const [isRuntimeBusy, setIsRuntimeBusy] = useState(false);
+  const [modelValidation, setModelValidation] = useState("");
 
   useEffect(() => setEditingModel(currentModel), [currentModel]);
+  useEffect(() => {
+    void getOnnxRuntimeStatus().then(setRuntimeStatus).catch((reason: unknown) => {
+      setError(String(reason));
+    });
+  }, []);
 
   async function inspectPath(path: string) {
     setIsBusy(true);
@@ -85,6 +107,54 @@ export function PrelabelSettings({
       setError(String(reason));
     } finally {
       setIsBusy(false);
+    }
+  }
+
+  async function runRuntimeAction(action: () => Promise<OnnxRuntimeStatus>) {
+    setIsRuntimeBusy(true);
+    setError("");
+    setModelValidation("");
+    try {
+      setRuntimeStatus(await action());
+    } catch (reason) {
+      setError(text.runtimeOperationFailed(reason));
+    } finally {
+      setIsRuntimeBusy(false);
+    }
+  }
+
+  async function installRuntimeManually() {
+    const path = await selectOnnxRuntimeDll();
+    if (path) {
+      await runRuntimeAction(() => installOnnxRuntimeFromFile(path));
+    }
+  }
+
+  async function downloadRuntime() {
+    if (await confirmAction(text.runtimeDownloadConfirmation)) {
+      await runRuntimeAction(downloadOnnxRuntime);
+    }
+  }
+
+  async function validateModel(model: PrelabelModelConfig) {
+    setIsRuntimeBusy(true);
+    setError("");
+    setModelValidation("");
+    try {
+      const report = await validatePrelabelModel(model.path);
+      setModelValidation(
+        text.modelValidationPassed(
+          formatLabel(report.format),
+          report.classCount,
+          report.inputWidth,
+          report.inputHeight,
+        ),
+      );
+      setRuntimeStatus(await getOnnxRuntimeStatus());
+    } catch (reason) {
+      setError(text.modelValidationFailed(reason));
+    } finally {
+      setIsRuntimeBusy(false);
     }
   }
 
@@ -151,6 +221,17 @@ export function PrelabelSettings({
                 {error}
               </p>
             )}
+            <RuntimeStatusPanel
+              isBusy={isRuntimeBusy}
+              status={runtimeStatus}
+              onDownload={() => void downloadRuntime()}
+              onInstall={() => void installRuntimeManually()}
+            />
+            {modelValidation && (
+              <p className="mb-4 rounded border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                {modelValidation}
+              </p>
+            )}
             {ptGuidance && (
               <PtConversionGuidance
                 guidance={ptGuidance}
@@ -163,6 +244,7 @@ export function PrelabelSettings({
                 submitLabel={text.addToLibrary}
                 onCancel={() => setDraft(null)}
                 onChange={setDraft}
+                onValidate={() => void validateModel(draft)}
                 onSubmit={() =>
                   void runLibraryMutation(async () => {
                     await onAddModel(draft);
@@ -177,6 +259,7 @@ export function PrelabelSettings({
                 submitLabel={text.saveModel}
                 onCancel={() => setEditingModel(currentModel)}
                 onChange={setEditingModel}
+                onValidate={() => void validateModel(editingModel)}
                 onDelete={() => {
                   if (window.confirm(text.removeConfirmation(editingModel.name))) {
                     void runLibraryMutation(() => onDeleteModel(editingModel.id));
@@ -193,6 +276,67 @@ export function PrelabelSettings({
           </main>
         </div>
       </section>
+    </div>
+  );
+}
+
+function RuntimeStatusPanel({
+  isBusy,
+  status,
+  onDownload,
+  onInstall,
+}: {
+  isBusy: boolean;
+  status: OnnxRuntimeStatus | null;
+  onDownload: () => void;
+  onInstall: () => void;
+}) {
+  const available = status?.state === "available";
+  return (
+    <div className="mb-4 rounded border border-slate-700 bg-slate-950/60 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium text-slate-100">{text.runtimeTitle}</h3>
+          <p className={`mt-1 text-xs ${available ? "text-emerald-300" : "text-amber-300"}`}>
+            {status?.message ?? text.runtimeChecking}
+          </p>
+          {status && (
+            <p className="mt-2 break-all text-xs text-slate-500">
+              {text.runtimeDirectoryLabel}：{status.runtimeDirectory}
+            </p>
+          )}
+        </div>
+        <span
+          className={`rounded px-2 py-1 text-xs ${
+            available ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"
+          }`}
+        >
+          {available ? text.runtimeAvailable : text.runtimeUnavailable}
+        </span>
+      </div>
+      {!available && (
+        <>
+          <p className="mt-3 text-xs leading-5 text-slate-400">{text.runtimeDescription}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={isBusy || status?.downloadAvailable === false}
+              type="button"
+              onClick={onDownload}
+            >
+              {isBusy ? text.runtimeDownloading : text.runtimeDownload}
+            </button>
+            <button
+              className="rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 disabled:opacity-50"
+              disabled={isBusy}
+              type="button"
+              onClick={onInstall}
+            >
+              {text.runtimeManual}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -241,6 +385,7 @@ function ModelImportForm({
   onChange,
   onDelete,
   onSubmit,
+  onValidate,
 }: {
   model: PrelabelModelConfig;
   submitLabel: string;
@@ -248,6 +393,7 @@ function ModelImportForm({
   onChange: (model: PrelabelModelConfig) => void;
   onDelete?: () => void;
   onSubmit: () => void;
+  onValidate: () => void;
 }) {
   const invalid =
     !model.name.trim() ||
@@ -370,6 +516,14 @@ function ModelImportForm({
           )}
         </div>
         <div className="flex gap-2">
+          <button
+            className="rounded border border-emerald-500/50 px-3 py-2 text-sm text-emerald-300 disabled:opacity-50"
+            disabled={invalid}
+            type="button"
+            onClick={onValidate}
+          >
+            {text.validateModel}
+          </button>
           <button
             className="rounded border border-slate-700 px-3 py-2 text-sm"
             type="button"

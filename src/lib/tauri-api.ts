@@ -3,7 +3,12 @@ import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import type { TextExportFile } from "../types/export";
 import type { ShortcutMap } from "./defaults/shortcuts";
-import type { OnnxModelSummary, PrelabelModelLibrary } from "../types/prelabel";
+import type {
+  ModelValidationReport,
+  OnnxModelSummary,
+  OnnxRuntimeStatus,
+  PrelabelModelLibrary,
+} from "../types/prelabel";
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
 
 export interface ImageFile {
@@ -84,6 +89,15 @@ export async function selectPrelabelModelFile(): Promise<string | null> {
   return typeof path === "string" ? path : null;
 }
 
+export async function selectOnnxRuntimeDll(): Promise<string | null> {
+  const path = await open({
+    directory: false,
+    multiple: false,
+    filters: [{ name: PRELABEL_ZH_CN.runtimeFileFilter, extensions: ["dll"] }],
+  });
+  return typeof path === "string" ? path : null;
+}
+
 export function exportAnnotationsJson(outputPath: string, data: unknown): Promise<void> {
   return invoke("export_annotations_json", { outputPath, data });
 }
@@ -138,4 +152,20 @@ export function loadPrelabelModelLibrary(): Promise<PrelabelModelLibrary> {
 
 export function savePrelabelModelLibrary(library: PrelabelModelLibrary): Promise<void> {
   return invoke("save_prelabel_model_library", { library });
+}
+
+export function getOnnxRuntimeStatus(): Promise<OnnxRuntimeStatus> {
+  return invoke<OnnxRuntimeStatus>("get_onnx_runtime_status");
+}
+
+export function installOnnxRuntimeFromFile(sourcePath: string): Promise<OnnxRuntimeStatus> {
+  return invoke<OnnxRuntimeStatus>("install_onnx_runtime_from_file", { sourcePath });
+}
+
+export function downloadOnnxRuntime(): Promise<OnnxRuntimeStatus> {
+  return invoke<OnnxRuntimeStatus>("download_onnx_runtime");
+}
+
+export function validatePrelabelModel(path: string): Promise<ModelValidationReport> {
+  return invoke<ModelValidationReport>("validate_prelabel_model", { path });
 }

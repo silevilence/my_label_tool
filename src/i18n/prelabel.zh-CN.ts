@@ -5,6 +5,7 @@ export const PRELABEL_ZH_CN = {
   close: "关闭",
   addModel: "添加 ONNX / PT 模型",
   modelFileFilter: "YOLO 模型",
+  runtimeFileFilter: "ONNX Runtime DLL",
   reading: "正在读取…",
   loadingLibrary: "正在加载模型库…",
   emptyLibrary: "暂无模型。模型文件保留在原位置，配置保存到应用数据目录。",
@@ -32,4 +33,21 @@ export const PRELABEL_ZH_CN = {
   suggestedOnnx: (path: string) => `使用同目录转换产物：${path}`,
   modelSummary: (classCount: number, width: number, height: number) =>
     `${classCount} 类 · ${width}×${height}`,
+  runtimeTitle: "ONNX Runtime",
+  runtimeDescription: "运行时按需放入应用数据目录，不随安装包分发；放置后可立即检测。",
+  runtimeChecking: "正在检测运行时…",
+  runtimeAvailable: "可用",
+  runtimeUnavailable: "未就绪",
+  runtimeRefresh: "重新检测",
+  runtimeDownload: "下载并安装",
+  runtimeDownloading: "正在下载并校验…",
+  runtimeManual: "手动选择 DLL",
+  runtimeDownloadConfirmation:
+    "将从本项目 GitHub Release 下载 ONNX Runtime，并执行 SHA-256 校验。是否继续？",
+  runtimeDirectoryLabel: "约定目录",
+  runtimeOperationFailed: (reason: unknown) => `ONNX Runtime 操作失败：${String(reason)}`,
+  validateModel: "校验模型",
+  modelValidationPassed: (format: string, classes: number, width: number, height: number) =>
+    `模型校验通过：${format}，${classes} 类，输入 ${width}×${height}`,
+  modelValidationFailed: (reason: unknown) => `模型校验失败：${String(reason)}`,
 } as const;
