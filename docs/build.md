@@ -104,10 +104,12 @@ Release assets 上传：
 校验并加载；通过“手动选择 DLL”安装时则会在安装完成后立即更新状态。
 运行时动态加载是进程级操作；若要替换已加载的 DLL 版本，应先退出应用。
 
-`.github/workflows/ci.yml` 会在 Windows CI 中临时下载官方 YOLOv5n、YOLOv8n 与
-YOLO11n 权重并导出 ONNX，显式运行默认被 `#[ignore]` 隔离的元数据、运行时、真实
-推理和 `.pt` 转换测试。YOLOv5 使用固定提交的官方导出器；权重会校验 SHA-256，且
-模型文件仅存在于 runner 临时目录，不进入 Git 历史。
+`.github/workflows/official-models.yml` 仅在预打标 Rust 模块、Rust 依赖或工作流本身
+发生变化时运行，也可以手动触发。它会在 Windows CI 中临时下载官方 YOLOv5n、
+YOLOv8n 与 YOLO11n 权重并导出 ONNX，显式运行默认被 `#[ignore]` 隔离的元数据、
+运行时、真实推理和 `.pt` 转换测试。YOLOv5 使用固定提交的官方导出器；权重会校验
+SHA-256，且模型文件仅存在于 runner 临时目录，不进入 Git 历史。相同 PR 或分支有
+更新时，尚未完成的旧集成测试会自动取消。
 
 ## 发布前手动验证
 
