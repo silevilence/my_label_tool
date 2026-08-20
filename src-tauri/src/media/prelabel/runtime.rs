@@ -12,6 +12,9 @@ use serde::Serialize;
 use crate::i18n::zh_cn as text;
 use crate::models::prelabel::YoloModelFormat;
 
+pub const MAX_PRELABEL_OUTPUT_ELEMENTS: usize = 10_000_000;
+pub const MAX_PRELABEL_OUTPUT_CANDIDATES: usize = 100_000;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TensorDescriptor {
     pub name: String,
@@ -51,6 +54,7 @@ pub fn validate_tensor_contract(
     if outputs.is_empty() || outputs.iter().any(|output| output.element_type != "f32") {
         return Err(text::YOLO_OUTPUT_FLOAT.to_string());
     }
+    validate_output_resource_budget(outputs)?;
 
     let (format, class_count) = if outputs.len() == 1 {
         validate_single_output(&outputs[0], format_hint)?
@@ -68,6 +72,50 @@ pub fn validate_tensor_contract(
         input_name: input.name.clone(),
         output_names: outputs.iter().map(|output| output.name.clone()).collect(),
     })
+}
+
+fn validate_output_resource_budget(outputs: &[TensorDescriptor]) -> Result<(), String> {
+    let mut total_elements = 0_usize;
+    let mut total_candidates = 0_usize;
+    for output in outputs {
+        if output.dimensions.is_empty()
+            || output.dimensions[0] != 1
+            || output.dimensions[1..]
+                .iter()
+                .any(|dimension| *dimension <= 0)
+        {
+            return Err(text::PRELABEL_OUTPUT_FIXED_SHAPE_REQUIRED.to_string());
+        }
+        let element_count = output
+            .dimensions
+            .iter()
+            .try_fold(1_usize, |size, dimension| {
+                usize::try_from(*dimension)
+                    .ok()
+                    .and_then(|dimension| size.checked_mul(dimension))
+            });
+        total_elements = total_elements
+            .checked_add(element_count.ok_or_else(|| text::PRELABEL_OUTPUT_TOO_LARGE.to_string())?)
+            .ok_or_else(|| text::PRELABEL_OUTPUT_TOO_LARGE.to_string())?;
+        let candidates = match output.dimensions.as_slice() {
+            [1, first, second] => usize::try_from((*first).max(*second)).ok(),
+            [1, anchors, height, width, _] => usize::try_from(*anchors)
+                .ok()
+                .and_then(|value| value.checked_mul(usize::try_from(*height).ok()?))
+                .and_then(|value| value.checked_mul(usize::try_from(*width).ok()?)),
+            _ => None,
+        }
+        .ok_or_else(|| text::YOLO_OUTPUT_CONTRACT.to_string())?;
+        total_candidates = total_candidates
+            .checked_add(candidates)
+            .ok_or_else(|| text::PRELABEL_OUTPUT_TOO_LARGE.to_string())?;
+    }
+    if total_elements > MAX_PRELABEL_OUTPUT_ELEMENTS
+        || total_candidates > MAX_PRELABEL_OUTPUT_CANDIDATES
+    {
+        return Err(text::PRELABEL_OUTPUT_TOO_LARGE.to_string());
+    }
+    Ok(())
 }
 
 static LOAD_GUARD: Mutex<()> = Mutex::new(());
@@ -112,6 +160,13 @@ pub fn validate_model_with_runtime(
         .map_err(text::runtime_session_failed)?
         .commit_from_file(model_path)
         .map_err(text::model_session_failed)?;
+    validate_session_contract(&session, format_hint)
+}
+
+pub fn validate_session_contract(
+    session: &Session,
+    format_hint: Option<YoloModelFormat>,
+) -> Result<ModelTensorContract, String> {
     let inputs = session
         .inputs()
         .iter()
@@ -213,7 +268,7 @@ fn validate_anchor_branches(
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_tensor_contract, TensorDescriptor};
+    use super::{load_runtime, validate_tensor_contract, TensorDescriptor};
     use crate::models::prelabel::YoloModelFormat;
 
     fn tensor(name: &str, dimensions: &[i64]) -> TensorDescriptor {
@@ -279,5 +334,38 @@ mod tests {
 
         assert!(error.contains("NCHW"));
         assert!(error.contains("f32"));
+    }
+
+    #[test]
+    fn rejects_dynamic_or_oversized_output_resources() {
+        let dynamic_error = validate_tensor_contract(
+            &[tensor("images", &[1, 3, 640, 640])],
+            &[tensor("output0", &[1, 84, -1])],
+            Some(YoloModelFormat::YoloV8),
+        )
+        .unwrap_err();
+        assert!(dynamic_error.contains("固定"));
+
+        let oversized_error = validate_tensor_contract(
+            &[tensor("images", &[1, 3, 640, 640])],
+            &[tensor("output0", &[1, 84, 1_000_000])],
+            Some(YoloModelFormat::YoloV8),
+        )
+        .unwrap_err();
+        assert!(oversized_error.contains("过大"));
+    }
+
+    #[test]
+    fn missing_runtime_error_is_actionable() {
+        let missing = std::env::temp_dir().join(format!(
+            "my-label-tool-missing-runtime-{}\\onnxruntime.dll",
+            std::process::id()
+        ));
+
+        let error = load_runtime(&missing).unwrap_err();
+
+        assert!(error.contains("缺少 ONNX Runtime"));
+        assert!(error.contains("下载或手动放置"));
+        assert!(error.contains("onnxruntime.dll"));
     }
 }

@@ -50,3 +50,14 @@ export interface ModelValidationReport {
   outputNames: string[];
   classNames: string[];
 }
+
+export interface PrelabelDetection {
+  classIndex: number;
+  confidence: number;
+  points: [number, number, number, number];
+}
+
+export interface PrelabelImageInference {
+  imagePath: string;
+  detections: PrelabelDetection[];
+}

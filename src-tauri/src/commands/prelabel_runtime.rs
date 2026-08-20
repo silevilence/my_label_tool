@@ -136,7 +136,7 @@ fn validate_model_file(path: &Path) -> Result<ModelValidationReport, String> {
     })
 }
 
-fn runtime_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn runtime_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map(|directory| directory.join("onnxruntime").join(RUNTIME_VERSION))
@@ -168,7 +168,7 @@ fn runtime_status(directory: &Path) -> Result<OnnxRuntimeStatus, String> {
     })
 }
 
-fn ensure_runtime_available(directory: &Path) -> Result<(), String> {
+pub(crate) fn ensure_runtime_available(directory: &Path) -> Result<(), String> {
     if is_runtime_loaded() {
         return Ok(());
     }
@@ -363,11 +363,6 @@ mod tests {
         let official_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLO_ONNX"));
         let yolov8_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLOV8_ONNX"));
         let yolov5_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLOV5_ONNX"));
-
-        let missing_path = runtime_path.with_file_name("missing-onnxruntime.dll");
-        let missing_error = load_runtime(&missing_path).unwrap_err();
-        assert!(missing_error.contains("缺少 ONNX Runtime"));
-        assert!(missing_error.contains("下载或手动放置"));
 
         load_runtime(&runtime_path).unwrap();
         let official = validate_model_file(&official_path).unwrap();

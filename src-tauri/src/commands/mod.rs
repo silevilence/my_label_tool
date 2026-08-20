@@ -1,6 +1,8 @@
 mod prelabel;
+mod prelabel_inference;
 mod prelabel_runtime;
 pub use prelabel::*;
+pub use prelabel_inference::*;
 pub use prelabel_runtime::*;
 
 use std::{

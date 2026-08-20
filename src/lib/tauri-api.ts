@@ -7,6 +7,8 @@ import type {
   ModelValidationReport,
   OnnxModelSummary,
   OnnxRuntimeStatus,
+  PrelabelImageInference,
+  PrelabelModelConfig,
   PrelabelModelLibrary,
 } from "../types/prelabel";
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
@@ -168,4 +170,11 @@ export function downloadOnnxRuntime(): Promise<OnnxRuntimeStatus> {
 
 export function validatePrelabelModel(path: string): Promise<ModelValidationReport> {
   return invoke<ModelValidationReport>("validate_prelabel_model", { path });
+}
+
+export function runPrelabelInference(
+  model: PrelabelModelConfig,
+  imagePaths: string[],
+): Promise<PrelabelImageInference[]> {
+  return invoke<PrelabelImageInference[]>("run_prelabel_inference", { model, imagePaths });
 }

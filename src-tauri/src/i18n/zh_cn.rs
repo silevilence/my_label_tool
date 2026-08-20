@@ -41,6 +41,75 @@ pub const RUNTIME_SELECT_DLL: &str = "请选择名为 onnxruntime.dll 的运行�
 pub const RUNTIME_AVAILABLE: &str = "ONNX Runtime 已就绪";
 pub const MODEL_METADATA_RUNTIME_MISMATCH: &str = "ONNX 元数据与运行时张量信息不一致";
 pub const MODEL_FORMAT_RUNTIME_MISMATCH: &str = "ONNX 元数据中的 YOLO 版本与运行时输出结构不一致";
+pub const PRELABEL_INPUT_SIZE_INVALID: &str = "预打标输入尺寸必须是有效的正整数";
+pub const PRELABEL_INPUT_SIZE_TOO_LARGE: &str =
+    "预打标输入尺寸过大，单边不得超过 4096 且总像素不得超过 16777216";
+pub const PRELABEL_EMPTY_IMAGE: &str = "无法对空图片执行预打标";
+pub const PRELABEL_THRESHOLD_INVALID: &str = "预打标置信度与 IoU 阈值必须位于 0 到 1 之间";
+pub const PRELABEL_OUTPUT_SIZE_INVALID: &str = "模型输出张量尺寸过大或无效";
+pub const PRELABEL_BATCH_SIZE_INVALID: &str = "预打标模型输出仅支持 batch=1";
+pub const PRELABEL_OUTPUT_FIXED_SHAPE_REQUIRED: &str =
+    "预打标模型输出必须是 batch=1 的固定形状张量，以确保资源占用可控";
+pub const PRELABEL_OUTPUT_TOO_LARGE: &str = "预打标模型输出规模过大，已拒绝加载以避免内存耗尽";
+pub const PRELABEL_SOURCE_IMAGE_TOO_LARGE: &str =
+    "源图片解码为 RGB 后超过 128 MiB，已拒绝处理以避免内存耗尽";
+pub const PRELABEL_ENCODED_IMAGE_TOO_LARGE: &str =
+    "源图片编码文件超过 128 MiB，已拒绝读取以避免内存耗尽";
+
+pub fn prelabel_image_decode_failed(error: impl std::fmt::Display) -> String {
+    format!("图片解码失败：{error}")
+}
+
+pub fn prelabel_output_length_mismatch(expected: usize, actual: usize) -> String {
+    format!("模型输出张量数据长度不匹配：形状需要 {expected}，实际 {actual}")
+}
+
+pub fn prelabel_allocation_failed(error: impl std::fmt::Display) -> String {
+    format!("预打标图像内存分配失败，请降低模型输入尺寸：{error}")
+}
+
+pub fn prelabel_static_input_override(width: usize, height: usize) -> String {
+    format!("当前模型输入尺寸固定为 {width}×{height}，不能使用不同的输入尺寸覆盖")
+}
+
+pub fn prelabel_class_names_count_mismatch(class_count: usize, names_count: usize) -> String {
+    format!("模型配置声明 {class_count} 类，但类名表包含 {names_count} 项")
+}
+
+pub fn prelabel_model_class_count_mismatch(configured: usize, runtime: usize) -> String {
+    format!("模型配置声明 {configured} 类，但当前 ONNX 输出包含 {runtime} 类；请重新导入模型")
+}
+
+pub fn prelabel_image_read_failed(path: &std::path::Path, error: impl std::fmt::Display) -> String {
+    format!("读取待推理图片 {} 失败：{error}", path.display())
+}
+
+pub fn prelabel_image_file_allocation_failed(
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> String {
+    format!("为图片文件 {} 分配读取内存失败：{error}", path.display())
+}
+
+pub fn prelabel_input_tensor_failed(error: impl std::fmt::Display) -> String {
+    format!("构造预打标输入张量失败：{error}")
+}
+
+pub fn prelabel_inference_failed(error: impl std::fmt::Display) -> String {
+    format!("ONNX 模型推理失败：{error}")
+}
+
+pub fn prelabel_worker_failed(error: impl std::fmt::Display) -> String {
+    format!("预打标后台任务异常结束：{error}")
+}
+
+pub fn prelabel_output_tensor_failed(error: impl std::fmt::Display) -> String {
+    format!("读取预打标输出张量失败：{error}")
+}
+
+pub fn prelabel_output_allocation_failed(error: impl std::fmt::Display) -> String {
+    format!("复制预打标输出张量时内存分配失败：{error}")
+}
 
 pub fn runtime_missing(path: &std::path::Path) -> String {
     format!("缺少 ONNX Runtime，请下载或手动放置到 {}", path.display())

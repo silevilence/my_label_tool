@@ -43,11 +43,11 @@
   - [x] 模型加载时校验 ONNX 输入/输出张量形状，识别 v5（多分支）与 v8/v11（单输出）并推断 `nc` 与输入尺寸；不兼容模型（如内置 NMS 导出）给出可理解报错并注明仅支持标准导出
   - 验收：未放 DLL 时错误提示清晰可操作；手动放置后功能可用；v5/v8 样例模型解析正确
 
-- [ ] **实现推理管线与后处理（解码→letterbox→推理→NMS→像素坐标）**
-  - [ ] 图片解码（`image` crate）→ letterbox 缩放（灰色 114 填充、居中）→ HWC→CHW 归一化，预处理与 ultralytics 保持一致
-  - [ ] 会话复用：批量推理时模型只加载一次，推理循环复用同一会话
-  - [ ] 后处理按输出形状自适应：v5 多分支 anchors 解码、v8/v11 单输出 sigmoid；conf 过滤 + NMS；letterbox 逆变换还原原图像素坐标 `[x, y, width, height]`
-  - [ ] 返回值含类别索引与置信度；不引入归一化坐标，遵守 `AnnotationShape.points` 像素坐标契约
+- [x] **实现推理管线与后处理（解码→letterbox→推理→NMS→像素坐标）**
+  - [x] 图片解码（`image` crate）→ letterbox 缩放（灰色 114 填充、居中）→ HWC→CHW 归一化，预处理与 ultralytics 保持一致
+  - [x] 会话复用：批量推理时模型只加载一次，推理循环复用同一会话
+  - [x] 后处理按输出形状自适应：v5 多分支 anchors 解码、v8/v11 单输出 sigmoid；conf 过滤 + NMS；letterbox 逆变换还原原图像素坐标 `[x, y, width, height]`
+  - [x] 返回值含类别索引与置信度；不引入归一化坐标，遵守 `AnnotationShape.points` 像素坐标契约
   - 验收：Rust 单测覆盖 v5/v8 各一个真实模型样例、NMS 与坐标换算；单图推理结果与 ultralytics 官方推理对齐
 
 - [ ] **实现模型类名与项目标签映射（复用当前标签表）**
