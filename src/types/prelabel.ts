@@ -61,3 +61,29 @@ export interface PrelabelImageInference {
   imagePath: string;
   detections: PrelabelDetection[];
 }
+
+export type PrelabelClassMappingAction = "bind" | "create" | "exclude";
+
+export interface PrelabelClassMapping {
+  classIndex: number;
+  className: string;
+  action: PrelabelClassMappingAction;
+  labelId?: string;
+}
+
+export type PrelabelMappingsByModel = Record<string, PrelabelClassMapping[]>;
+
+export type ResolvedPrelabelMappingSource =
+  | "explicit"
+  | "explicit-exclude"
+  | "auto-exact"
+  | "auto-ascii-case-insensitive"
+  | "unmatched";
+
+export interface ResolvedPrelabelClassMapping {
+  classIndex: number;
+  className: string;
+  labelId?: string;
+  excluded: boolean;
+  source: ResolvedPrelabelMappingSource;
+}

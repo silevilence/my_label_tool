@@ -189,6 +189,9 @@ export function useProjectActions({
       labels,
       template,
       exportOptions: { format },
+      ...(activeProjectConfig?.prelabelMappings
+        ? { prelabelMappings: activeProjectConfig.prelabelMappings }
+        : {}),
     };
 
     setActiveProjectConfig(nextConfig);

@@ -39,6 +39,7 @@ import type { HelpDisplaySettings, LabelDisplaySettings } from "../lib/defaults/
 import type { AppUpdateProgress, AppUpdateStatus } from "../lib/updater";
 import { isEditableTarget } from "../lib/app-utils";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
+import type { PrelabelClassMapping } from "../types/prelabel";
 
 interface AppLayoutProps {
   activeProjectConfig: ProjectConfig | null;
@@ -124,6 +125,11 @@ interface AppLayoutProps {
   redo: () => void;
   resetZoom: () => void;
   saveProjectExport: () => void;
+  savePrelabelMappings: (
+    modelId: string,
+    mappings: PrelabelClassMapping[],
+    labels: LabelConfig[],
+  ) => Promise<void>;
   saveTemplate: () => void;
   saveTemplateAndUpdateAnnotations: () => void;
   saveTemplateAs: () => void;
@@ -232,6 +238,7 @@ export function AppLayout({
   redo,
   resetZoom,
   saveProjectExport,
+  savePrelabelMappings,
   saveTemplate,
   saveTemplateAndUpdateAnnotations,
   saveTemplateAs,
@@ -664,12 +671,16 @@ export function AppLayout({
       )}
       {isPrelabelSettingsOpen && (
         <PrelabelSettings
+          activeProjectConfig={activeProjectConfig}
+          isLabelDirty={isLabelDirty}
           isLoaded={prelabelModels.isLoaded}
+          labels={labels}
           library={prelabelModels.library}
           onAddModel={prelabelModels.addModel}
           onClose={() => setIsPrelabelSettingsOpen(false)}
           onDeleteModel={prelabelModels.deleteModel}
           onSelectModel={prelabelModels.selectModel}
+          onSaveMappings={savePrelabelMappings}
           onUpdateModel={prelabelModels.updateModel}
         />
       )}

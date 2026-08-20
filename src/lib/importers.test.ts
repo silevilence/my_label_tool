@@ -39,6 +39,83 @@ describe("importers", () => {
     expect(config.labels[0].shapeType).toBe("any");
   });
 
+  it("keeps old project configs compatible and validates optional model mappings", () => {
+    const base = {
+      schemaVersion: 1,
+      format: "json",
+      annotationPath: "annotations.json",
+      exportedAt: "2026-08-20T00:00:00.000Z",
+      imageFolder: "images",
+      labels: [{ id: "person", name: "person", color: "#fff", shapeType: "rect" }],
+      template: { id: "project-config", name: "项目临时配置" },
+      exportOptions: { format: "json" },
+    };
+
+    expect(parseProjectConfig(JSON.stringify(base)).prelabelMappings).toBeUndefined();
+    expect(
+      parseProjectConfig(
+        JSON.stringify({
+          ...base,
+          prelabelMappings: {
+            "model-1": [
+              {
+                classIndex: 0,
+                className: "person",
+                action: "bind",
+                labelId: "person",
+              },
+              { classIndex: 1, className: "ignored", action: "exclude" },
+            ],
+          },
+        }),
+      ).prelabelMappings,
+    ).toEqual({
+      "model-1": [
+        { classIndex: 0, className: "person", action: "bind", labelId: "person" },
+        { classIndex: 1, className: "ignored", action: "exclude" },
+      ],
+    });
+    expect(() =>
+      parseProjectConfig(
+        JSON.stringify({
+          ...base,
+          prelabelMappings: {
+            "model-1": [{ classIndex: 0, className: "person", action: "bind" }],
+          },
+        }),
+      ),
+    ).toThrow("prelabelMappings.model-1[0] 缺少 labelId");
+    expect(() =>
+      parseProjectConfig(
+        JSON.stringify({
+          ...base,
+          prelabelMappings: {
+            "model-1": [
+              { classIndex: 0, className: "person", action: "exclude" },
+              { classIndex: 0, className: "car", action: "exclude" },
+            ],
+          },
+        }),
+      ),
+    ).toThrow("prelabelMappings.model-1 包含重复 classIndex：0");
+    expect(() =>
+      parseProjectConfig(
+        JSON.stringify({
+          ...base,
+          prelabelMappings: {
+            "model-1": [
+              {
+                classIndex: Number.MAX_SAFE_INTEGER + 1,
+                className: "person",
+                action: "exclude",
+              },
+            ],
+          },
+        }),
+      ),
+    ).toThrow("prelabelMappings.model-1[0] 的 classIndex 无效");
+  });
+
   it("rejects invalid project configs", () => {
     expect(() => parseProjectConfig("[]")).toThrow("项目配置必须是 JSON 对象");
     expect(() =>

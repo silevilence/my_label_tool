@@ -30,12 +30,15 @@ import { useZoomControls } from "./hooks/useZoomControls";
 import { usePrelabelModels } from "./hooks/usePrelabelModels";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
-import { isEditableTarget } from "./lib/app-utils";
+import { isEditableTarget, saveProjectConfig } from "./lib/app-utils";
 import { loadLabelConfigs, loadLabelTemplates, type ImageFile } from "./lib/tauri-api";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "./types/annotation";
 import type { ExportFormatId } from "./types/export";
 import type { ProjectConfig } from "./lib/importers";
+import type { PrelabelClassMapping } from "./types/prelabel";
+import { PRELABEL_ZH_CN as prelabelText } from "./i18n/prelabel.zh-CN";
+import { updateProjectPrelabelMappings } from "./lib/prelabel-mapping";
 import "./App.css";
 
 function App() {
@@ -218,6 +221,28 @@ function App() {
     setSelectedExportFormatId,
   });
   const { isSaving, saveWithFeedback, showSaveSuccess } = useSaveFeedback(saveProjectExport);
+
+  async function savePrelabelMappings(
+    modelId: string,
+    mappings: PrelabelClassMapping[],
+    nextLabels: LabelConfig[],
+  ) {
+    if (!activeProjectConfig || !activeProjectConfigPath) {
+      throw new Error(prelabelText.mappingSaveNeedsProject);
+    }
+    if (isLabelDirty) {
+      throw new Error(prelabelText.mappingSaveDirtyLabels);
+    }
+    const nextConfig = updateProjectPrelabelMappings(
+      activeProjectConfig,
+      modelId,
+      mappings,
+      nextLabels,
+    );
+    await saveProjectConfig(activeProjectConfigPath, nextConfig);
+    setActiveProjectConfig(nextConfig);
+    applyProjectTemplate(nextConfig.template, nextLabels);
+  }
   const changeExportFormat = useExportFormatWarning({
     annotationsByImage,
     setSelectedExportFormatId,
@@ -548,6 +573,7 @@ function App() {
       redo={redo}
       resetZoom={resetZoom}
       saveProjectExport={saveWithFeedback}
+      savePrelabelMappings={savePrelabelMappings}
       saveTemplate={saveTemplate}
       saveTemplateAndUpdateAnnotations={saveTemplateAndUpdateAnnotations}
       saveTemplateAs={saveTemplateAs}

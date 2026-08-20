@@ -7,6 +7,8 @@ import type {
   LabelShapeType,
 } from "../types/annotation";
 import type { ExportFormatId } from "../types/export";
+import type { PrelabelClassMapping, PrelabelMappingsByModel } from "../types/prelabel";
+import { PRELABEL_ZH_CN as prelabelText } from "../i18n/prelabel.zh-CN";
 
 export const PROJECT_CONFIG_NAME = "my-label-tool.project.json";
 export const PROJECT_TEMPLATE_ID = "project-config";
@@ -28,6 +30,7 @@ export interface ProjectConfig {
   exportOptions: {
     format: ExportFormatId;
   };
+  prelabelMappings?: PrelabelMappingsByModel;
 }
 
 export function projectConfigTemplate(): ProjectConfig["template"] {
@@ -89,6 +92,7 @@ export function parseProjectConfig(text: string): ProjectConfig {
     throw new Error("项目配置缺少导出时间");
   }
 
+  const prelabelMappings = parsePrelabelMappings(value.prelabelMappings);
   return {
     schemaVersion,
     format,
@@ -98,6 +102,7 @@ export function parseProjectConfig(text: string): ProjectConfig {
     labels: parseLabels(value.labels),
     template: parseTemplate(value.template),
     exportOptions: parseExportOptions(value.exportOptions),
+    ...(prelabelMappings ? { prelabelMappings } : {}),
   };
 }
 
@@ -478,6 +483,59 @@ function parseExportOptions(value: unknown): ProjectConfig["exportOptions"] {
   }
 
   return { format: isExportFormat(value.format) ? value.format : "json" };
+}
+
+function parsePrelabelMappings(value: unknown): PrelabelMappingsByModel | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new Error(prelabelText.mappingConfigMustBeObject);
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([modelId, mappings]) => {
+      if (!modelId) {
+        throw new Error(prelabelText.mappingConfigEmptyModelId);
+      }
+      const entries = asArray(mappings, `prelabelMappings.${modelId}`).map((mapping, index) =>
+        parsePrelabelMapping(mapping, `prelabelMappings.${modelId}[${index}]`),
+      );
+      const seenIndices = new Set<number>();
+      for (const entry of entries) {
+        if (seenIndices.has(entry.classIndex)) {
+          throw new Error(prelabelText.mappingConfigDuplicateIndex(modelId, entry.classIndex));
+        }
+        seenIndices.add(entry.classIndex);
+      }
+      return [modelId, entries];
+    }),
+  );
+}
+
+function parsePrelabelMapping(value: unknown, field: string): PrelabelClassMapping {
+  if (!isRecord(value)) {
+    throw new Error(prelabelText.mappingConfigEntryMustBeObject(field));
+  }
+  if (!Number.isSafeInteger(value.classIndex) || Number(value.classIndex) < 0) {
+    throw new Error(prelabelText.mappingConfigInvalidIndex(field));
+  }
+  if (typeof value.className !== "string" || !value.className) {
+    throw new Error(prelabelText.mappingConfigMissingClassName(field));
+  }
+  if (value.action !== "bind" && value.action !== "create" && value.action !== "exclude") {
+    throw new Error(prelabelText.mappingConfigInvalidAction(field));
+  }
+  if (value.action !== "exclude" && (typeof value.labelId !== "string" || !value.labelId)) {
+    throw new Error(prelabelText.mappingConfigMissingLabelId(field));
+  }
+
+  return {
+    classIndex: Number(value.classIndex),
+    className: value.className,
+    action: value.action,
+    ...(value.action === "exclude" ? {} : { labelId: String(value.labelId) }),
+  };
 }
 
 function makeLabel(id: string, name: string, index: number): LabelConfig {
