@@ -1,4 +1,6 @@
 mod commands;
+mod i18n;
+mod media;
 mod models;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -24,7 +26,11 @@ pub fn run() {
             commands::load_label_templates,
             commands::save_label_templates,
             commands::load_shortcuts,
-            commands::save_shortcuts
+            commands::save_shortcuts,
+            commands::inspect_onnx_model,
+            commands::find_converted_onnx,
+            commands::load_prelabel_model_library,
+            commands::save_prelabel_model_library
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

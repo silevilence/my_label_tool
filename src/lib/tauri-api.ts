@@ -3,6 +3,8 @@ import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import type { TextExportFile } from "../types/export";
 import type { ShortcutMap } from "./defaults/shortcuts";
+import type { OnnxModelSummary, PrelabelModelLibrary } from "../types/prelabel";
+import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
 
 export interface ImageFile {
   path: string;
@@ -73,6 +75,15 @@ export async function selectExportFolder(): Promise<string | null> {
 
 export const selectFolder = selectExportFolder;
 
+export async function selectPrelabelModelFile(): Promise<string | null> {
+  const path = await open({
+    directory: false,
+    multiple: false,
+    filters: [{ name: PRELABEL_ZH_CN.modelFileFilter, extensions: ["onnx", "pt"] }],
+  });
+  return typeof path === "string" ? path : null;
+}
+
 export function exportAnnotationsJson(outputPath: string, data: unknown): Promise<void> {
   return invoke("export_annotations_json", { outputPath, data });
 }
@@ -111,4 +122,20 @@ export function loadShortcuts(): Promise<Record<string, string>> {
 
 export function saveShortcuts(shortcuts: ShortcutMap): Promise<void> {
   return invoke("save_shortcuts", { shortcuts });
+}
+
+export function inspectOnnxModel(path: string): Promise<OnnxModelSummary> {
+  return invoke<OnnxModelSummary>("inspect_onnx_model", { path });
+}
+
+export function findConvertedOnnx(ptPath: string): Promise<string | null> {
+  return invoke<string | null>("find_converted_onnx", { ptPath });
+}
+
+export function loadPrelabelModelLibrary(): Promise<PrelabelModelLibrary> {
+  return invoke<PrelabelModelLibrary>("load_prelabel_model_library");
+}
+
+export function savePrelabelModelLibrary(library: PrelabelModelLibrary): Promise<void> {
+  return invoke("save_prelabel_model_library", { library });
 }

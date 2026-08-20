@@ -9,6 +9,7 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { ShortcutSettings } from "./settings/ShortcutSettings";
+import { PrelabelSettings } from "./settings/PrelabelSettings";
 import { AppSidebar } from "./sidebar/AppSidebar";
 import {
   AnnotationRect,
@@ -37,6 +38,7 @@ import type { ShortcutActionId, ShortcutMap } from "../lib/defaults/shortcuts";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../lib/defaults/display";
 import type { AppUpdateProgress, AppUpdateStatus } from "../lib/updater";
 import { isEditableTarget } from "../lib/app-utils";
+import type { usePrelabelModels } from "../hooks/usePrelabelModels";
 
 interface AppLayoutProps {
   activeProjectConfig: ProjectConfig | null;
@@ -67,6 +69,7 @@ interface AppLayoutProps {
   isPanning: boolean;
   isSaving: boolean;
   isShortcutSettingsOpen: boolean;
+  isPrelabelSettingsOpen: boolean;
   labelById: Map<string, LabelConfig>;
   labelDisplaySettings: LabelDisplaySettings;
   labelShortcuts: string[];
@@ -136,6 +139,8 @@ interface AppLayoutProps {
   setHelpDisplaySetting: (setting: keyof HelpDisplaySettings, visible: boolean) => void;
   setImageScale: (scale: number) => void;
   setIsShortcutSettingsOpen: (isOpen: boolean) => void;
+  setIsPrelabelSettingsOpen: (isOpen: boolean) => void;
+  prelabelModels: ReturnType<typeof usePrelabelModels>;
   setSelectedExportFormatId: (format: ExportFormatId) => void;
   setSelectedPath: (path: string) => void;
   setUpdateMessage: (message: string) => void;
@@ -176,6 +181,7 @@ export function AppLayout({
   isPanning,
   isSaving,
   isShortcutSettingsOpen,
+  isPrelabelSettingsOpen,
   labelById,
   labelDisplaySettings,
   labelShortcuts,
@@ -241,6 +247,8 @@ export function AppLayout({
   setHelpDisplaySetting,
   setImageScale,
   setIsShortcutSettingsOpen,
+  setIsPrelabelSettingsOpen,
+  prelabelModels,
   setSelectedExportFormatId,
   setSelectedPath,
   setUpdateMessage,
@@ -376,6 +384,7 @@ export function AppLayout({
         setCustomMappingText={setCustomMappingText}
         setIsSearchOpen={setIsSearchOpen}
         setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
+        setIsPrelabelSettingsOpen={setIsPrelabelSettingsOpen}
         setSelectedExportFormatId={setSelectedExportFormatId}
         setSelectedPath={setSelectedPath}
         undo={undo}
@@ -651,6 +660,17 @@ export function AppLayout({
           onChangeLabelDisplaySetting={setLabelDisplaySetting}
           onChangeShortcut={updateShortcut}
           onClose={() => setIsShortcutSettingsOpen(false)}
+        />
+      )}
+      {isPrelabelSettingsOpen && (
+        <PrelabelSettings
+          isLoaded={prelabelModels.isLoaded}
+          library={prelabelModels.library}
+          onAddModel={prelabelModels.addModel}
+          onClose={() => setIsPrelabelSettingsOpen(false)}
+          onDeleteModel={prelabelModels.deleteModel}
+          onSelectModel={prelabelModels.selectModel}
+          onUpdateModel={prelabelModels.updateModel}
         />
       )}
 

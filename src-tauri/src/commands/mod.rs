@@ -1,3 +1,6 @@
+mod prelabel;
+pub use prelabel::*;
+
 use std::{
     collections::HashMap,
     fs,

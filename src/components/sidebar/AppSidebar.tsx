@@ -13,6 +13,7 @@ import type { ExportFormatId } from "../../types/export";
 import type { ProjectConfig } from "../../lib/importers";
 import type { ImageFile } from "../../lib/tauri-api";
 import { isUserTemplate } from "../../lib/app-utils";
+import { PRELABEL_ZH_CN } from "../../i18n/prelabel.zh-CN";
 
 interface AppSidebarProps {
   activeProjectConfig: ProjectConfig | null;
@@ -55,6 +56,7 @@ interface AppSidebarProps {
   setCustomMappingText: (text: string) => void;
   setIsSearchOpen: (isOpen: boolean) => void;
   setIsShortcutSettingsOpen: (isOpen: boolean) => void;
+  setIsPrelabelSettingsOpen: (isOpen: boolean) => void;
   setSelectedExportFormatId: (format: ExportFormatId) => void;
   setSelectedPath: (path: string) => void;
   undo: () => void;
@@ -103,6 +105,7 @@ export function AppSidebar({
   setCustomMappingText,
   setIsSearchOpen,
   setIsShortcutSettingsOpen,
+  setIsPrelabelSettingsOpen,
   setSelectedExportFormatId,
   setSelectedPath,
   undo,
@@ -192,6 +195,16 @@ export function AppSidebar({
                 type="button"
                 onClick={() => {
                   closeMenu();
+                  setIsPrelabelSettingsOpen(true);
+                }}
+              >
+                {PRELABEL_ZH_CN.menuLabel}
+              </button>
+              <button
+                className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
+                type="button"
+                onClick={() => {
+                  closeMenu();
                   setIsShortcutSettingsOpen(true);
                 }}
               >
@@ -254,8 +267,12 @@ export function AppSidebar({
 
       <div className="scrollbar-dark min-h-0 max-h-[45vh] overflow-y-auto">
         <LabelSettings
-          canSaveTemplate={isUserTemplate(selectedTemplateId) || selectedTemplateId === projectTemplateId}
-          canDeleteTemplate={isUserTemplate(selectedTemplateId) && selectedTemplateId !== projectTemplateId}
+          canSaveTemplate={
+            isUserTemplate(selectedTemplateId) || selectedTemplateId === projectTemplateId
+          }
+          canDeleteTemplate={
+            isUserTemplate(selectedTemplateId) && selectedTemplateId !== projectTemplateId
+          }
           isDirty={isLabelDirty}
           labels={labels}
           selectedTemplateId={selectedTemplateId}
@@ -305,7 +322,10 @@ export function AppSidebar({
             </select>
           </label>
           <div className="mt-3 flex items-center gap-2 rounded border border-slate-800 bg-slate-950 px-3 py-2 text-sm">
-            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: currentLabel.color }} />
+            <span
+              className="h-3 w-3 rounded-full"
+              style={{ backgroundColor: currentLabel.color }}
+            />
             <span>{currentLabel.name}</span>
             {currentLabel.shortcut && (
               <span className="text-xs text-slate-500">快捷键 {currentLabel.shortcut}</span>

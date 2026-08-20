@@ -27,6 +27,7 @@ import { useShortcutsConfig } from "./hooks/useShortcutsConfig";
 import { useShapeToolSelection } from "./hooks/useShapeToolSelection";
 import { useTransientMessage } from "./hooks/useTransientMessage";
 import { useZoomControls } from "./hooks/useZoomControls";
+import { usePrelabelModels } from "./hooks/usePrelabelModels";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
 import { isEditableTarget } from "./lib/app-utils";
@@ -70,7 +71,10 @@ function App() {
     JSON.stringify(DEFAULT_CUSTOM_EXPORT_MAPPING, null, 2),
   );
   const [isShortcutSettingsOpen, setIsShortcutSettingsOpen] = useState(false);
+  const [isPrelabelSettingsOpen, setIsPrelabelSettingsOpen] = useState(false);
   const [error, setError] = useState("");
+
+  const prelabelModels = usePrelabelModels(setError);
 
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
   const selectedShapeId = useAnnotationStore((state) => state.selectedShapeId);
@@ -493,6 +497,7 @@ function App() {
       isPanning={isPanning}
       isSaving={isSaving}
       isShortcutSettingsOpen={isShortcutSettingsOpen}
+      isPrelabelSettingsOpen={isPrelabelSettingsOpen}
       labelById={labelById}
       labelDisplaySettings={labelDisplaySettings}
       labelShortcuts={labelShortcuts}
@@ -558,6 +563,8 @@ function App() {
       setHelpDisplaySetting={setHelpDisplaySetting}
       setImageScale={setImageScale}
       setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
+      setIsPrelabelSettingsOpen={setIsPrelabelSettingsOpen}
+      prelabelModels={prelabelModels}
       setLabelDisplaySetting={setLabelDisplaySetting}
       setSelectedExportFormatId={changeExportFormat}
       setSelectedPath={setSelectedPath}
