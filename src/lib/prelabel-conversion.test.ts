@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PT_CONVERSION_PARAMETERS,
   createPtConversionSession,
+  isCurrentPtConversionPreview,
   isPtConversionCancelledResult,
+  ptConversionErrorMessage,
   reducePtConversionSession,
   validatePtConversionParameters,
 } from "./prelabel-conversion";
@@ -25,8 +27,30 @@ describe("PT conversion session", () => {
   });
 
   it("distinguishes a confirmed cancellation from process-tree termination failures", () => {
-    expect(isPtConversionCancelledResult("模型转换已中止")).toBe(true);
+    expect(isPtConversionCancelledResult({ code: "cancelled", message: "任意本地化文案" })).toBe(
+      true,
+    );
+    expect(isPtConversionCancelledResult("模型转换已中止")).toBe(false);
     expect(isPtConversionCancelledResult("终止模型转换进程树失败")).toBe(false);
+    expect(ptConversionErrorMessage({ code: "failed", message: "进程树失败" })).toBe("进程树失败");
+  });
+
+  it("matches preview responses only to the same id and parameter snapshot", () => {
+    const requested = createPtConversionSession("conversion-1", {
+      imgsz: 640,
+      simplify: false,
+    });
+
+    expect(isCurrentPtConversionPreview({ ...requested }, requested)).toBe(true);
+    expect(
+      isCurrentPtConversionPreview({ ...requested, conversionId: "conversion-2" }, requested),
+    ).toBe(false);
+    expect(
+      isCurrentPtConversionPreview(
+        { ...requested, parameters: { imgsz: 1280, simplify: false } },
+        requested,
+      ),
+    ).toBe(false);
   });
 
   it("tracks streamed output and cancellation without accepting another task's events", () => {
@@ -41,6 +65,10 @@ describe("PT conversion session", () => {
       event: { event: "output", conversionId: "conversion-1", line: "Downloading 20%" },
     });
     const cancelling = reducePtConversionSession(withOutput, { type: "cancel" });
+    const recovered = reducePtConversionSession(cancelling, {
+      type: "cancel-failed",
+      error: "中止请求失败：拒绝访问",
+    });
 
     expect(confirming.status).toBe("confirming");
     expect(running.status).toBe("running");
@@ -48,6 +76,10 @@ describe("PT conversion session", () => {
     expect(cancelling).toMatchObject({
       status: "cancelling",
       output: ["Downloading 20%"],
+    });
+    expect(recovered).toMatchObject({
+      status: "running",
+      output: ["Downloading 20%", "中止请求失败：拒绝访问"],
     });
   });
 

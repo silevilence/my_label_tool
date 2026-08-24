@@ -84,6 +84,44 @@ pub struct PtConversionResult {
     summary: OnnxModelSummary,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtConversionCommandError {
+    code: PtConversionErrorCode,
+    message: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum PtConversionErrorCode {
+    Cancelled,
+    Failed,
+}
+
+impl From<String> for PtConversionCommandError {
+    fn from(message: String) -> Self {
+        let code = if message == text::PT_CONVERSION_CANCELLED {
+            PtConversionErrorCode::Cancelled
+        } else {
+            PtConversionErrorCode::Failed
+        };
+        Self { code, message }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PtCancellationStatus {
+    Accepted,
+    AlreadyCompleted,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtCancellationResult {
+    status: PtCancellationStatus,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(
     tag = "event",
@@ -105,8 +143,14 @@ pub enum PtConversionEvent {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct ConversionCandidate {
     method: PtConversionMethod,
-    executable: &'static str,
     conversion_executable: &'static str,
+    probes: &'static [ConversionProbe],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ConversionProbe {
+    executable: &'static str,
+    arguments: &'static [&'static str],
 }
 
 #[derive(Debug)]
@@ -123,16 +167,16 @@ struct ConversionControl {
 }
 
 impl ConversionControl {
-    fn cancel(&self) -> Result<(), String> {
+    fn cancel(&self) -> Result<PtCancellationStatus, String> {
         let _guard = self
             .finalize_lock
             .lock()
             .map_err(|_| text::PT_CONVERSION_LOCK_FAILED.to_string())?;
         if self.completed.load(Ordering::Acquire) {
-            return Err(text::PT_CONVERSION_ALREADY_COMPLETED.to_string());
+            return Ok(PtCancellationStatus::AlreadyCompleted);
         }
         self.cancelled.store(true, Ordering::Release);
-        Ok(())
+        Ok(PtCancellationStatus::Accepted)
     }
 
     fn publish(&self, staged: &Path, target: &Path) -> Result<(), String> {
@@ -173,7 +217,7 @@ fn register_conversion(conversion_id: &str) -> Result<ConversionRegistration, St
     })
 }
 
-fn cancel_registered_conversion(conversion_id: &str) -> Result<(), String> {
+fn cancel_registered_conversion(conversion_id: &str) -> Result<PtCancellationResult, String> {
     let conversions = ACTIVE_CONVERSIONS.get_or_init(|| Mutex::new(HashMap::new()));
     let conversions = conversions
         .lock()
@@ -181,7 +225,9 @@ fn cancel_registered_conversion(conversion_id: &str) -> Result<(), String> {
     let control = conversions
         .get(conversion_id)
         .ok_or_else(|| text::pt_conversion_id_missing(conversion_id))?;
-    control.cancel()
+    control
+        .cancel()
+        .map(|status| PtCancellationResult { status })
 }
 
 pub fn cancel_all_pt_conversions() {
@@ -341,31 +387,58 @@ struct TemporaryDirectory {
     cleaned: bool,
 }
 
+const YOLO_PROBES: [ConversionProbe; 1] = [ConversionProbe {
+    executable: "yolo",
+    arguments: &["--help"],
+}];
+const PYTHON_PROBES: [ConversionProbe; 1] = [ConversionProbe {
+    executable: "python",
+    arguments: &["-c", "import ultralytics"],
+}];
+const PYTHON3_PROBES: [ConversionProbe; 1] = [ConversionProbe {
+    executable: "python3",
+    arguments: &["-c", "import ultralytics"],
+}];
+const PY_PROBES: [ConversionProbe; 1] = [ConversionProbe {
+    executable: "py",
+    arguments: &["-c", "import ultralytics"],
+}];
+const UVX_PROBES: [ConversionProbe; 2] = [
+    ConversionProbe {
+        executable: "uv",
+        arguments: &["--version"],
+    },
+    ConversionProbe {
+        executable: "uvx",
+        arguments: &["--version"],
+    },
+];
+
 const CANDIDATES: [ConversionCandidate; 5] = [
     ConversionCandidate {
         method: PtConversionMethod::YoloCli,
-        executable: "yolo",
         conversion_executable: "yolo",
+        probes: &YOLO_PROBES,
     },
     ConversionCandidate {
         method: PtConversionMethod::PythonUltralytics,
-        executable: "python",
         conversion_executable: "python",
+        probes: &PYTHON_PROBES,
     },
     ConversionCandidate {
         method: PtConversionMethod::PythonUltralytics,
-        executable: "python3",
         conversion_executable: "python3",
+        probes: &PYTHON3_PROBES,
     },
     ConversionCandidate {
         method: PtConversionMethod::PythonUltralytics,
-        executable: "py",
         conversion_executable: "py",
+        probes: &PY_PROBES,
     },
     ConversionCandidate {
         method: PtConversionMethod::UvxYolo,
-        executable: "uv",
         conversion_executable: "uvx",
+        probes: &UVX_PROBES,
     },
 ];
 
@@ -385,8 +458,8 @@ pub fn preview_pt_conversion_command(
 }
 
 fn detect_environment() -> PtConversionEnvironment {
-    detect_environment_with(|candidate, args| {
-        probe_command(candidate.executable, args, PROBE_TIMEOUT)
+    detect_environment_with(|executable, arguments| {
+        probe_command(executable, arguments, PROBE_TIMEOUT)
     })
 }
 
@@ -419,7 +492,7 @@ pub async fn convert_pt_to_onnx(
     .map_err(text::pt_conversion_worker_failed)?
 }
 
-pub fn cancel_pt_conversion(conversion_id: String) -> Result<(), String> {
+pub fn cancel_pt_conversion(conversion_id: String) -> Result<PtCancellationResult, String> {
     cancel_registered_conversion(&conversion_id)
 }
 
@@ -818,24 +891,15 @@ impl Drop for TemporaryDirectory {
 }
 
 fn detect_environment_with(
-    mut probe: impl FnMut(ConversionCandidate, &[&str]) -> Result<(), String>,
+    mut probe: impl FnMut(&str, &[&str]) -> Result<(), String>,
 ) -> PtConversionEnvironment {
     let mut failures = Vec::new();
     for candidate in CANDIDATES {
-        let arguments = match candidate.method {
-            PtConversionMethod::YoloCli => ["--help", ""],
-            PtConversionMethod::PythonUltralytics => ["-c", "import ultralytics"],
-            PtConversionMethod::UvxYolo => ["--version", ""],
-        };
-        let arguments = if matches!(
-            candidate.method,
-            PtConversionMethod::YoloCli | PtConversionMethod::UvxYolo
-        ) {
-            &arguments[..1]
-        } else {
-            &arguments[..]
-        };
-        match probe(candidate, arguments) {
+        let result = candidate.probes.iter().try_for_each(|command| {
+            probe(command.executable, command.arguments)
+                .map_err(|error| format!("{}：{error}", command.executable))
+        });
+        match result {
             Ok(()) => {
                 return PtConversionEnvironment {
                     available: true,
@@ -847,7 +911,7 @@ fn detect_environment_with(
                     ),
                 };
             }
-            Err(error) => failures.push(format!("{}：{error}", candidate.executable)),
+            Err(error) => failures.push(error),
         }
     }
     PtConversionEnvironment {

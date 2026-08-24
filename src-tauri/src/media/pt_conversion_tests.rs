@@ -5,8 +5,9 @@ use super::{
     convert_pt_with_parameters, convert_pt_with_parameters_and_id, detect_environment,
     detect_environment_with, register_conversion, reserve_target, run_conversion_process,
     terminate_process_tree, validate_conversion_parameters, ChildProcessGuard, ConversionControl,
-    OutputNormalizer, OutputNormalizers, OutputStream, ProcessOutcome, PtConversionEnvironment,
-    PtConversionEvent, PtConversionMethod, PtConversionParameters,
+    OutputNormalizer, OutputNormalizers, OutputStream, ProcessOutcome, PtCancellationStatus,
+    PtConversionCommandError, PtConversionEnvironment, PtConversionEvent, PtConversionMethod,
+    PtConversionParameters,
 };
 use crate::{media::onnx_metadata::OnnxModelSummary, models::prelabel::YoloModelFormat};
 use std::{
@@ -79,8 +80,8 @@ fn failure_status() -> std::process::ExitStatus {
 
 #[test]
 fn detects_yolo_cli_before_python() {
-    let environment = detect_environment_with(|candidate, arguments| {
-        if candidate.executable == "yolo" && arguments == ["--help"] {
+    let environment = detect_environment_with(|executable, arguments| {
+        if executable == "yolo" && arguments == ["--help"] {
             Ok(())
         } else {
             Err("not available".to_string())
@@ -93,8 +94,8 @@ fn detects_yolo_cli_before_python() {
 
 #[test]
 fn falls_back_to_a_python_ultralytics_import_probe() {
-    let environment = detect_environment_with(|candidate, arguments| {
-        if candidate.executable == "python3" && arguments == ["-c", "import ultralytics"] {
+    let environment = detect_environment_with(|executable, arguments| {
+        if executable == "python3" && arguments == ["-c", "import ultralytics"] {
             Ok(())
         } else {
             Err("not available".to_string())
@@ -111,15 +112,15 @@ fn falls_back_to_a_python_ultralytics_import_probe() {
 #[test]
 fn falls_back_to_uv_without_installing_ultralytics_during_detection() {
     let mut probes = Vec::new();
-    let environment = detect_environment_with(|candidate, arguments| {
+    let environment = detect_environment_with(|executable, arguments| {
         probes.push((
-            candidate.executable.to_string(),
+            executable.to_string(),
             arguments
                 .iter()
                 .map(|argument| (*argument).to_string())
                 .collect::<Vec<_>>(),
         ));
-        if candidate.executable == "uv" && arguments == ["--version"] {
+        if matches!(executable, "uv" | "uvx") && arguments == ["--version"] {
             Ok(())
         } else {
             Err("not available".to_string())
@@ -130,7 +131,7 @@ fn falls_back_to_uv_without_installing_ultralytics_during_detection() {
     assert_eq!(environment.executable.as_deref(), Some("uvx"));
     assert_eq!(
         probes.last(),
-        Some(&("uv".to_string(), vec!["--version".to_string()]))
+        Some(&("uvx".to_string(), vec!["--version".to_string()]))
     );
     assert!(!probes
         .iter()
@@ -138,10 +139,23 @@ fn falls_back_to_uv_without_installing_ultralytics_during_detection() {
 }
 
 #[test]
-fn reports_unavailable_when_all_probes_fail() {
-    let environment = detect_environment_with(|candidate, _| {
-        Err(format!("{} probe failed", candidate.executable))
+fn reports_uvx_missing_instead_of_selecting_an_unrunnable_uv_fallback() {
+    let environment = detect_environment_with(|executable, _| {
+        if executable == "uv" {
+            Ok(())
+        } else {
+            Err("not available".to_string())
+        }
     });
+
+    assert!(!environment.available);
+    assert!(environment.message.contains("uvx：not available"));
+}
+
+#[test]
+fn reports_unavailable_when_all_probes_fail() {
+    let environment =
+        detect_environment_with(|executable, _| Err(format!("{executable} probe failed")));
     assert!(!environment.available);
     assert_eq!(environment.method, None);
     assert_eq!(environment.executable, None);
@@ -419,7 +433,12 @@ fn registered_conversion_can_be_cancelled_and_is_released_for_retry() {
     let first = register_conversion("conversion-test-registration").unwrap();
     assert!(!first.control.cancelled.load(Ordering::Acquire));
 
-    cancel_registered_conversion("conversion-test-registration").unwrap();
+    assert_eq!(
+        cancel_registered_conversion("conversion-test-registration")
+            .unwrap()
+            .status,
+        PtCancellationStatus::Accepted
+    );
     assert!(first.control.cancelled.load(Ordering::Acquire));
     drop(first);
 
@@ -427,6 +446,38 @@ fn registered_conversion_can_be_cancelled_and_is_released_for_retry() {
     cancel_all_pt_conversions();
     assert!(retry.control.cancelled.load(Ordering::Acquire));
     drop(retry);
+}
+
+#[test]
+fn cancellation_after_publish_reports_completion_without_marking_the_task_cancelled() {
+    let root = test_directory("cancel-after-publish");
+    let staged = root.join("staged.onnx");
+    let target = root.join("target.onnx");
+    fs::write(&staged, b"valid").unwrap();
+    let control = ConversionControl::default();
+
+    control.publish(&staged, &target).unwrap();
+
+    assert_eq!(
+        control.cancel().unwrap(),
+        PtCancellationStatus::AlreadyCompleted
+    );
+    assert!(!control.cancelled.load(Ordering::Acquire));
+    assert!(target.is_file());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn conversion_command_errors_serialize_a_stable_code_separate_from_the_message() {
+    let error = PtConversionCommandError::from("模型转换已中止".to_string());
+
+    assert_eq!(
+        serde_json::to_value(error).unwrap(),
+        serde_json::json!({
+            "code": "cancelled",
+            "message": "模型转换已中止"
+        })
+    );
 }
 
 #[cfg(windows)]

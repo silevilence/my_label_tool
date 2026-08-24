@@ -32,7 +32,6 @@ export const PRELABEL_ZH_CN = {
     `正在转换${timeoutSeconds ? `（超时护栏 ${Math.round(timeoutSeconds / 60)} 分钟）` : ""}…`,
   ptConversionFailed: (reason: string) => `转换失败：${reason}`,
   ptCancelled: "转换已中止，可修改参数后立即重试。",
-  ptCancelledResult: "模型转换已中止",
   ptCancelFailed: (reason: unknown) => `中止请求失败，转换仍在运行：${String(reason)}`,
   back: "返回",
   copy: "复制",

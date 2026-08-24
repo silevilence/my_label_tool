@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use tauri::ipc::Channel;
 
 pub use crate::media::pt_conversion::{
-    cancel_all_pt_conversions_and_wait, PtConversionEnvironment, PtConversionEvent,
-    PtConversionParameters, PtConversionPlan, PtConversionResult,
+    cancel_all_pt_conversions_and_wait, PtCancellationResult, PtConversionCommandError,
+    PtConversionEnvironment, PtConversionEvent, PtConversionParameters, PtConversionPlan,
+    PtConversionResult,
 };
 
 #[tauri::command]
@@ -33,14 +34,15 @@ pub async fn convert_pt_to_onnx(
     plan: PtConversionPlan,
     conversion_id: String,
     on_event: Channel<PtConversionEvent>,
-) -> Result<PtConversionResult, String> {
+) -> Result<PtConversionResult, PtConversionCommandError> {
     crate::media::pt_conversion::convert_pt_to_onnx(pt_path, plan, conversion_id, move |event| {
         let _ = on_event.send(event);
     })
     .await
+    .map_err(PtConversionCommandError::from)
 }
 
 #[tauri::command]
-pub fn cancel_pt_conversion(conversion_id: String) -> Result<(), String> {
+pub fn cancel_pt_conversion(conversion_id: String) -> Result<PtCancellationResult, String> {
     crate::media::pt_conversion::cancel_pt_conversion(conversion_id)
 }

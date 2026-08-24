@@ -242,7 +242,6 @@ pub const PT_CONVERSION_IMGSZ_INVALID: &str = "转换尺寸 imgsz 必须是大�
 pub const PT_CONVERSION_CANCELLED: &str = "模型转换已中止";
 pub const PT_CONVERSION_ID_INVALID: &str = "模型转换任务 ID 不能为空";
 pub const PT_CONVERSION_PLAN_INVALID: &str = "模型转换计划无效，请重新打开参数确认弹窗";
-pub const PT_CONVERSION_ALREADY_COMPLETED: &str = "模型转换已完成，无法中止";
 
 pub fn pt_conversion_id_already_running(conversion_id: &str) -> String {
     format!("模型转换任务已存在：{conversion_id}")

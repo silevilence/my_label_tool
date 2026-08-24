@@ -23,7 +23,9 @@ import {
 } from "../../lib/prelabel-models";
 import {
   createPtConversionSession,
+  isCurrentPtConversionPreview,
   isPtConversionCancelledResult,
+  ptConversionErrorMessage,
   reducePtConversionSession,
   type PtConversionSession,
   validatePtConversionParameters,
@@ -230,21 +232,15 @@ export function PrelabelSettings({
     )
       .then((plan) =>
         setPtConversionSession((current) =>
-          current &&
-          current.conversionId === session.conversionId &&
-          current.parameters.imgsz === session.parameters.imgsz &&
-          current.parameters.simplify === session.parameters.simplify
+          isCurrentPtConversionPreview(current, session)
             ? reducePtConversionSession(current, { type: "preview", plan })
             : current,
         ),
       )
       .catch((reason: unknown) =>
         setPtConversionSession((current) =>
-          current &&
-          current.conversionId === session.conversionId &&
-          current.parameters.imgsz === session.parameters.imgsz &&
-          current.parameters.simplify === session.parameters.simplify
-            ? { ...current, plan: null, error: String(reason) }
+          isCurrentPtConversionPreview(current, session)
+            ? { ...current, plan: null, error: ptConversionErrorMessage(reason) }
             : current,
         ),
       );
@@ -299,7 +295,10 @@ export function PrelabelSettings({
       } else {
         setPtConversionSession((current) =>
           current
-            ? reducePtConversionSession(current, { type: "fail", error: String(reason) })
+            ? reducePtConversionSession(current, {
+                type: "fail",
+                error: ptConversionErrorMessage(reason),
+              })
             : current,
         );
       }
@@ -319,22 +318,18 @@ export function PrelabelSettings({
       current ? reducePtConversionSession(current, { type: "cancel" }) : current,
     );
     try {
-      await cancelPtConversion(session.conversionId);
+      const result = await cancelPtConversion(session.conversionId);
+      if (result.status === "already-completed") {
+        cancelledConversions.current.delete(session.conversionId);
+      }
     } catch (reason) {
       cancelledConversions.current.delete(session.conversionId);
       setPtConversionSession((current) =>
         current
-          ? reducePtConversionSession(
-              { ...current, status: "running" },
-              {
-                type: "event",
-                event: {
-                  event: "output",
-                  conversionId: current.conversionId,
-                  line: text.ptCancelFailed(reason),
-                },
-              },
-            )
+          ? reducePtConversionSession(current, {
+              type: "cancel-failed",
+              error: text.ptCancelFailed(ptConversionErrorMessage(reason)),
+            })
           : current,
       );
     }

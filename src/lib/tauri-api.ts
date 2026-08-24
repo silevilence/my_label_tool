@@ -10,6 +10,7 @@ import type {
   PrelabelImageInference,
   PrelabelModelConfig,
   PrelabelModelLibrary,
+  PtCancellationResult,
   PtConversionEnvironment,
   PtConversionEvent,
   PtConversionParameters,
@@ -187,8 +188,8 @@ export function previewPtConversionCommand(
   });
 }
 
-export function cancelPtConversion(conversionId: string): Promise<void> {
-  return invoke("cancel_pt_conversion", { conversionId });
+export function cancelPtConversion(conversionId: string): Promise<PtCancellationResult> {
+  return invoke<PtCancellationResult>("cancel_pt_conversion", { conversionId });
 }
 
 export function loadPrelabelModelLibrary(): Promise<PrelabelModelLibrary> {

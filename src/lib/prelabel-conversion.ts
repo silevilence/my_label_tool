@@ -1,5 +1,6 @@
 import { PRELABEL_ZH_CN as text } from "../i18n/prelabel.zh-CN";
 import type {
+  PtConversionCommandError,
   PtConversionEvent,
   PtConversionParameters,
   PtConversionPlan,
@@ -28,6 +29,7 @@ export type PtConversionSessionAction =
   | { type: "preview"; plan: PtConversionPlan }
   | { type: "event"; event: PtConversionEvent }
   | { type: "cancel" }
+  | { type: "cancel-failed"; error: string }
   | { type: "fail"; error: string };
 
 export function createPtConversionSession(
@@ -56,6 +58,13 @@ export function reducePtConversionSession(
   }
   if (action.type === "cancel") {
     return { ...session, status: "cancelling" };
+  }
+  if (action.type === "cancel-failed") {
+    return {
+      ...session,
+      status: "running",
+      output: [...session.output, action.error].slice(-MAX_VISIBLE_OUTPUT_LINES),
+    };
   }
   if (action.type === "fail") {
     return { ...session, status: "failed", error: action.error };
@@ -90,5 +99,32 @@ export function validatePtConversionParameters(parameters: PtConversionParameter
 }
 
 export function isPtConversionCancelledResult(reason: unknown): boolean {
-  return String(reason) === text.ptCancelledResult;
+  return isPtConversionCommandError(reason) && reason.code === "cancelled";
+}
+
+export function ptConversionErrorMessage(reason: unknown): string {
+  return isPtConversionCommandError(reason) ? reason.message : String(reason);
+}
+
+export function isCurrentPtConversionPreview(
+  current: PtConversionSession | null,
+  requested: PtConversionSession,
+): current is PtConversionSession {
+  return (
+    current !== null &&
+    current.conversionId === requested.conversionId &&
+    current.parameters.imgsz === requested.parameters.imgsz &&
+    current.parameters.simplify === requested.parameters.simplify
+  );
+}
+
+function isPtConversionCommandError(reason: unknown): reason is PtConversionCommandError {
+  if (!reason || typeof reason !== "object") {
+    return false;
+  }
+  const candidate = reason as Record<string, unknown>;
+  return (
+    (candidate.code === "cancelled" || candidate.code === "failed") &&
+    typeof candidate.message === "string"
+  );
 }

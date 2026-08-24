@@ -78,6 +78,15 @@ export interface PtConversionResult extends OnnxModelSummary {
   method: PtConversionMethod;
 }
 
+export interface PtConversionCommandError {
+  code: "cancelled" | "failed";
+  message: string;
+}
+
+export interface PtCancellationResult {
+  status: "accepted" | "already-completed";
+}
+
 export type PtConversionEvent =
   | {
       event: "started";
