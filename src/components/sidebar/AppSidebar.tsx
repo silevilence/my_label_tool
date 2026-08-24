@@ -14,8 +14,6 @@ import type { ProjectConfig } from "../../lib/importers";
 import type { ImageFile } from "../../lib/tauri-api";
 import { isUserTemplate } from "../../lib/app-utils";
 import { PRELABEL_ZH_CN } from "../../i18n/prelabel.zh-CN";
-import { PrelabelExecutionPanel } from "../settings/PrelabelExecutionPanel";
-import type { usePrelabelExecution } from "../../hooks/usePrelabelExecution";
 
 interface AppSidebarProps {
   activeProjectConfig: ProjectConfig | null;
@@ -32,7 +30,6 @@ interface AppSidebarProps {
   isSaving: boolean;
   labels: LabelConfig[];
   projectTemplateId: string;
-  prelabelExecution: ReturnType<typeof usePrelabelExecution>;
   selectedExportFormatId: ExportFormatId;
   selectedImageButtonRef: MutableRefObject<HTMLButtonElement | null>;
   selectedPath: string;
@@ -60,6 +57,7 @@ interface AppSidebarProps {
   setIsSearchOpen: (isOpen: boolean) => void;
   setIsShortcutSettingsOpen: (isOpen: boolean) => void;
   setIsPrelabelSettingsOpen: (isOpen: boolean) => void;
+  setIsPrelabelExecutionOpen: (isOpen: boolean) => void;
   setSelectedExportFormatId: (format: ExportFormatId) => void;
   setSelectedPath: (path: string) => void;
   undo: () => void;
@@ -82,7 +80,6 @@ export function AppSidebar({
   isSaving,
   labels,
   projectTemplateId,
-  prelabelExecution,
   selectedExportFormatId,
   selectedImageButtonRef,
   selectedPath,
@@ -110,6 +107,7 @@ export function AppSidebar({
   setIsSearchOpen,
   setIsShortcutSettingsOpen,
   setIsPrelabelSettingsOpen,
+  setIsPrelabelExecutionOpen,
   setSelectedExportFormatId,
   setSelectedPath,
   undo,
@@ -269,10 +267,15 @@ export function AppSidebar({
         onSaveProject={saveProjectExport}
       />
 
-      <PrelabelExecutionPanel
-        execution={prelabelExecution}
-        hasSelectedImage={Boolean(selectedPath)}
-      />
+      <section className="shrink-0 border-b border-slate-800 p-4">
+        <button
+          className="w-full rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400"
+          type="button"
+          onClick={() => setIsPrelabelExecutionOpen(true)}
+        >
+          {PRELABEL_ZH_CN.executionTitle}
+        </button>
+      </section>
 
       <div className="scrollbar-dark min-h-0 max-h-[45vh] overflow-y-auto">
         <LabelSettings

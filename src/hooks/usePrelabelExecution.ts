@@ -8,7 +8,7 @@ import {
 } from "../lib/prelabel-mapping";
 import type { AnnotationShape, LabelConfig } from "../types/annotation";
 import type { ProjectConfig } from "../lib/importers";
-import type { PrelabelModelLibrary } from "../types/prelabel";
+import type { PrelabelModelLibrary, PrelabelModelConfig } from "../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../i18n/prelabel.zh-CN";
 import { annotationShapesSnapshot } from "../lib/annotation-utils";
 
@@ -21,6 +21,15 @@ export interface PrelabelExecutionProgress {
   processed: number;
   total: number;
   message: string;
+}
+
+export interface PrelabelExecutionControls {
+  cancel: () => void;
+  currentModel: PrelabelModelConfig | null;
+  progress: PrelabelExecutionProgress;
+  runBatch: (forceOverwrite: boolean) => Promise<void>;
+  runSingle: () => Promise<void>;
+  unmatchedClassCount: number;
 }
 
 interface UsePrelabelExecutionOptions {

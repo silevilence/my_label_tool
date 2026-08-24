@@ -76,6 +76,7 @@ function App() {
   );
   const [isShortcutSettingsOpen, setIsShortcutSettingsOpen] = useState(false);
   const [isPrelabelSettingsOpen, setIsPrelabelSettingsOpen] = useState(false);
+  const [isPrelabelExecutionOpen, setIsPrelabelExecutionOpen] = useState(false);
   const [error, setError] = useState("");
 
   const prelabelModels = usePrelabelModels(setError);
@@ -535,6 +536,7 @@ function App() {
       isSaving={isSaving}
       isShortcutSettingsOpen={isShortcutSettingsOpen}
       isPrelabelSettingsOpen={isPrelabelSettingsOpen}
+      isPrelabelExecutionOpen={isPrelabelExecutionOpen}
       labelById={labelById}
       labelDisplaySettings={labelDisplaySettings}
       labelShortcuts={labelShortcuts}
@@ -602,6 +604,7 @@ function App() {
       setImageScale={setImageScale}
       setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
       setIsPrelabelSettingsOpen={setIsPrelabelSettingsOpen}
+      setIsPrelabelExecutionOpen={setIsPrelabelExecutionOpen}
       prelabelModels={prelabelModels}
       prelabelExecution={prelabelExecution}
       setLabelDisplaySetting={setLabelDisplaySetting}

@@ -9,6 +9,7 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { ShortcutSettings } from "./settings/ShortcutSettings";
+import { PrelabelExecutionDialog } from "./settings/PrelabelExecutionDialog";
 import { PrelabelSettings } from "./settings/PrelabelSettings";
 import { AppSidebar } from "./sidebar/AppSidebar";
 import {
@@ -38,8 +39,8 @@ import type { ShortcutActionId, ShortcutMap } from "../lib/defaults/shortcuts";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../lib/defaults/display";
 import type { AppUpdateProgress, AppUpdateStatus } from "../lib/updater";
 import { isEditableTarget } from "../lib/app-utils";
+import type { PrelabelExecutionControls } from "../hooks/usePrelabelExecution";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
-import type { usePrelabelExecution } from "../hooks/usePrelabelExecution";
 import type { PrelabelClassMapping } from "../types/prelabel";
 
 interface AppLayoutProps {
@@ -72,6 +73,7 @@ interface AppLayoutProps {
   isSaving: boolean;
   isShortcutSettingsOpen: boolean;
   isPrelabelSettingsOpen: boolean;
+  isPrelabelExecutionOpen: boolean;
   labelById: Map<string, LabelConfig>;
   labelDisplaySettings: LabelDisplaySettings;
   labelShortcuts: string[];
@@ -147,8 +149,9 @@ interface AppLayoutProps {
   setImageScale: (scale: number) => void;
   setIsShortcutSettingsOpen: (isOpen: boolean) => void;
   setIsPrelabelSettingsOpen: (isOpen: boolean) => void;
+  setIsPrelabelExecutionOpen: (isOpen: boolean) => void;
   prelabelModels: ReturnType<typeof usePrelabelModels>;
-  prelabelExecution: ReturnType<typeof usePrelabelExecution>;
+  prelabelExecution: PrelabelExecutionControls;
   setSelectedExportFormatId: (format: ExportFormatId) => void;
   setSelectedPath: (path: string) => void;
   setUpdateMessage: (message: string) => void;
@@ -190,6 +193,7 @@ export function AppLayout({
   isSaving,
   isShortcutSettingsOpen,
   isPrelabelSettingsOpen,
+  isPrelabelExecutionOpen,
   labelById,
   labelDisplaySettings,
   labelShortcuts,
@@ -257,6 +261,7 @@ export function AppLayout({
   setImageScale,
   setIsShortcutSettingsOpen,
   setIsPrelabelSettingsOpen,
+  setIsPrelabelExecutionOpen,
   prelabelModels,
   prelabelExecution,
   setSelectedExportFormatId,
@@ -367,7 +372,6 @@ export function AppLayout({
         isLabelDirty={isLabelDirty}
         isSaving={isSaving}
         labels={labels}
-        prelabelExecution={prelabelExecution}
         projectTemplateId={projectTemplateId}
         selectedExportFormatId={selectedExportFormatId}
         selectedImageButtonRef={selectedImageButtonRef}
@@ -396,6 +400,7 @@ export function AppLayout({
         setIsSearchOpen={setIsSearchOpen}
         setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
         setIsPrelabelSettingsOpen={setIsPrelabelSettingsOpen}
+        setIsPrelabelExecutionOpen={setIsPrelabelExecutionOpen}
         setSelectedExportFormatId={setSelectedExportFormatId}
         setSelectedPath={setSelectedPath}
         undo={undo}
@@ -686,6 +691,13 @@ export function AppLayout({
           onSelectModel={prelabelModels.selectModel}
           onSaveMappings={savePrelabelMappings}
           onUpdateModel={prelabelModels.updateModel}
+        />
+      )}
+      {isPrelabelExecutionOpen && (
+        <PrelabelExecutionDialog
+          execution={prelabelExecution}
+          hasSelectedImage={Boolean(selectedPath)}
+          onClose={() => setIsPrelabelExecutionOpen(false)}
         />
       )}
 
