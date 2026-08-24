@@ -75,7 +75,7 @@ my_label_tool/
 ├── src/                            # React 前端
 │   ├── components/                 # UI 组件
 │   │   ├── canvas/                 # Konva 画布（CanvasChrome）、几何计算（geometry）、交互类型
-│   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行、快捷键设置
+│   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置
 │   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
 │   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态）
@@ -92,7 +92,7 @@ my_label_tool/
 │   └── hooks/                      # 画布交互、图片加载、预打标、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
 │   ├── src/                        # 入口、commands（含 prelabel*.rs）、models
-│   │   ├── media/                  # 图像/模型处理：onnx_metadata.rs、prelabel/（runtime、pipeline、inference）
+│   │   ├── media/                  # 图像/模型处理：onnx_metadata.rs、pt_conversion.rs、prelabel/（runtime、pipeline、inference）
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── capabilities/               # Tauri 权限（core/dialog/process/updater:default）
 │   ├── Cargo.toml
@@ -125,7 +125,10 @@ my_label_tool/
 | `download_onnx_runtime` | 经确认后下载、校验并安装项目 Release 中的 Runtime DLL |
 | `validate_prelabel_model` | 通过 ONNX Runtime 校验模型张量契约与元数据一致性 |
 | `run_prelabel_inference` | 复用模型会话批量执行预处理、推理与后处理 |
-| `detect_pt_conversion_environment` / `convert_pt_to_onnx` | 探测本地 Ultralytics 并离线、安全地转换 `.pt` |
+| `detect_pt_conversion_environment` | 探测本机可用的 `.pt` 转换环境（yolo CLI / Python ultralytics / uvx） |
+| `preview_pt_conversion_command` | 预览转换计划（执行命令、超时等），供用户在弹窗中确认 |
+| `convert_pt_to_onnx` | 按转换计划执行 `.pt` 转 ONNX，实时回调输出事件 |
+| `cancel_pt_conversion` | 按 conversion_id 取消进行中的转换；应用退出时自动终止全部未完成转换 |
 
 ---
 
@@ -191,7 +194,7 @@ interface LabelTemplate {
 
 - 所有 `#[tauri::command]` 函数返回 `Result<T, String>`（或自定义 Error 类型 + `impl Serialize`），禁止 `unwrap()`/`expect()` 出现在 command 函数体内，必须走错误处理。
 - 文件路径处理统一用 `std::path::PathBuf`，不手动拼接字符串路径。
-- 图像/视频/模型处理逻辑独立成 `src-tauri/src/media/` 模块（如 `onnx_metadata.rs`、`prelabel/` 下的 runtime / pipeline / inference），不要塞进 `commands/` 里；command 只做参数校验与结果转发。
+- 图像/视频/模型处理逻辑独立成 `src-tauri/src/media/` 模块（如 `onnx_metadata.rs`、`pt_conversion.rs`、`prelabel/` 下的 runtime / pipeline / inference），不要塞进 `commands/` 里；command 只做参数校验与结果转发。
 
 ### 通用
 
@@ -202,7 +205,7 @@ interface LabelTemplate {
 
 ## 7. 测试要求
 
-- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、ONNX 元数据解析、预打标推理管线等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、预打标模型库/类别映射/执行等纯逻辑。
+- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、ONNX 元数据解析、预打标推理管线、PT 转换等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、预打标模型库/类别映射/执行等纯逻辑。
 - 预打标真实模型验收：`.github/workflows/official-models.yml` 在 CI 下载官方 YOLOv5n / YOLOv8n / YOLO11n 权重并导出 ONNX，运行被 `#[ignore]` 隔离的元数据、运行时、真实推理与 `.pt` 转换测试；仅当预打标模块、Rust 依赖或工作流本身变化时触发，也可手动触发。涉及预打标推理改动时，先确认这些测试仍能通过。
 - **覆盖率目标**：前端可黑盒测试的纯逻辑层（导入/导出、store、几何计算、配置解析等）通过 `npm run test:coverage` 保持 90% 以上行覆盖率；Tauri API 封装、更新器、UI 组件、纯默认配置等特殊文件可在覆盖率配置中排除，但新增复杂逻辑时必须补测。
 - 新功能必须补充相关测试；问题修复尽可能补充回归测试，避免只修当前手动路径。

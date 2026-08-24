@@ -38,11 +38,11 @@
 
 - **多格式导出**：支持原始 JSON、COCO JSON、VOC XML、YOLO TXT、自定义字段映射 JSON 五种导出格式
 - **标注导入**：支持导入原生 JSON、COCO、VOC、YOLO 标注；打开文件夹时若存在项目配置文件会提示自动加载
-- **从外部数据集创建项目**：手上只有 YOLO 格式的图片和标注目录时，无需本工具项目文件即可直接导入并生成项目；自动读取 `classes.txt` 生成标签，导入后保存项目配置，再次打开该目录自动按本项目加载
+- **从外部数据集创建项目**：手上只有 YOLO 格式的图片和标注目录时，无需本工具项目文件即可直接导入并生成项目；自动读取 `classes.txt` 生成标签（目录中暂无标注文件、仅含类别文件也能创建项目），导入后保存项目配置，再次打开该目录自动按本项目加载
 
 **AI 预打标（可选）**
 
-- **模型库**：添加标准 YOLO 模型（ONNX）或 PyTorch 的 `.pt` 模型，自动识别模型格式、类别数与输入尺寸；`.pt` 模型可在应用内一键转换为 ONNX 并校验（需本机已安装 ultralytics 环境）
+- **模型库**：添加标准 YOLO 模型（ONNX）或 PyTorch 的 `.pt` 模型，自动识别模型格式、类别数与输入尺寸；`.pt` 模型可在应用内一键转换为 ONNX 并校验：优先使用本机已装的 yolo CLI / ultralytics 环境，未安装时也可经 uvx 自动获取运行环境（首次运行需联网）；转换前可预览命令、调整输入尺寸与简化选项，过程中实时显示输出并可随时取消
 - **ONNX Runtime 按需安装**：推理运行时（约 40–90MB）不随安装包分发，可在设置中一键下载（自动 SHA-256 校验）或手动放置 DLL，放置后即时可用，保持核心安装包轻量
 - **类别映射**：模型类别与项目标签按名称自动匹配，也支持手动绑定已有标签、从类名新建标签或排除类别；未映射的类别运行时自动跳过
 - **单图与批量预打标**：对当前图片追加标注或批量处理整组图片；默认跳过已有标注的图片，可开启强制覆盖；任务可随时中断，每张图片的结果可独立撤销
@@ -63,7 +63,7 @@
 | Rust | stable（建议通过 [rustup](https://rustup.rs/) 安装） |
 | 操作系统 | Windows（主要目标平台）；macOS / Linux 可编译但未充分测试 |
 
-> 预打标为可选功能，不影响核心标注使用：首次使用需在应用内获取 ONNX Runtime（联网一键下载或离线放置 DLL）并导入模型文件；`.pt` 模型一键转换需要本机已安装 Python + ultralytics 环境。
+> 预打标为可选功能，不影响核心标注使用：首次使用需在应用内获取 ONNX Runtime（联网一键下载或离线放置 DLL）并导入模型文件；`.pt` 模型转换无需本机安装 Python / ultralytics（经 uvx 自动获取，首次运行需联网），也可使用本机已有的 yolo CLI 或 ultralytics 环境离线转换。
 
 ## 快速开始
 
@@ -99,7 +99,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml  # Rust lint
 ## 测试
 
 ```bash
-# Rust 后端单元测试（覆盖图片识别、JSON 导出、文本文件导出/列举等）
+# Rust 后端单元测试（覆盖图片识别、JSON 导出、文本文件导出/列举、PT 转换等）
 cargo test --manifest-path src-tauri/Cargo.toml
 
 # 前端单元测试（Vitest，覆盖导入/导出、store、几何计算、标签模板同步等纯逻辑层）
@@ -128,7 +128,7 @@ my_label_tool/
 ├── src/                            # React 前端
 │   ├── components/                 # 画布、设置面板、侧边栏、工具栏组件
 │   │   ├── canvas/                 # Konva 画布、几何计算、交互类型
-│   │   ├── settings/               # 导出面板、标签设置、预打标设置/执行、快捷键设置
+│   │   ├── settings/               # 导出面板、标签设置、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置
 │   │   └── sidebar/                # 应用侧边栏、图片搜索弹窗
 │   ├── store/                      # Zustand 状态管理（标注数据 + 全局状态）
 │   ├── types/                      # 核心类型定义（annotation、export、prelabel）
@@ -141,7 +141,7 @@ my_label_tool/
 │   └── hooks/                      # 画布交互、图片加载、预打标、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
 │   ├── src/                        # 入口、commands（含 prelabel*.rs）、models
-│   │   ├── media/                  # ONNX 元数据识别、预打标推理管线
+│   │   ├── media/                  # ONNX 元数据识别、预打标推理管线、PT 转换
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── capabilities/               # Tauri 权限配置
 │   ├── Cargo.toml
