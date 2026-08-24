@@ -4,7 +4,7 @@ import {
   createPrelabelModelConfig,
   deleteModelFromLibrary,
   modelNameFromPath,
-  ptConversionCommand,
+  prelabelFormatLabel,
   selectModelInLibrary,
   updateInputSizeOverride,
   updateModelInLibrary,
@@ -12,6 +12,12 @@ import {
 import { EMPTY_PRELABEL_MODEL_LIBRARY, type PrelabelModelConfig } from "../types/prelabel";
 
 describe("prelabel model imports", () => {
+  it("formats persisted YOLO variants for user-visible summaries", () => {
+    expect(prelabelFormatLabel("yolov5")).toBe("YOLOv5");
+    expect(prelabelFormatLabel("yolov8")).toBe("YOLOv8");
+    expect(prelabelFormatLabel("yolo11")).toBe("YOLO11");
+  });
+
   it("creates an editable persisted config from inspected metadata", () => {
     const config = createPrelabelModelConfig(
       String.raw`C:\models\yolo11n.onnx`,
@@ -42,11 +48,8 @@ describe("prelabel model imports", () => {
     });
   });
 
-  it("builds copyable PT conversion guidance", () => {
+  it("derives a model name from a PT conversion output path", () => {
     expect(modelNameFromPath("D:/模型/best.ONNX")).toBe("best");
-    expect(ptConversionCommand("D:/models/best.pt")).toBe(
-      'yolo export model="D:/models/best.pt" format=onnx imgsz=640',
-    );
   });
 
   it("adds, updates, selects, and deletes models without loading model files", () => {

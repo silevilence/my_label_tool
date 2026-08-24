@@ -1,5 +1,8 @@
+// This settings workspace intentionally keeps model-library, runtime, mapping, and PT-conversion
+// orchestration together because they share one guarded mutation lifecycle and active selection.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  cancelPtConversion,
   confirmAction,
   convertPtToOnnx,
   detectPtConversionEnvironment,
@@ -8,15 +11,23 @@ import {
   getOnnxRuntimeStatus,
   inspectOnnxModel,
   installOnnxRuntimeFromFile,
+  previewPtConversionCommand,
   selectOnnxRuntimeDll,
   selectPrelabelModelFile,
   validatePrelabelModel,
 } from "../../lib/tauri-api";
 import {
   createPrelabelModelConfig,
-  ptConversionCommand,
+  prelabelFormatLabel as formatLabel,
   updateInputSizeOverride,
 } from "../../lib/prelabel-models";
+import {
+  createPtConversionSession,
+  isPtConversionCancelledResult,
+  reducePtConversionSession,
+  type PtConversionSession,
+  validatePtConversionParameters,
+} from "../../lib/prelabel-conversion";
 import {
   createLabelForPrelabelClass,
   isUnmatchedPrelabelMapping,
@@ -34,6 +45,7 @@ import type {
   ResolvedPrelabelClassMapping,
 } from "../../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
+import { PtConversionDialog } from "./PtConversionDialog";
 
 interface PrelabelSettingsProps {
   activeProjectConfig: ProjectConfig | null;
@@ -79,12 +91,15 @@ export function PrelabelSettings({
   const [draft, setDraft] = useState<PrelabelModelConfig | null>(null);
   const [editingModel, setEditingModel] = useState<PrelabelModelConfig | null>(currentModel);
   const [ptGuidance, setPtGuidance] = useState<PtGuidance | null>(null);
+  const [ptConversionSession, setPtConversionSession] = useState<PtConversionSession | null>(null);
+  const [ptConversionNotice, setPtConversionNotice] = useState("");
   const [error, setError] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [runtimeStatus, setRuntimeStatus] = useState<OnnxRuntimeStatus | null>(null);
   const [isRuntimeBusy, setIsRuntimeBusy] = useState(false);
   const [modelValidation, setModelValidation] = useState("");
   const mutationInFlight = useRef(false);
+  const cancelledConversions = useRef(new Set<string>());
 
   useEffect(() => setEditingModel(currentModel), [currentModel]);
   useEffect(() => {
@@ -203,9 +218,66 @@ export function PrelabelSettings({
     }
   }
 
-  async function convertPt(guidance: PtGuidance) {
-    await runLibraryMutation(async () => {
-      const result = await convertPtToOnnx(guidance.path);
+  function refreshPtConversionPreview(guidance: PtGuidance, session: PtConversionSession) {
+    if (validatePtConversionParameters(session.parameters)) {
+      return;
+    }
+    void previewPtConversionCommand(
+      guidance.path,
+      session.parameters,
+      session.conversionId,
+      guidance.environment,
+    )
+      .then((plan) =>
+        setPtConversionSession((current) =>
+          current &&
+          current.conversionId === session.conversionId &&
+          current.parameters.imgsz === session.parameters.imgsz &&
+          current.parameters.simplify === session.parameters.simplify
+            ? reducePtConversionSession(current, { type: "preview", plan })
+            : current,
+        ),
+      )
+      .catch((reason: unknown) =>
+        setPtConversionSession((current) =>
+          current &&
+          current.conversionId === session.conversionId &&
+          current.parameters.imgsz === session.parameters.imgsz &&
+          current.parameters.simplify === session.parameters.simplify
+            ? { ...current, plan: null, error: String(reason) }
+            : current,
+        ),
+      );
+  }
+
+  function openPtConversion(guidance: PtGuidance) {
+    setPtConversionNotice("");
+    const session = createPtConversionSession(crypto.randomUUID());
+    setPtConversionSession(session);
+    refreshPtConversionPreview(guidance, session);
+  }
+
+  async function convertPt(guidance: PtGuidance, session: PtConversionSession) {
+    if (mutationInFlight.current || session.status !== "confirming" || !session.plan) {
+      return;
+    }
+    mutationInFlight.current = true;
+    setIsBusy(true);
+    setError("");
+    setPtConversionNotice("");
+    setPtConversionSession((current) =>
+      current ? reducePtConversionSession(current, { type: "start" }) : current,
+    );
+    try {
+      const result = await convertPtToOnnx(
+        guidance.path,
+        session.plan,
+        session.conversionId,
+        (event) =>
+          setPtConversionSession((current) =>
+            current ? reducePtConversionSession(current, { type: "event", event }) : current,
+          ),
+      );
       setDraft(
         createPrelabelModelConfig(result.path, {
           format: result.format,
@@ -216,7 +288,56 @@ export function PrelabelSettings({
         }),
       );
       setPtGuidance(null);
-    });
+      setPtConversionSession(null);
+    } catch (reason) {
+      if (
+        cancelledConversions.current.has(session.conversionId) &&
+        isPtConversionCancelledResult(reason)
+      ) {
+        setPtConversionSession(null);
+        setPtConversionNotice(text.ptCancelled);
+      } else {
+        setPtConversionSession((current) =>
+          current
+            ? reducePtConversionSession(current, { type: "fail", error: String(reason) })
+            : current,
+        );
+      }
+    } finally {
+      cancelledConversions.current.delete(session.conversionId);
+      mutationInFlight.current = false;
+      setIsBusy(false);
+    }
+  }
+
+  async function cancelPt(session: PtConversionSession) {
+    if (session.status !== "running") {
+      return;
+    }
+    cancelledConversions.current.add(session.conversionId);
+    setPtConversionSession((current) =>
+      current ? reducePtConversionSession(current, { type: "cancel" }) : current,
+    );
+    try {
+      await cancelPtConversion(session.conversionId);
+    } catch (reason) {
+      cancelledConversions.current.delete(session.conversionId);
+      setPtConversionSession((current) =>
+        current
+          ? reducePtConversionSession(
+              { ...current, status: "running" },
+              {
+                type: "event",
+                event: {
+                  event: "output",
+                  conversionId: current.conversionId,
+                  line: text.ptCancelFailed(reason),
+                },
+              },
+            )
+          : current,
+      );
+    }
   }
 
   return (
@@ -284,6 +405,11 @@ export function PrelabelSettings({
                 {error}
               </p>
             )}
+            {ptConversionNotice && (
+              <p className="mb-4 rounded border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-100">
+                {ptConversionNotice}
+              </p>
+            )}
             <RuntimeStatusPanel
               isBusy={isRuntimeBusy}
               status={runtimeStatus}
@@ -300,7 +426,7 @@ export function PrelabelSettings({
               <PtConversionGuidance
                 guidance={ptGuidance}
                 isBusy={isBusy}
-                onConvert={() => void convertPt(ptGuidance)}
+                onConvert={() => openPtConversion(ptGuidance)}
                 onInspectSuggested={(path) => void inspectPath(path)}
               />
             )}
@@ -358,6 +484,21 @@ export function PrelabelSettings({
           </main>
         </div>
       </section>
+      {ptGuidance && ptConversionSession && (
+        <PtConversionDialog
+          environment={ptGuidance.environment}
+          path={ptGuidance.path}
+          session={ptConversionSession}
+          onBack={() => setPtConversionSession(null)}
+          onCancel={() => void cancelPt(ptConversionSession)}
+          onConfirm={() => void convertPt(ptGuidance, ptConversionSession)}
+          onParametersChange={(parameters) => {
+            const next = { ...ptConversionSession, parameters, plan: null, error: "" };
+            setPtConversionSession(next);
+            refreshPtConversionPreview(ptGuidance, next);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -650,7 +791,6 @@ function PtConversionGuidance({
   onConvert: () => void;
   onInspectSuggested: (path: string) => void;
 }) {
-  const command = ptConversionCommand(guidance.path);
   const suggestedOnnxPath = guidance.suggestedOnnxPath;
   return (
     <div className="rounded border border-amber-500/40 bg-amber-500/10 p-4">
@@ -675,19 +815,6 @@ function PtConversionGuidance({
           {isBusy ? text.ptConverting : text.ptConvertNow}
         </button>
       )}
-      <div className="mt-2 flex gap-2">
-        <code className="min-w-0 flex-1 overflow-x-auto rounded bg-slate-950 p-2 text-xs text-slate-200">
-          {command}
-        </code>
-        <button
-          className="rounded border border-amber-400/50 px-3 text-xs disabled:opacity-50"
-          disabled={isBusy}
-          type="button"
-          onClick={() => void navigator.clipboard.writeText(command)}
-        >
-          {text.copy}
-        </button>
-      </div>
       {suggestedOnnxPath && (
         <button
           className="mt-4 rounded bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-500 disabled:opacity-50"
@@ -879,10 +1006,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
-}
-
-function formatLabel(format: PrelabelModelConfig["format"]): string {
-  return format === "yolo11" ? "YOLO11" : format === "yolov8" ? "YOLOv8" : "YOLOv5";
 }
 
 const inputClass =

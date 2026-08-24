@@ -1,4 +1,4 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import type { TextExportFile } from "../types/export";
@@ -11,6 +11,9 @@ import type {
   PrelabelModelConfig,
   PrelabelModelLibrary,
   PtConversionEnvironment,
+  PtConversionEvent,
+  PtConversionParameters,
+  PtConversionPlan,
   PtConversionResult,
 } from "../types/prelabel";
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
@@ -154,8 +157,38 @@ export function detectPtConversionEnvironment(): Promise<PtConversionEnvironment
   return invoke<PtConversionEnvironment>("detect_pt_conversion_environment");
 }
 
-export function convertPtToOnnx(ptPath: string): Promise<PtConversionResult> {
-  return invoke<PtConversionResult>("convert_pt_to_onnx", { ptPath });
+export function convertPtToOnnx(
+  ptPath: string,
+  plan: PtConversionPlan,
+  conversionId: string,
+  onEvent: (event: PtConversionEvent) => void,
+): Promise<PtConversionResult> {
+  const eventChannel = new Channel<PtConversionEvent>();
+  eventChannel.onmessage = onEvent;
+  return invoke<PtConversionResult>("convert_pt_to_onnx", {
+    ptPath,
+    plan,
+    conversionId,
+    onEvent: eventChannel,
+  });
+}
+
+export function previewPtConversionCommand(
+  ptPath: string,
+  parameters: PtConversionParameters,
+  conversionId: string,
+  environment: PtConversionEnvironment,
+): Promise<PtConversionPlan> {
+  return invoke<PtConversionPlan>("preview_pt_conversion_command", {
+    ptPath,
+    parameters,
+    conversionId,
+    environment,
+  });
+}
+
+export function cancelPtConversion(conversionId: string): Promise<void> {
+  return invoke("cancel_pt_conversion", { conversionId });
 }
 
 export function loadPrelabelModelLibrary(): Promise<PrelabelModelLibrary> {

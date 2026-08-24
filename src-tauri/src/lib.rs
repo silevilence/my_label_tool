@@ -37,8 +37,18 @@ pub fn run() {
             commands::validate_prelabel_model,
             commands::run_prelabel_inference,
             commands::detect_pt_conversion_environment,
-            commands::convert_pt_to_onnx
+            commands::preview_pt_conversion_command,
+            commands::convert_pt_to_onnx,
+            commands::cancel_pt_conversion
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
+            ) {
+                commands::cancel_all_pt_conversions_and_wait();
+            }
+        });
 }

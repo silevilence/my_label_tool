@@ -15,6 +15,10 @@ export function modelNameFromPath(path: string): string {
   return fileName.replace(/\.onnx$/i, "") || PRELABEL_ZH_CN.defaultModelName;
 }
 
+export function prelabelFormatLabel(format: PrelabelModelConfig["format"]): string {
+  return format === "yolo11" ? "YOLO11" : format === "yolov8" ? "YOLOv8" : "YOLOv5";
+}
+
 export function createPrelabelModelConfig(
   path: string,
   summary: OnnxModelSummary,
@@ -37,10 +41,6 @@ export function createPrelabelModelConfig(
     iouThreshold: DEFAULT_PRELABEL_IOU_THRESHOLD,
     addedAt,
   };
-}
-
-export function ptConversionCommand(path: string): string {
-  return `yolo export model="${path.replace(/"/g, '\\"')}" format=onnx imgsz=640`;
 }
 
 export function addModelToLibrary(

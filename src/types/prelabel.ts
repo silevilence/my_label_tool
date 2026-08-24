@@ -51,7 +51,20 @@ export interface ModelValidationReport {
   classNames: string[];
 }
 
-export type PtConversionMethod = "yolo-cli" | "python-ultralytics";
+export type PtConversionMethod = "yolo-cli" | "python-ultralytics" | "uvx-yolo";
+
+export interface PtConversionParameters {
+  imgsz: number;
+  simplify: boolean;
+}
+
+export interface PtConversionPlan {
+  parameters: PtConversionParameters;
+  method: PtConversionMethod;
+  executable: string;
+  command: string;
+  timeoutSeconds: number;
+}
 
 export interface PtConversionEnvironment {
   available: boolean;
@@ -64,6 +77,19 @@ export interface PtConversionResult extends OnnxModelSummary {
   path: string;
   method: PtConversionMethod;
 }
+
+export type PtConversionEvent =
+  | {
+      event: "started";
+      conversionId: string;
+      command: string;
+      timeoutSeconds: number;
+    }
+  | {
+      event: "output";
+      conversionId: string;
+      line: string;
+    };
 
 export interface PrelabelDetection {
   classIndex: number;
@@ -88,11 +114,7 @@ export interface PrelabelClassMapping {
 export type PrelabelMappingsByModel = Record<string, PrelabelClassMapping[]>;
 
 export type ResolvedPrelabelMappingSource =
-  | "explicit"
-  | "explicit-exclude"
-  | "auto-exact"
-  | "auto-ascii-case-insensitive"
-  | "unmatched";
+  "explicit" | "explicit-exclude" | "auto-exact" | "auto-ascii-case-insensitive" | "unmatched";
 
 export interface ResolvedPrelabelClassMapping {
   classIndex: number;

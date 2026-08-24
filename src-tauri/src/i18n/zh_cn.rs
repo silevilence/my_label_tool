@@ -236,11 +236,28 @@ pub fn unsupported_library_version(version: u32) -> String {
 }
 
 pub const PT_CONVERSION_UNAVAILABLE: &str =
-    "未检测到可用的 yolo 命令或可导入 ultralytics 的 Python 环境";
+    "未检测到可用的 yolo 命令、可导入 ultralytics 的 Python 环境或 uv";
 pub const PT_CONVERSION_LOCK_FAILED: &str = "模型转换任务锁不可用，请重启应用后重试";
+pub const PT_CONVERSION_IMGSZ_INVALID: &str = "转换尺寸 imgsz 必须是大于 0 的 32 倍数";
+pub const PT_CONVERSION_CANCELLED: &str = "模型转换已中止";
+pub const PT_CONVERSION_ID_INVALID: &str = "模型转换任务 ID 不能为空";
+pub const PT_CONVERSION_PLAN_INVALID: &str = "模型转换计划无效，请重新打开参数确认弹窗";
+pub const PT_CONVERSION_ALREADY_COMPLETED: &str = "模型转换已完成，无法中止";
 
-pub fn pt_conversion_available(executable: &str) -> String {
-    format!("可使用 {executable} 转换 .pt 模型")
+pub fn pt_conversion_id_already_running(conversion_id: &str) -> String {
+    format!("模型转换任务已存在：{conversion_id}")
+}
+
+pub fn pt_conversion_id_missing(conversion_id: &str) -> String {
+    format!("模型转换任务不存在或已结束：{conversion_id}")
+}
+
+pub fn pt_conversion_available(executable: &str, first_run_network: bool) -> String {
+    if first_run_network {
+        format!("可使用 {executable} 转换 .pt 模型；首次转换将联网下载 ultralytics 依赖")
+    } else {
+        format!("可使用 {executable} 转换 .pt 模型")
+    }
 }
 
 pub fn pt_conversion_unavailable_with_details(failures: &[String]) -> String {
@@ -296,6 +313,14 @@ pub fn pt_conversion_temp_dir_exhausted(parent: &std::path::Path) -> String {
     format!("无法在 {} 分配唯一的隔离转换目录", parent.display())
 }
 
+pub fn pt_conversion_cleanup_failed(path: &std::path::Path) -> String {
+    format!("模型转换临时目录清理失败：{}", path.display())
+}
+
+pub fn pt_conversion_and_cleanup_failed(error: &str, cleanup_error: &str) -> String {
+    format!("{error}；{cleanup_error}")
+}
+
 pub fn pt_conversion_stage_failed(path: &std::path::Path, error: impl std::fmt::Display) -> String {
     format!(
         "无法复制 .pt 模型到隔离转换目录 {}：{error}",
@@ -334,12 +359,27 @@ pub fn pt_conversion_log_failed(path: &std::path::Path, error: impl std::fmt::Di
     format!("无法创建模型转换日志 {}：{error}", path.display())
 }
 
+pub fn pt_conversion_log_write_failed(error: impl std::fmt::Display) -> String {
+    format!("写入模型转换日志失败：{error}")
+}
+
 pub fn pt_conversion_timed_out(seconds: u64) -> String {
     format!("模型转换超过 {seconds} 秒，已终止子进程")
 }
 
 pub fn pt_conversion_wait_failed(error: impl std::fmt::Display) -> String {
     format!("等待模型转换进程失败：{error}")
+}
+
+pub fn pt_process_tree_termination_failed(error: impl std::fmt::Display) -> String {
+    format!("终止模型转换进程树失败：{error}")
+}
+
+pub fn pt_process_tree_termination_exit_failed(code: Option<i32>) -> String {
+    format!(
+        "终止模型转换进程树失败，退出码：{}",
+        code.map_or_else(|| "未知".to_string(), |value| value.to_string())
+    )
 }
 
 pub fn pt_conversion_worker_failed(error: impl std::fmt::Display) -> String {
