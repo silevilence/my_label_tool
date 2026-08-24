@@ -275,10 +275,6 @@ export function parseExternalYoloImport(
   imageSizesByBaseName: Map<string, ImageSize>,
 ): { imported: ImportedAnnotations; summary: ImportSummary } {
   const annotationFiles = files.filter((file) => file.name.toLowerCase() !== "classes.txt");
-  if (annotationFiles.length === 0) {
-    throw new Error("YOLO 标注目录中没有可导入的 .txt 标注文件");
-  }
-
   const labels = parseOptionalYoloLabels(files, annotationFiles);
   if (labels.length === 0) {
     throw new Error("YOLO 标注目录中没有有效标签");

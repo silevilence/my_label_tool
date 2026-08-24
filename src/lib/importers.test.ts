@@ -316,6 +316,21 @@ describe("importers", () => {
     });
   });
 
+  it("creates an external YOLO project from classes when every image is unannotated", () => {
+    const { imported, summary } = parseExternalYoloImport(
+      [file("classes.txt", "11\n22\n33\n44\n55\n")],
+      imageSizes,
+    );
+
+    expect(imported.labels.map((label) => label.name)).toEqual(["11", "22", "33", "44", "55"]);
+    expect(imported.images).toEqual([]);
+    expect(summary).toEqual({
+      invalidLineCount: 0,
+      missingAnnotationFileCount: 2,
+      orphanAnnotationFileCount: 0,
+    });
+  });
+
   it("creates external YOLO fallback labels from max class index", () => {
     const { imported } = parseExternalYoloImport([file("a.txt", "2 0.5 0.5 1 1")], imageSizes);
 
