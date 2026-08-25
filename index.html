@@ -1,14 +1,278 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/app-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + React + Typescript</title>
+    <title>my_label_tool</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #020617;
+      }
+
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #020617;
+      }
+
+      .startup-shell {
+        --startup-border: #1e293b;
+        --startup-muted: #334155;
+        --startup-highlight: #475569;
+        --startup-accent: #38bdf8;
+        display: flex;
+        width: 100%;
+        height: 100%;
+        color: #e2e8f0;
+        font-family: "Segoe UI Variable", "Microsoft YaHei UI", system-ui, sans-serif;
+      }
+
+      .startup-sidebar {
+        box-sizing: border-box;
+        display: flex;
+        width: 18rem;
+        flex: 0 0 18rem;
+        flex-direction: column;
+        border-right: 1px solid var(--startup-border);
+        background: #0f172a;
+      }
+
+      .startup-brand {
+        display: flex;
+        height: 3.5rem;
+        box-sizing: border-box;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0 1rem;
+        border-bottom: 1px solid var(--startup-border);
+        font-size: 0.875rem;
+        font-weight: 650;
+        letter-spacing: 0.025em;
+      }
+
+      .startup-mark {
+        position: relative;
+        width: 1.5rem;
+        height: 1.5rem;
+        border: 1px solid #475569;
+        border-radius: 0.375rem;
+        background: #020617;
+      }
+
+      .startup-mark::before {
+        position: absolute;
+        inset: 0.3125rem;
+        border: 1px solid var(--startup-accent);
+        content: "";
+      }
+
+      .startup-mark::after {
+        position: absolute;
+        right: -0.1875rem;
+        bottom: -0.1875rem;
+        width: 0.375rem;
+        height: 0.375rem;
+        border: 1px solid #0f172a;
+        border-radius: 50%;
+        background: var(--startup-accent);
+        box-shadow: 0 0 0.75rem rgba(56, 189, 248, 0.65);
+        content: "";
+        animation: startup-pulse 1.2s ease-in-out infinite;
+      }
+
+      .startup-sidebar-content {
+        display: grid;
+        gap: 1rem;
+        padding: 1rem;
+      }
+
+      .startup-panel {
+        display: grid;
+        gap: 0.625rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--startup-border);
+      }
+
+      .startup-skeleton {
+        position: relative;
+        height: 0.625rem;
+        overflow: hidden;
+        border-radius: 0.1875rem;
+        background: var(--startup-muted);
+      }
+
+      .startup-skeleton::after {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          100deg,
+          transparent 20%,
+          rgba(148, 163, 184, 0.18) 48%,
+          transparent 76%
+        );
+        content: "";
+        transform: translateX(-100%);
+        animation: startup-scan 1.45s ease-in-out infinite;
+      }
+
+      .startup-skeleton-heading {
+        width: 38%;
+        height: 0.75rem;
+        background: var(--startup-highlight);
+      }
+
+      .startup-skeleton-medium {
+        width: 72%;
+      }
+
+      .startup-skeleton-short {
+        width: 52%;
+      }
+
+      .startup-canvas {
+        position: relative;
+        display: grid;
+        min-width: 0;
+        flex: 1;
+        place-items: center;
+        overflow: hidden;
+        background-color: #020617;
+        background-image:
+          linear-gradient(rgba(30, 41, 59, 0.22) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(30, 41, 59, 0.22) 1px, transparent 1px);
+        background-size: 2rem 2rem;
+      }
+
+      .startup-focus {
+        position: relative;
+        display: grid;
+        width: min(11rem, 38vw);
+        aspect-ratio: 4 / 3;
+        place-items: center;
+        color: #64748b;
+      }
+
+      .startup-focus::before,
+      .startup-focus::after {
+        position: absolute;
+        width: 2.25rem;
+        height: 2.25rem;
+        content: "";
+      }
+
+      .startup-focus::before {
+        top: 0;
+        left: 0;
+        border-top: 1px solid #475569;
+        border-left: 1px solid #475569;
+      }
+
+      .startup-focus::after {
+        right: 0;
+        bottom: 0;
+        border-right: 1px solid #475569;
+        border-bottom: 1px solid #475569;
+      }
+
+      .startup-track {
+        position: absolute;
+        right: 1.25rem;
+        bottom: 1.25rem;
+        left: 1.25rem;
+        height: 2px;
+        overflow: hidden;
+        background: #1e293b;
+      }
+
+      .startup-track::after {
+        position: absolute;
+        width: 28%;
+        height: 100%;
+        background: var(--startup-accent);
+        box-shadow: 0 0 0.75rem rgba(56, 189, 248, 0.55);
+        content: "";
+        animation: startup-progress 1.25s ease-in-out infinite;
+      }
+
+      @keyframes startup-scan {
+        to {
+          transform: translateX(100%);
+        }
+      }
+
+      @keyframes startup-progress {
+        from {
+          transform: translateX(-110%);
+        }
+        to {
+          transform: translateX(470%);
+        }
+      }
+
+      @keyframes startup-pulse {
+        50% {
+          opacity: 0.45;
+          transform: scale(0.82);
+        }
+      }
+
+      @media (max-width: 640px) {
+        .startup-sidebar {
+          width: 12rem;
+          flex-basis: 12rem;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .startup-mark::after,
+        .startup-skeleton::after,
+        .startup-track::after {
+          animation: none;
+        }
+
+        .startup-track::after {
+          left: 36%;
+        }
+      }
+    </style>
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="startup-shell" aria-busy="true" aria-label="my_label_tool">
+        <aside class="startup-sidebar" aria-hidden="true">
+          <div class="startup-brand">
+            <span class="startup-mark"></span>
+            <span>my_label_tool</span>
+          </div>
+          <div class="startup-sidebar-content">
+            <div class="startup-panel">
+              <span class="startup-skeleton startup-skeleton-heading"></span>
+              <span class="startup-skeleton"></span>
+              <span class="startup-skeleton startup-skeleton-medium"></span>
+            </div>
+            <div class="startup-panel">
+              <span class="startup-skeleton startup-skeleton-heading"></span>
+              <span class="startup-skeleton startup-skeleton-short"></span>
+              <span class="startup-skeleton"></span>
+              <span class="startup-skeleton startup-skeleton-medium"></span>
+            </div>
+          </div>
+        </aside>
+        <main class="startup-canvas" aria-hidden="true">
+          <div class="startup-focus">
+            <span class="startup-mark"></span>
+          </div>
+          <div class="startup-track"></div>
+        </main>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

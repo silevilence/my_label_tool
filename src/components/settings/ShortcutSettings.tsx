@@ -6,6 +6,7 @@ import {
 } from "../../lib/defaults/shortcuts";
 import type { InteractionMode } from "../canvas/types";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../../lib/defaults/display";
+import { formatShortcut, normalizeShortcutKey } from "../../lib/shortcut-utils";
 
 interface ShortcutSettingsProps {
   helpDisplaySettings: HelpDisplaySettings;
@@ -219,26 +220,6 @@ const LABEL_DISPLAY_OPTIONS: Array<{
   { id: "select", label: "选择模式", description: "按住 Shift 强制选择" },
   { id: "annotate", label: "标注模式", description: "按住 Ctrl 强制绘制" },
 ];
-
-export function normalizeShortcutKey(key: string): string {
-  return key.length === 1 ? key.toLowerCase() : key;
-}
-
-export function formatShortcut(shortcut: string): string {
-  if (shortcut === " ") {
-    return "Space";
-  }
-  if (shortcut === "\t" || shortcut === "Tab") {
-    return "Tab";
-  }
-  if (shortcut === "ArrowLeft") {
-    return "←";
-  }
-  if (shortcut === "ArrowRight") {
-    return "→";
-  }
-  return shortcut.trim() ? shortcut.toUpperCase() : JSON.stringify(shortcut);
-}
 
 function isModifierKey(key: string): boolean {
   return ["Alt", "Control", "Meta", "Shift"].includes(key);

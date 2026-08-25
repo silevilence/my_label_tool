@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -8,9 +10,6 @@ import { Image as KonvaImage, Layer, Line, Rect, Stage, Transformer } from "reac
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
-import { ShortcutSettings } from "./settings/ShortcutSettings";
-import { PrelabelExecutionDialog } from "./settings/PrelabelExecutionDialog";
-import { PrelabelSettings } from "./settings/PrelabelSettings";
 import { AppSidebar } from "./sidebar/AppSidebar";
 import {
   AnnotationRect,
@@ -22,7 +21,6 @@ import {
   ModeHelpOverlay,
   type OverlayCorner,
 } from "./canvas/CanvasChrome";
-import { ImageSearchDialog } from "./sidebar/ImageSearchDialog";
 import { isLargeImage, isPointNearAnnotation, type CanvasRect } from "./canvas/geometry";
 import type { CanvasContextMenu as CanvasContextMenuState, ImageLayout } from "./canvas/types";
 import type { InteractionMode } from "./canvas/types";
@@ -42,6 +40,23 @@ import { isEditableTarget } from "../lib/app-utils";
 import type { PrelabelExecutionControls } from "../hooks/usePrelabelExecution";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
 import type { PrelabelClassMapping } from "../types/prelabel";
+
+const ShortcutSettings = lazy(async () => {
+  const settings = await import("./settings/ShortcutSettings");
+  return { default: settings.ShortcutSettings };
+});
+const PrelabelExecutionDialog = lazy(async () => {
+  const dialog = await import("./settings/PrelabelExecutionDialog");
+  return { default: dialog.PrelabelExecutionDialog };
+});
+const PrelabelSettings = lazy(async () => {
+  const settings = await import("./settings/PrelabelSettings");
+  return { default: settings.PrelabelSettings };
+});
+const ImageSearchDialog = lazy(async () => {
+  const dialog = await import("./sidebar/ImageSearchDialog");
+  return { default: dialog.ImageSearchDialog };
+});
 
 interface AppLayoutProps {
   activeProjectConfig: ProjectConfig | null;
@@ -590,14 +605,16 @@ export function AppLayout({
       )}
 
       {isSearchOpen && (
-        <ImageSearchDialog
-          annotationsByImage={annotationsByImage}
-          images={images}
-          labels={labels}
-          selectedPath={selectedPath}
-          onClose={() => setIsSearchOpen(false)}
-          onSelectImage={setSelectedPath}
-        />
+        <Suspense fallback={null}>
+          <ImageSearchDialog
+            annotationsByImage={annotationsByImage}
+            images={images}
+            labels={labels}
+            selectedPath={selectedPath}
+            onClose={() => setIsSearchOpen(false)}
+            onSelectImage={setSelectedPath}
+          />
+        </Suspense>
       )}
 
       {updateMessage && (
@@ -667,38 +684,44 @@ export function AppLayout({
       )}
 
       {isShortcutSettingsOpen && (
-        <ShortcutSettings
-          helpDisplaySettings={helpDisplaySettings}
-          labelDisplaySettings={labelDisplaySettings}
-          labelShortcuts={labelShortcuts}
-          shortcuts={shortcuts}
-          onChangeHelpDisplaySetting={setHelpDisplaySetting}
-          onChangeLabelDisplaySetting={setLabelDisplaySetting}
-          onChangeShortcut={updateShortcut}
-          onClose={() => setIsShortcutSettingsOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <ShortcutSettings
+            helpDisplaySettings={helpDisplaySettings}
+            labelDisplaySettings={labelDisplaySettings}
+            labelShortcuts={labelShortcuts}
+            shortcuts={shortcuts}
+            onChangeHelpDisplaySetting={setHelpDisplaySetting}
+            onChangeLabelDisplaySetting={setLabelDisplaySetting}
+            onChangeShortcut={updateShortcut}
+            onClose={() => setIsShortcutSettingsOpen(false)}
+          />
+        </Suspense>
       )}
       {isPrelabelSettingsOpen && (
-        <PrelabelSettings
-          activeProjectConfig={activeProjectConfig}
-          isLabelDirty={isLabelDirty}
-          isLoaded={prelabelModels.isLoaded}
-          labels={labels}
-          library={prelabelModels.library}
-          onAddModel={prelabelModels.addModel}
-          onClose={() => setIsPrelabelSettingsOpen(false)}
-          onDeleteModel={prelabelModels.deleteModel}
-          onSelectModel={prelabelModels.selectModel}
-          onSaveMappings={savePrelabelMappings}
-          onUpdateModel={prelabelModels.updateModel}
-        />
+        <Suspense fallback={null}>
+          <PrelabelSettings
+            activeProjectConfig={activeProjectConfig}
+            isLabelDirty={isLabelDirty}
+            isLoaded={prelabelModels.isLoaded}
+            labels={labels}
+            library={prelabelModels.library}
+            onAddModel={prelabelModels.addModel}
+            onClose={() => setIsPrelabelSettingsOpen(false)}
+            onDeleteModel={prelabelModels.deleteModel}
+            onSelectModel={prelabelModels.selectModel}
+            onSaveMappings={savePrelabelMappings}
+            onUpdateModel={prelabelModels.updateModel}
+          />
+        </Suspense>
       )}
       {isPrelabelExecutionOpen && (
-        <PrelabelExecutionDialog
-          execution={prelabelExecution}
-          hasSelectedImage={Boolean(selectedPath)}
-          onClose={() => setIsPrelabelExecutionOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <PrelabelExecutionDialog
+            execution={prelabelExecution}
+            hasSelectedImage={Boolean(selectedPath)}
+            onClose={() => setIsPrelabelExecutionOpen(false)}
+          />
+        </Suspense>
       )}
 
       {contextMenu && (

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { AppLayout } from "./components/AppLayout";
-import { normalizeShortcutKey } from "./components/settings/ShortcutSettings";
+import { normalizeShortcutKey } from "./lib/shortcut-utils";
 import type {
   CanvasContextMenu,
   DrawingRect,

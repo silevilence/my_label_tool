@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { formatShortcut, normalizeShortcutKey } from "../components/settings/ShortcutSettings";
+import { formatShortcut, normalizeShortcutKey } from "../lib/shortcut-utils";
 import { isEditableTarget } from "../lib/app-utils";
 import { SHORTCUT_ACTIONS, type ShortcutMap } from "../lib/defaults/shortcuts";
 import type { AnnotationShapeType, LabelConfig } from "../types/annotation";
