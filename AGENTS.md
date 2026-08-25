@@ -296,7 +296,8 @@ Refs: ROADMAP OPDS 书源服务构建与分发
 - **契约先行**：插件域数据类型（Manifest、能力、权限、协议消息、插件配置）先在 `src/types/plugin.ts` 定义并带版本号，Rust 端 `src-tauri/src/plugins/` 模型保持字段一一对应；对外 Schema（manifest、协议、导入导出数据、预打标请求/结果）必须提供 JSON Schema 文件与校验测试。这些契约的修改无论源自核心侧还是插件侧，都必须同步更新校验与文档。
 - **边界影响评估**：任何涉及标注数据模型（`AnnotationShape`/`LabelConfig`/`LabelTemplate`）、项目配置（`ProjectConfig`）、导出结构、预打标请求/结果或 Tauri commands 的改动，必须先评估对插件层契约的影响；有影响时同步更新 Schema、兼容性说明与 conformance 测试，禁止改完核心后才发现插件契约被破坏。
 - **稳定唯一 ID**：插件及功能 ID 使用反向域名命名空间（如 `dev.acme.xxx`），永久稳定、不复用；显示名称可以改，ID 一经发布不得变更。
-- **版本分层**：插件版本、宿主 API 版本、协议版本三者独立编号，禁止混用或互相推导；manifest 声明 `apiVersion` 兼容区间，协议消息携带协议版本。
+- **版本分层**：插件版本、宿主 API 版本、协议版本三者独立编号，禁止混用或互相推导；宿主 API 版本分整体版本与业务能力版本（`exporter`/`prelabel` 各自独立）；manifest 以 `apiVersion.min` 声明目标版本，宿主按目标版本分派实现；同一版本号内禁止破坏性变更，破坏性变更必须开新版本号并把旧版本实现按弃用期保留后移除（见 ADR 0007）；协议消息携带协议版本。
+- **版本号独立维护**：宿主 API 版本与协议版本独立于主程序版本号（`package.json` / `src-tauri/Cargo.toml` / `tauri.conf.json`）。主程序发版同步 bump 自身版本号时，禁止顺手同步 bump 插件 API 或协议版本——仅当契约实际发生变更（新增/修改/移除 API 行为、协议消息或错误码）时才递增对应版本号；发版检查清单中核对「本次是否有插件契约变更」。
 - **能力声明优先**：宿主以插件握手时的能力声明为准，不得以版本号推断能力；新增能力必须走 manifest 声明 + 握手协商，禁止隐式约定。
 - **向后兼容优先**：新增字段必须可选且有默认值；禁止删除字段、改变既有字段语义或重排必需字段；宿主 API 变更走弃用流程：标记 deprecated → 提供替代 → 兼容期 → 移除，禁止直接硬删。
 - **权限最小化**：插件访问文件/网络/项目数据必须经宿主协议代理与权限模型（`fs.read`/`fs.write` 目录级授予、`network` 默认拒绝、`spawn` 不开放）；禁止绕过权限模型直接向插件暴露 Tauri commands、文件句柄或底层系统能力。
@@ -308,5 +309,6 @@ Refs: ROADMAP OPDS 书源服务构建与分发
 
 - `plugin-coding`（`.agents/skills/plugin-coding/SKILL.md`）：插件相关开发时必须使用——插件框架、插件契约与 UI、以及任何触及插件层契约的核心改动（标注数据模型、ProjectConfig、导出结构、预打标契约、Tauri commands）。
 - `plugin-review`（`.agents/skills/plugin-review/SKILL.md`）：插件相关代码审查时必须使用——插件实现、契约改动、Schema 校验的审查与验收。
+- `plugin-api-versioning`（`.agents/skills/plugin-api-versioning/SKILL.md`）：插件 API 版本号与契约文档维护时必须使用——主程序发版前的插件契约核对、增量/破坏性变更判定、版本 bump 与文档同步。
 
 技能内容以本文件 §10、`CONTEXT.md` 插件术语表与 `docs/adr/0003-0006` 为基准。约束文档变更时必须同步更新技能（或按 §10 逐点确认流程先改约束再改技能），禁止技能与约束脱节。

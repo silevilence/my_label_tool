@@ -31,12 +31,12 @@ _Avoid_: 元数据、插件配置
 _Avoid_: 插件名、slug
 
 **宿主 API 版本 (Host API Version)**:
-宿主暴露给插件的能力接口版本号，独立递增；manifest 声明 `apiVersion` 兼容区间。
-_Avoid_: 接口版本
+宿主暴露给插件的能力接口版本号，独立递增，与主程序版本号互不绑定（主程序发版不得顺手同步 bump）。分两层：整体版本（覆盖 `hello`/`fs`/`config.migrate` 等基础能力）与业务能力版本（`exporter`/`prelabel` 各自独立）。同一版本号内宿主承诺增量兼容；破坏性变更必须开新版本号，旧版本实现按弃用期保留后移除，宿主按插件声明的目标版本分派对应实现（见 ADR 0007）。
+_Avoid_: 接口版本、API 兼容区间
 
-**协议版本 (Protocol Version)**:
-跨语言通信协议（NDJSON 信封、消息类型、错误码）的版本号，独立递增，不随宿主 API 版本变化。
-_Avoid_: 通信版本、传输版本
+**目标版本 (Target API Version)**:
+插件清单 `apiVersion.min` 声明的宿主 API 版本，表示插件编写所针对的确切版本；宿主按此版本分派对应实现，版本不匹配时以 `API_VERSION_UNSUPPORTED` 拒绝。
+_Avoid_: 兼容范围、最低版本
 
 **能力 (Capability)**:
 插件启动握手时声明的实际支持项：标注类型、批处理、进度、取消、配置迁移。宿主以能力声明为准，不以版本号推断。
@@ -67,7 +67,7 @@ _Avoid_: 恢复模式、诊断模式
 _Avoid_: 熔断、封禁
 
 **标准错误码 (Error Code)**:
-协议规定的错误标识集合：`PARSE_ERROR`、`PROTOCOL_ERROR`、`METHOD_NOT_FOUND`、`PERMISSION_DENIED`、`TIMEOUT`、`CANCELLED`、`INTERNAL_ERROR`、`CONFIG_MIGRATION_REQUIRED`、`INVALID_ARGUMENT`。
+协议规定的错误标识集合：`PARSE_ERROR`、`PROTOCOL_ERROR`、`METHOD_NOT_FOUND`、`PERMISSION_DENIED`、`TIMEOUT`、`CANCELLED`、`INTERNAL_ERROR`、`CONFIG_MIGRATION_REQUIRED`、`INVALID_ARGUMENT`、`API_VERSION_UNSUPPORTED`（协商阶段插件声明版本与宿主支持版本不匹配）。
 _Avoid_: 异常、错误信息
 
 **调用 (Call)**:

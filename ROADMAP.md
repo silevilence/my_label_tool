@@ -62,71 +62,117 @@
   - 验收：外部客户端可在控制权规则下完成“读取项目—修改标注—保存或导出”流程；安全测试、自动化测试和手动验收清单全部通过
 
 - [ ] **插件系统契约：Manifest Schema、稳定 ID 与版本分层**
-  - [ ] 在 `src/types/plugin.ts` 定义 Manifest、能力、权限、插件配置等契约，Rust 端 `src-tauri/src/plugins/` 模型字段一一对应
-  - [ ] manifest 声明：schemaVersion、反向域名 ID、名称、插件版本、宿主 API 兼容区间、runtime 与入口命令、能力清单、权限清单、configVersion
-  - [ ] 稳定唯一 ID：名称可改，ID 永久不复用；插件版本 / host API 版本 / 协议版本三层独立编号
-  - [ ] 制定 host API 弃用策略：先标记弃用 → 提供替代 → 兼容期 → 再移除；新增字段可选且有默认值，禁止删除字段或改变既有语义
-  - 验收：契约文档 + JSON Schema 文件 + manifest 校验单测（合法/非法/旧版本三类样例）
+  - [ ] 目标：定义插件系统全部对外契约（manifest 结构、校验语义、版本规则），作为后续所有插件任务的实现依据；产出 `src/types/plugin.ts`（前端契约）+ Rust 端 `src-tauri/src/plugins/manifest.rs`（字段一一对应）+ `docs/plugin-manifest.schema.json`（JSON Schema）+ 校验单测
+  - [ ] `PluginManifest` 字段（除注明外均必填）：
+    - `schemaVersion`：manifest 结构版本，当前恒为 1；解析时未知版本返回 `UNSUPPORTED_VERSION`
+    - `id`：反向域名命名空间，正则 `^[a-z0-9]+(\.[a-z0-9]+){1,}$`（如 `dev.acme.xxx`），永久稳定不复用；格式非法直接校验失败
+    - `name`：显示名称，可变更
+    - `version`：插件自身版本，semver 格式
+    - `apiVersion`：`{ min }`——插件编写所针对的宿主 API 目标版本（必填，见 ADR 0007）；同一版本号内宿主承诺增量兼容，破坏性变更必须开新版本号；不匹配 → 协商阶段返回 `API_VERSION_UNSUPPORTED`
+    - `extensionKind`：`label-preset`（数据型）| `exporter` | `prelabel`（代码型）
+    - `runtime`：v1 仅接受 `"process"`；`"wasm"` 等未来值校验期显式拒绝并提示原因，不静默接受
+    - `entry`：代码型必填、数据型禁止——`{ command, args? }`，command 为包内相对路径，禁止绝对路径与 `..` 穿越；args 缺省为空数组
+    - `capabilities`：可选，缺省为空（能力缺省即不支持）——`{ annotationTypes?: ("rect"|"polygon"|"point")[], batch?: boolean, progress?: boolean, cancel?: boolean, configMigration?: boolean }`；`prelabel` 必须声明非空 `annotationTypes`；业务能力可声明独立目标版本：`capabilities.exporter.apiVersion / capabilities.prelabel.apiVersion`（`{ min }`，缺省 = 整体 `apiVersion`），部分能力的破坏性升级只影响声明该能力的插件
+    - `permissions`：可选，缺省为空（默认全拒绝）——只接受 `fs.read:<目录>` / `fs.write:<目录>`（目录支持 `%PROJECT%`/`%MODELS%`/`%APP_DATA%` 占位符）与 `network`；重复声明或未知权限面校验失败
+    - `configVersion`：可选整数，缺省 0
+  - [ ] `parsePluginManifest(input: unknown)` 校验语义：不抛异常；失败返回 `{ ok: false, errors: [{ field, code, reason }] }` 收集全部错误（字段路径 + 错误码 + 中文原因）；未知顶层字段忽略（前向兼容）；可选字段按默认值归一化；成功返回带默认值的完整对象
+  - [ ] 版本分层约定（写入类型注释与契约文档）：插件版本（`version`，随插件迭代）/ 宿主 API 版本（整体版本 + `exporter`/`prelabel` 业务能力独立版本，宿主按插件目标版本分派实现，破坏性变更开新版本号、旧版本按弃用期保留，见 ADR 0007）/ 协议版本（不进 manifest，随握手 `hello` 消息协商，见协议任务）
+  - [ ] host API 弃用策略文档（`docs/plugin-api-versioning.md`）：标记 deprecated → 提供替代 → 兼容期（≥2 个 host API 版本）→ 移除；新增字段必须可选且有默认值；禁止删除字段、改变既有语义、重排必需字段
+  - 验收：`npm run typecheck` 通过；Vitest 覆盖三类样例——合法（含可选字段缺省归一化）、非法（缺必需字段/坏 id/数据型带 entry/代码型缺 entry/prelabel 缺 annotationTypes/权限重复/apiVersion 缺失或非法/能力级版本非法/schema 未知版本，断言 errors 含字段路径与错误码）、旧版本前向兼容（未知字段被忽略）；`docs/plugin-manifest.schema.json` 与 TS 类型字段名集合一致（单测对比）
 
 - [ ] **插件安装与注册流程（发现→静态校验→兼容性协商→授权→注册→启用）**
-  - [ ] zip 安装（后缀不限）：解压、结构检查、manifest 静态校验（解压大小限制、路径穿越防护）
-  - [ ] 兼容性协商：host API 版本区间校验 + runtime 可用性探测（复用 `.pt` 转换的环境检测模式）
-  - [ ] 授权：安装弹窗展示权限清单，用户逐项确认；权限变更需重新确认；v1 无代码签名，弹窗明示「未验证作者」警告
-  - [ ] 注册：插件注册表持久化到 app data；管理 UI 提供启停、自动禁用原因展示、卸载、日志查看
-  - [ ] 卸载/更新不影响已保存项目：项目内已有插件配置与标签快照保留
-  - 验收：正常安装、权限拒绝、版本不兼容、损坏 zip 四类路径均可重复验证
+  - [ ] 目标：用户从 zip 文件安装插件直至注册启用，贯穿注册状态机；Rust 端 `src-tauri/src/plugins/registry.rs`（状态机 + 注册表持久化）、`manifest.rs`（复用契约任务校验器）+ Tauri commands + 前端管理 UI
+  - [ ] `install_plugin(path: String)` 命令：任意后缀 zip 包 → 解压到 app data `plugins/<id>/`（zip crate；解压总大小上限 200MB、单文件 50MB、压缩比防护；条目路径规范化后必须以解压根为前缀防 `../` 穿越；拒绝符号链接条目）→ 读取包根 `manifest.json`（缺失即失败）→ 静态校验 → 同 id 已存在时按「更新」处理
+  - [ ] 兼容性协商：插件声明的目标版本（整体 `apiVersion.min` + 各业务能力 `capabilities.<name>.apiVersion.min`）vs 宿主支持的版本集合（当前实现 + 弃用期保留实现）；不匹配返回 `API_VERSION_UNSUPPORTED` 且给出可操作原因（如「需要 exporter v1，宿主已移除，请升级插件」）；runtime 可用性探测——entry 为 `python`/`python3`/`py` 或独立 exe，复用 `.pt` 转换的环境检测逻辑（`src-tauri/src/media/pt_conversion.rs` 抽象出共享探测函数）；探测失败返回可操作原因（如「未检测到 Python 3」）
+  - [ ] 授权：协商通过后向前端返回「权限清单 + 未验证作者警告」；`authorize_plugin(installToken, grants)` 用户逐项确认后才落盘注册；grant 与 manifest 声明不一致（多授/少授/未声明权限）校验失败；权限变更重新走确认流程
+  - [ ] 注册表持久化到 app data `plugin-registry.json`，每条含 `{ id, name, version, extensionKind, entry, capabilities, grants: [{permission, target}], state, failureCount, lastError, installedAt, updatedAt }`；`state ∈ enabled | disabled | auto-disabled | pending-migration`；注册表加载失败不阻断应用启动（记日志 + UI 提示异常）
+  - [ ] 状态机：`discovered → validated → negotiated → authorized → registered → enabled`；任一步失败回到未注册并清理解压目录；`disabled`/`auto-disabled` 状态不加载进程
+  - [ ] Tauri commands（全部经 `lib/tauri-api.ts` 封装，组件禁止直接 `invoke`）：`install_plugin` / `authorize_plugin` / `uninstall_plugin` / `list_plugins` / `set_plugin_enabled` / `get_plugin_status` / `clear_plugin_failures`；错误信息走 Rust i18n（`zh_cn.rs`）
+  - [ ] 管理 UI `src/components/settings/PluginSettings.tsx`：插件列表（名称/版本/扩展类型/状态徽标）、启用/禁用开关（`auto-disabled` 展示 `lastError` 与失败次数）、卸载（二次确认）、日志查看入口、安装按钮（文件选择 + 授权弹窗）；文案进 `src/i18n/plugin.zh-CN.ts`
+  - [ ] 更新语义：同 id 重装 = 更新，保留 `grants` 与项目内插件配置；`configVersion` 变化触发迁移流程（见配置任务）；卸载只删包目录与注册表项，项目内插件配置与标签快照保留
+  - 验收：正常安装（Python 示例）→ 授权 → 启用；取消授权不残留目录；损坏 zip / 缺 manifest / 非法 manifest / apiVersion 不兼容 / runtime 不可用五类失败各有可操作错误且可重复；卸载后项目文件与标注不受影响
 
 - [ ] **插件协议 v1：NDJSON 信封、能力协商、进度/取消/标准错误码**
-  - [ ] 启动握手 `hello`：协议版本 + host API 版本 + 能力声明（标注类型、批处理、进度、取消、配置迁移）；宿主以能力声明为准，不依赖版本号推断
-  - [ ] 消息信封 request/response/event/control + 递增 id 关联；进度事件可选 percent（支持无百分比进度）
-  - [ ] 标准错误码：PARSE_ERROR / PROTOCOL_ERROR / METHOD_NOT_FOUND / PERMISSION_DENIED / TIMEOUT / CANCELLED / INTERNAL_ERROR / CONFIG_MIGRATION_REQUIRED / INVALID_ARGUMENT
-  - [ ] 取消走 control 消息 + 宽限期后杀进程；单消息 16 MiB 上限；协议版本独立编号
-  - 验收：协议 conformance 测试覆盖消息格式、错误码、能力协商、进度与取消
+  - [ ] 目标：宿主与插件进程的跨语言通信协议；纯逻辑实现 `src-tauri/src/plugins/protocol.rs`（解析/序列化/错误码，不依赖进程运行时，可独立单测）
+  - [ ] 传输：stdio，每行一个 JSON 对象（NDJSON），UTF-8；行长度上限 16 MiB（超限返回 `PROTOCOL_ERROR` 并丢弃该行继续读取）
+  - [ ] 信封：`{ "v": 1, "id": string|null, "type": "request"|"response"|"event"|"control", ... }`；`id` 为请求方递增标识，响应/错误/进度事件回显；协议版本 `v` 独立于宿主 API 版本，解析层强制校验存在
+  - [ ] 消息形状：`request { method, params }`；`response { result }` 或 `{ error: { code, message, data? } }`（error 与 result 互斥）；`event { event: "progress"|"log", payload }`——progress 的 `percent?: number` 可选（缺省 = 无百分比进度），`id` 关联所属调用；`control { action: "cancel"|"heartbeat", id? }`——cancel 的 `id` 指向被取消请求，插件收到后停止当前调用并以 `CANCELLED` 响应结束，heartbeat 双向探活
+  - [ ] 标准错误码常量表（与 CONTEXT.md 逐项一致，共 10 个）：`PARSE_ERROR` / `PROTOCOL_ERROR` / `METHOD_NOT_FOUND` / `PERMISSION_DENIED` / `TIMEOUT` / `CANCELLED` / `INTERNAL_ERROR` / `CONFIG_MIGRATION_REQUIRED` / `INVALID_ARGUMENT` / `API_VERSION_UNSUPPORTED`（协商阶段版本不匹配）；解析层只产生 `PARSE_ERROR`（非法 JSON）与 `PROTOCOL_ERROR`（非对象信封/缺 v/未知 type/未知消息类型），其余错误码由分发层与运行时产生
+  - [ ] 握手 `hello`：宿主 spawn 后首条消息 `request method:"hello"`，params `{ protocolVersion: 1, hostApiVersion: <当前>, supportedVersions: { hostApi: [<整体版本>], exporter?: [..], prelabel?: [..] } }`；插件以自身目标版本校验，不匹配返回 `API_VERSION_UNSUPPORTED`；插件响应实际能力声明（缺省即不支持）；协商结果缓存到会话，后续调用以协商结果为准，禁止按版本号推断能力
+  - [ ] conformance 测试：纯 Rust 单测——四类消息解析/序列化往返、非法 JSON→PARSE_ERROR、超长行/未知 type/缺 v→PROTOCOL_ERROR、progress 带/不带 percent、cancel 关联 id、10 个错误码逐项存在（含 API_VERSION_UNSUPPORTED）；配套协议文档 `docs/plugin-protocol.md`（信封/消息形状/错误码表/握手/进度/取消）与实现一致
+  - 验收：`cargo test` conformance 全绿；文档与实现逐项核对无出入
 
 - [ ] **插件运行时与故障隔离（Rust）**
-  - [ ] 进程生命周期：启动、冷却复用、崩溃重启；调用级超时（默认 30 秒，manifest 可声明上限）
-  - [ ] 连续失败 3 次自动禁用 + 手动重新启用；宿主启动、项目打开、数据保存不等待插件
-  - [ ] 安全模式：手动开关，禁用全部代码型插件，保留数据型插件；stderr 日志收集与查看入口
-  - 验收：坏插件（崩溃/超时/死循环）不影响主程序启动、项目打开与数据保存
+  - [ ] 目标：插件进程生命周期管理与隔离保证；`src-tauri/src/plugins/runtime.rs`；导出/预打标/迁移等所有插件能力入口统一经 runtime 调用
+  - [ ] 进程生命周期：懒启动（首次调用才 spawn，会话内复用，进程退出后下次调用重启）；spawn 用 `std::process::Command`，工作目录 = 插件包根目录，环境注入 `MY_LABEL_TOOL_PLUGIN_DIR`；stdin 写 NDJSON、stdout 按行解析、stderr 逐行收集进环形日志（每插件保留最近 500 行）
+  - [ ] 调用级超时：默认 30 秒；manifest 可声明 `timeoutMs?` 可选字段（缺省 30000，上限 300000）；超时 = 杀进程树（Windows `taskkill /T /F`，Unix 进程组，复用 `.pt` 转换的进程树终止实现）→ 调用返回 `TIMEOUT` → 插件计入失败
+  - [ ] 失败计数与自动禁用：连续失败 3 次（超时/崩溃/握手失败计数，成功调用清零）→ 状态 `auto-disabled`，`failureCount` + `lastError` 写入注册表并 UI 展示；`clear_plugin_failures`（手动重新启用）清零
+  - [ ] 关键路径不阻塞：宿主启动、项目打开、项目保存不 spawn、不等任何插件；未就绪插件的能力入口置灰并显示原因
+  - [ ] 安全模式：全局开关（设置面板 + 持久化），开启后 runtime 拒绝加载全部代码型插件（`exporter`/`prelabel`），数据型（`label-preset`）不受影响；安全模式期间安装代码型插件被拒绝并提示先退出
+  - [ ] 应用退出清理：退出时终止所有存活插件进程（复用转换任务的应用退出清理模式）
+  - 验收：三个坏插件样例（启动即崩 / 调用死循环 / stdout 写垃圾）分别验证——主程序启动、项目打开、项目保存不受影响；死循环样例 30s 返回 `TIMEOUT` 且进程无残留；连续 3 次后 `auto-disabled` 且可手动恢复；安全模式开启后代码型入口全部置灰
 
 - [ ] **插件权限模型落地**
-  - [ ] 权限面 `fs.read` / `fs.write`（目录级授予）/ `network`，`spawn` 不开放；默认全部拒绝
-  - [ ] 宿主代理数据访问：图片路径、标注数据经协议传入，未授权路径返回 `PERMISSION_DENIED`
-  - [ ] 网络权限 v1 默认拒绝；配置迁移调用期间强制断网
-  - 验收：越权访问返回标准错误码，宿主不泄露未授权数据
+  - [ ] 目标：权限声明 → 安装授权 → 运行时强制三层闭环；`src-tauri/src/plugins/permissions.rs`，权限判定为纯函数，单测覆盖
+  - [ ] 权限面：`fs.read:<目录>` / `fs.write:<目录>`（目录级授予；`%PROJECT%` 当前项目目录、`%MODELS%` 预打标模型目录、`%APP_DATA%` 应用数据目录，授权落盘时解析为绝对路径，禁止解析结果逃离占位符语义）、`network`（布尔）；manifest 声明 `spawn` 直接校验失败（不开放）
+  - [ ] 默认全拒绝：未授权权限面的任何访问返回 `PERMISSION_DENIED`
+  - [ ] 宿主代理：插件所需数据（图片路径、标注数据、导出数据）一律由宿主经协议传入；插件请求文件读写走协议方法 `fs.read` / `fs.write`（宿主按授权目录校验，路径规范化后必须落在授权目录内，越权返回 `PERMISSION_DENIED`；协议方法未实现返回 `METHOD_NOT_FOUND`）
+  - [ ] 网络：v1 一律拒绝——spawn 时清理代理环境变量 + 不实现任何网络协议方法；配置迁移调用期间同样强制断网
+  - [ ] 授权弹窗：安装时逐项列出权限（含占位符解析后的实际路径预览），用户逐项勾选确认；禁止授予 manifest 未声明的权限
+  - 验收：权限判定纯函数单测（未授权路径、授权目录内/外、`..` 穿越、占位符解析、重复声明）；集成验证——插件越权读项目外文件返回 `PERMISSION_DENIED`，协议响应不包含未授权文件内容
 
 - [ ] **插件配置存储与迁移**
-  - [ ] ProjectConfig 新增插件配置区块 `{ pluginId, configVersion, config }`（可选字段，旧项目配置兼容）
-  - [ ] `config.migrate` 协议调用：版本落后时由插件升级配置并写回；失败时配置标记「待迁移」、相关能力降级、项目照常打开
-  - 验收：迁移成功、迁移失败、跨多版本链式迁移三条路径
+  - [ ] 目标：项目文件保存插件状态，版本落后时经协议迁移；`src-tauri/src/plugins/config.rs`（迁移编排）+ `src/types/plugin.ts` 扩展 ProjectConfig 类型
+  - [ ] `ProjectConfig` 新增可选字段 `pluginConfigs?: { pluginId, configVersion, config: unknown }[]`——`config` 对宿主不透明，宿主不解释内容；旧项目配置加载不受影响（可选字段 + 加载时过滤未知插件 id）
+  - [ ] 保存/加载：项目保存时把内存中的插件配置写入 ProjectConfig；打开项目按插件 id 匹配注册表，已卸载插件的配置保留在项目文件中但不可用（不删除，防重装丢失）
+  - [ ] 迁移流程：打开项目发现某插件 `configVersion` < 插件当前声明 → 调用 `config.migrate`（params `{ fromVersion, toVersion, config }`）→ 插件返回新配置 → 写回内存（不自动写盘，随下次项目保存落盘）；链式迁移逐级调用直到目标版本
+  - [ ] 迁移失败：超时/崩溃/返回非法结构 → 配置标记「待迁移」（`pending-migration`）、该插件能力降级（导出/预打标入口置灰显示「配置待迁移」）、项目照常打开；用户可重试
+  - [ ] 插件未声明 `configMigration` 能力时，宿主发现版本落后直接进入 `pending-migration`，不发起调用
+  - 验收：三条路径——迁移成功（版本与内容正确写回并随项目保存）、迁移失败（项目正常打开、入口置灰、重试成功）、跨多版本链式迁移（v1→v2→v3 逐级调用且参数正确）；无 `pluginConfigs` 的旧项目加载行为不变
 
 - [ ] **插件 SDK 与开发者工具**
-  - [ ] 插件开发指南 `docs/plugins.md`（用户侧安装/权限/安全模式 + 开发者侧 SDK）
-  - [ ] 示例插件两个（Python 与独立 exe 各一）、校验器 CLI、zip 打包脚本、Schema JSON Schema 文件
-  - [ ] 协议 conformance 测试环境，插件作者本地自测
-  - 验收：按指南从零做出示例插件并通过 conformance
+  - [ ] 目标：让第三方开发者能独立产出合规插件；文档 + 示例 + 校验工具 + conformance 环境
+  - [ ] `docs/plugins.md`：用户侧（安装、授权、安全模式、故障排查）+ 开发者侧（manifest 编写、协议实现要点、错误码、打包、调试——stderr 日志查看与打印式排查）
+  - [ ] 示例插件两个：`examples/plugins/label-preset-demo`（纯数据：manifest + labels.json）与 `examples/plugins/prelabel-demo`（Python：manifest + main.py，实现 hello/预打标/进度/取消，仅用标准库）
+  - [ ] 校验器 CLI：`src-tauri/src/bin/plugin-validator.rs`（cargo 内置 bin）——输入插件 zip 或目录，输出 manifest 校验结果与权限清单预览，退出码区分通过/失败；离线可用
+  - [ ] 打包脚本 `scripts/package-plugin.mjs`（Node）：把 manifest + 资源打成 zip（后缀可指定），默认白名单 `manifest.json` + `plugin/` 目录，多余顶层文件报错，体积超限报错
+  - [ ] conformance 测试环境：`src-tauri/tests/plugin_conformance.rs` 集成测试——用测试桩进程（同仓库 Rust bin）跑完协议全部用例（消息格式、错误码、握手、进度、取消、16MiB 上限），桩进程代码即「独立 exe 示例」参考实现
+  - [ ] `docs/plugin-manifest.schema.json` 与 `docs/plugin-protocol.md` 由前序任务产出，本任务校验其与示例/工具一致
+  - 验收：按 `docs/plugins.md` 从零做出示例插件，校验器 CLI 通过、打包脚本产出 zip、本地 conformance 自测通过
 
 - [ ] **实现预置标签插件支持（数据型，扩展类型 label-preset）**
-  - [ ] manifest + 标签模板数据（复用 `LabelTemplate` 结构），安装后出现在「加载预置模板」列表
-  - [ ] 模板快照进项目配置；插件卸载/更新不影响已有项目标注
-  - 验收：安装→加载模板→卸载插件→项目标注与导出不受影响
+  - [ ] 目标：把标签模板作为纯数据插件接入现有模板体系（安全模式保留数据型插件的依据）
+  - [ ] 数据文件：包根 `labels.json`，结构复用 `LabelTemplate`（`{ id, name, labels: LabelConfig[] }`）；缺失/解析失败 = 安装校验失败；manifest 校验 `label-preset` 禁止 `entry`/`runtime`
+  - [ ] 前端接入：安装启用后出现在「加载预置模板」列表，来源标注「插件：<name>」；点击加载复用现有模板加载逻辑（合并/覆盖语义不变）
+  - [ ] 生命周期：模板快照进项目配置（现有 template 机制）——插件卸载/更新/禁用不影响已加载模板的项目标注；更新后模板列表用新数据，已加载项目不受影响
+  - [ ] 文案进 i18n
+  - 验收：安装 → 加载模板 → 画布可用新标签 → 卸载插件 → 项目标注与导出不受影响；重启后插件模板列表恢复
 
 - [ ] **实现导出格式插件支持（代码型，扩展类型 exporter）**
-  - [ ] 声明格式名、文件扩展名、多文件输出能力；导出面板列出已启用插件格式
-  - [ ] 协议调用：宿主传 `AnnotationExport` + 导出选项 → 插件返回文件内容清单 → 宿主写盘
-  - [ ] 失败/超时/禁用状态的导出入口置灰并展示原因
-  - 验收：一个示例导出插件（如 LabelMe JSON）走通完整导出，结果可被外部工具解析
+  - [ ] 目标：把导出格式扩展为外部进程插件；复用协议/运行时/权限层，宿主负责写盘
+  - [ ] manifest 扩展：`exporterOptions?: { formats: { id, displayName, extensions: string[], multiFile: boolean }[] }`（v1 固定走 manifest 声明，不做动态格式声明）
+  - [ ] 协议方法 `exporter.export`：params `{ formatId, exportData: AnnotationExport, options: Record<string, unknown>, outputBaseName }`（AnnotationExport 为现有内部导出结构；图片路径以相对项目路径传）；响应 `{ files: [{ relativePath, contentUtf8? | contentBase64? }] }`（单文件上限 50MB）；宿主校验 relativePath 安全（无绝对路径/`..`/空）后写盘到用户选择目录
+  - [ ] 导出面板：格式列表加入已启用插件格式（分组「插件格式」并标注插件名）；插件失败/超时/禁用/`pending-migration` 时入口置灰并显示原因；导出完成提示与现有导出一致
+  - [ ] 进度/取消：插件声明 `progress` 时进度事件驱动现有进度条；声明 `cancel` 时导出中可取消（control cancel + 宽限期杀进程，返回 `CANCELLED`）
+  - [ ] 内置 COCO/VOC/YOLO/custom 格式不变，插件格式只增不减
+  - 验收：示例导出插件（LabelMe JSON，Python 实现）走通「选图目录 → 选格式 → 导出」完整流程且产物可被外部工具解析；插件返回 `../evil.txt` 等越权路径被宿主拒绝且不写盘；导出中取消无残留进程
 
 - [ ] **实现外部预打标程序插件支持（代码型，扩展类型 prelabel）**
-  - [ ] 声明支持的标注类型、批处理、进度、取消能力；输入图片路径列表（授权目录内）+ 映射/参数
-  - [ ] 返回 `AnnotationShape[]`，遵守原图像素坐标契约；复用现有预打标 UI 链路（单图/批量、进度、中断、结果合并、撤销）
-  - [ ] 与内置 ONNX 推理管线并存，可切换
-  - 验收：示例预打标插件跑通单图/批量，进度可中断，结果与手动标注一致
+  - [ ] 目标：第三方预打标程序以插件形式接入现有预打标链路，与内置 ONNX 管线并存
+  - [ ] manifest：`prelabel` 必须声明非空 `annotationTypes`；`batch`/`progress`/`cancel` 可选声明
+  - [ ] 协议方法 `prelabel.run`：params `{ imagePaths: string[]（%PROJECT% 内相对路径）, classMappings: [{ modelClass, labelId, labelName }], params: Record<string, unknown> }`；响应 `{ shapes: AnnotationShape[] }`——`points` 必须为原图像素坐标（rect `[x,y,width,height]`、polygon 顶点序列、point `[x,y]`），`labelId` 必须存在于映射结果，`attributes.confidence?` 可选；宿主校验坐标合法后合并
+  - [ ] 批量与进度：声明 `batch` 时可一次传多图，否则逐图调用；声明 `progress` 时进度事件驱动现有批量进度条（复用无百分比进度语义）；声明 `cancel` 时批量可中断，中断后已完成图片的标注保留（与内置管线语义一致）
+  - [ ] 复用现有预打标链路：预打标执行层抽象「预打标来源」接口（内置 ONNX 管线与插件实现同一接口）；结果合并、每图一个撤销事务、`attributes.confidence` 记录、跳过已有标注/强制覆盖选项全部复用现有实现
+  - [ ] 入口：预打标面板「模型来源」选择（内置模型 / 插件名）；插件来源的类别映射 UI 复用现有映射面板
+  - [ ] 图片访问：插件经权限模型读图（`fs.read:<%PROJECT%>` 授权），宿主不传图片字节
+  - 验收：示例预打标插件（Python，实现 hello/run/进度/取消）跑通单图与批量；批量中取消后已完成图片标注保留且进程无残留；非法坐标/未知 labelId 返回 `INVALID_ARGUMENT` 且不产生脏数据；与内置 ONNX 管线切换无状态串扰
 
 - [ ] **插件系统整体验收与文档**
-  - [ ] 覆盖验收：坏插件隔离、权限拒绝、超时/取消、自动禁用、安全模式、迁移失败降级、卸载清理
-  - [ ] 手动验证清单：启用/禁用插件后导出面板与预打标入口状态正确；重启后注册表与项目配置恢复
-  - 验收：全部通过 `npm run typecheck`、`npm run lint`、`npm run test:coverage`、`cargo clippy`、`cargo test`
+  - [ ] 端到端验收清单（全部通过才算完成）：坏插件隔离（启动即崩/死循环/垃圾输出）、权限拒绝（越权读、未授权网络）、超时与取消（30s 超时、control 取消）、自动禁用（3 次后 + 手动恢复）、安全模式（代码型全禁、数据型保留）、迁移失败降级（项目正常打开、重试成功）、卸载清理（目录/注册表清理、项目不受影响）、更新流程（保留授权与配置、configVersion 变化触发迁移）
+  - [ ] 手动验证清单：启用/禁用插件后导出面板与预打标入口状态正确；重启后注册表、授权、插件配置完整恢复；安全模式开关即时生效
+  - [ ] 文档核对：`docs/plugins.md`、`docs/plugin-protocol.md`、`docs/plugin-manifest.schema.json` 与实现一致；CONTEXT.md 术语与 ADR 无冲突
+  - [ ] 自动化：`npm run typecheck`、`npm run lint`、`npm run test:coverage`（插件纯逻辑保持 90% 行覆盖）、`cargo clippy`、`cargo test`（含 conformance 与权限单测）全部通过
+  - 验收：坏插件/权限/超时/取消/自动禁用/安全模式/迁移/卸载八类场景各有一份可复现的记录（截图或日志）
 
 ## 🚧 开发中 (In Progress)
 
