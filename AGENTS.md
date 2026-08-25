@@ -75,11 +75,11 @@ my_label_tool/
 ├── src/                            # React 前端
 │   ├── components/                 # UI 组件
 │   │   ├── canvas/                 # Konva 画布（CanvasChrome）、几何计算（geometry）、交互类型
-│   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置
+│   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置、插件管理
 │   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
 │   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态）
-│   ├── types/                      # 核心类型（annotation、export、prelabel）
+│   ├── types/                      # 核心类型（annotation、export、prelabel、plugin）
 │   ├── lib/                        # tauri-api 封装、导入导出、工具函数
 │   │   ├── defaults/               # 导出模板、标签、快捷键、显示设置默认值
 │   │   ├── exporters/              # COCO / VOC / YOLO / 自定义导出
@@ -93,6 +93,7 @@ my_label_tool/
 ├── src-tauri/                      # Rust 后端
 │   ├── src/                        # 入口、commands（含 prelabel*.rs）、models
 │   │   ├── media/                  # 图像/模型处理：onnx_metadata.rs、pt_conversion.rs、prelabel/（runtime、pipeline、inference）
+│   │   ├── plugins/                # 插件框架：manifest、protocol、runtime、permissions、registry、config
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── capabilities/               # Tauri 权限（core/dialog/process/updater:default）
 │   ├── Cargo.toml
@@ -287,4 +288,25 @@ Refs: ROADMAP OPDS 书源服务构建与分发
 - 禁止引入需要联网才能使用的第三方服务/SDK 作为核心功能依赖。
 - 禁止为了"看起来完整"而使用占位符/mock 数据替代真实实现后不做标记；如确需占位，必须在代码中用 `// TODO(annotool):` 标记并说明原因。
 - 禁止跳过 `npm run lint` / `cargo clippy` 直接提交。
-- `AnnotationShape.points` 使用**原图像素坐标**，不使用归一化坐标；矩形为 `[x, y, width, height]`，多边形为 `[x1, y1, x2, y2, ...]`，关键点为 `[x, y]`。新增坐标计算功能时必须遵守此约定，不得引入归一化坐标。
+
+## 10. 插件系统开发约束
+
+插件层是独立于标注核心的扩展层，也是对外公开的稳定契约边界。所有开发（核心功能与插件自身）都必须遵守以下约束：核心改动若触及插件契约，必须同步评估并更新 Schema、校验与文档；插件改动适用同一套规则。
+
+- **契约先行**：插件域数据类型（Manifest、能力、权限、协议消息、插件配置）先在 `src/types/plugin.ts` 定义并带版本号，Rust 端 `src-tauri/src/plugins/` 模型保持字段一一对应；对外 Schema（manifest、协议、导入导出数据、预打标请求/结果）必须提供 JSON Schema 文件与校验测试。这些契约的修改无论源自核心侧还是插件侧，都必须同步更新校验与文档。
+- **边界影响评估**：任何涉及标注数据模型（`AnnotationShape`/`LabelConfig`/`LabelTemplate`）、项目配置（`ProjectConfig`）、导出结构、预打标请求/结果或 Tauri commands 的改动，必须先评估对插件层契约的影响；有影响时同步更新 Schema、兼容性说明与 conformance 测试，禁止改完核心后才发现插件契约被破坏。
+- **稳定唯一 ID**：插件及功能 ID 使用反向域名命名空间（如 `dev.acme.xxx`），永久稳定、不复用；显示名称可以改，ID 一经发布不得变更。
+- **版本分层**：插件版本、宿主 API 版本、协议版本三者独立编号，禁止混用或互相推导；manifest 声明 `apiVersion` 兼容区间，协议消息携带协议版本。
+- **能力声明优先**：宿主以插件握手时的能力声明为准，不得以版本号推断能力；新增能力必须走 manifest 声明 + 握手协商，禁止隐式约定。
+- **向后兼容优先**：新增字段必须可选且有默认值；禁止删除字段、改变既有字段语义或重排必需字段；宿主 API 变更走弃用流程：标记 deprecated → 提供替代 → 兼容期 → 移除，禁止直接硬删。
+- **权限最小化**：插件访问文件/网络/项目数据必须经宿主协议代理与权限模型（`fs.read`/`fs.write` 目录级授予、`network` 默认拒绝、`spawn` 不开放）；禁止绕过权限模型直接向插件暴露 Tauri commands、文件句柄或底层系统能力。
+- **故障隔离**：插件调用必须有超时；宿主启动、项目打开、数据保存等关键路径不得同步等待插件；连续失败 3 次自动禁用，安全模式下禁用全部代码型插件（数据型插件保留）。
+- **目录归属**：Rust 插件框架代码集中在 `src-tauri/src/plugins/`（manifest / protocol / runtime / permissions / registry / config）；前端类型放 `src/types/plugin.ts`，Tauri 调用封装进 `lib/tauri-api.ts`，管理 UI 放 `src/components/settings/`，用户可见文案进 i18n，禁止散落或组件内直接 `invoke`。
+## 11. 项目级技能
+
+本仓库自带项目级 Agent 技能，位于 `.agents/skills/`。当前开发环境不自动扫描仓库级技能，需要时通过 `skill://<name>` 或直接读取 SKILL.md 文件显式调用：
+
+- `plugin-coding`（`.agents/skills/plugin-coding/SKILL.md`）：插件相关开发时必须使用——插件框架、插件契约与 UI、以及任何触及插件层契约的核心改动（标注数据模型、ProjectConfig、导出结构、预打标契约、Tauri commands）。
+- `plugin-review`（`.agents/skills/plugin-review/SKILL.md`）：插件相关代码审查时必须使用——插件实现、契约改动、Schema 校验的审查与验收。
+
+技能内容以本文件 §10、`CONTEXT.md` 插件术语表与 `docs/adr/0003-0006` 为基准。约束文档变更时必须同步更新技能（或按 §10 逐点确认流程先改约束再改技能），禁止技能与约束脱节。
