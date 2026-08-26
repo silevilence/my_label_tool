@@ -3,6 +3,9 @@ use super::manifest::{
     parse_plugin_manifest, PluginCapabilities, PluginEntry, PluginExtensionKind, PluginManifest,
 };
 use super::runtime_probe::probe_plugin_process_available;
+pub use super::versioning::{
+    SUPPORTED_EXPORTER_API_VERSIONS, SUPPORTED_HOST_API_VERSIONS, SUPPORTED_PRELABEL_API_VERSIONS,
+};
 use crate::i18n::zh_cn as text;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -12,9 +15,6 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub const SUPPORTED_HOST_API_VERSIONS: &[u32] = &[1];
-pub const SUPPORTED_EXPORTER_API_VERSIONS: &[u32] = &[1];
-pub const SUPPORTED_PRELABEL_API_VERSIONS: &[u32] = &[1];
 const MAX_ARCHIVE_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
 const MAX_ARCHIVE_FILE_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_COMPRESSION_RATIO: u64 = 1_000;

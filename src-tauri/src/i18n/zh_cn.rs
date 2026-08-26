@@ -407,6 +407,32 @@ pub fn process_argument_contains_nul() -> String {
     "插件入口命令、参数、环境或工作目录包含非法空字符".to_string()
 }
 
+pub const PLUGIN_PROTOCOL_ENVELOPE_MUST_BE_OBJECT: &str = "插件协议每行必须是 JSON 对象";
+
+pub fn plugin_protocol_serialize_failed(error: impl std::fmt::Display) -> String {
+    format!("序列化插件协议消息失败：{error}")
+}
+
+pub fn plugin_protocol_parse_failed(error: impl std::fmt::Display) -> String {
+    format!("解析插件协议 JSON 失败：{error}")
+}
+
+pub fn plugin_protocol_envelope_version_unsupported(version: u32) -> String {
+    format!("不支持插件协议信封版本 v{version}")
+}
+
+pub fn plugin_protocol_field_invalid(field: &str) -> String {
+    format!("插件协议字段缺失或非法：{field}")
+}
+
+pub fn plugin_protocol_line_too_long(max_bytes: usize) -> String {
+    format!("插件协议单行超过 {max_bytes} 字节上限，已丢弃该行")
+}
+
+pub fn plugin_protocol_hello_version_unsupported(actual: u32, supported: u32) -> String {
+    format!("插件 hello 响应协议版本为 v{actual}，宿主仅支持 v{supported}，请升级插件")
+}
+
 pub fn plugin_runtime_start_failed(
     executable: impl std::fmt::Display,
     error: impl std::fmt::Display,

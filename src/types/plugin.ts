@@ -3,6 +3,134 @@ import { PLUGIN_ZH_CN as text } from "../i18n/plugin.zh-CN";
 
 /** Manifest structure version. Independent from host API and protocol versions. */
 export const PLUGIN_MANIFEST_SCHEMA_VERSION = 1 as const;
+export const PLUGIN_PROTOCOL_VERSION = 1 as const;
+
+export const PLUGIN_PROTOCOL_MESSAGE_TYPES = ["request", "response", "event", "control"] as const;
+export const PLUGIN_PROTOCOL_ERROR_CODES = [
+  "PARSE_ERROR",
+  "PROTOCOL_ERROR",
+  "METHOD_NOT_FOUND",
+  "PERMISSION_DENIED",
+  "TIMEOUT",
+  "CANCELLED",
+  "INTERNAL_ERROR",
+  "CONFIG_MIGRATION_REQUIRED",
+  "INVALID_ARGUMENT",
+  "API_VERSION_UNSUPPORTED",
+] as const;
+
+export type PluginProtocolMessageType = (typeof PLUGIN_PROTOCOL_MESSAGE_TYPES)[number];
+export type PluginProtocolErrorCode = (typeof PLUGIN_PROTOCOL_ERROR_CODES)[number];
+
+export interface PluginProtocolError {
+  code: PluginProtocolErrorCode;
+  message: string;
+  data?: unknown;
+}
+
+export interface PluginProtocolEnvelope {
+  v: typeof PLUGIN_PROTOCOL_VERSION;
+  id: string | null;
+  type: PluginProtocolMessageType;
+}
+
+export interface PluginProtocolRequest extends PluginProtocolEnvelope {
+  id: string;
+  type: "request";
+  method: string;
+  params: unknown;
+}
+
+export type PluginProtocolResponse =
+  | (PluginProtocolEnvelope & {
+      id: string;
+      type: "response";
+      result: unknown;
+      error?: never;
+    })
+  | (PluginProtocolEnvelope & {
+      id: string;
+      type: "response";
+      result?: never;
+      error: PluginProtocolError;
+    });
+
+export interface PluginProgressPayload {
+  percent?: number;
+  [key: string]: unknown;
+}
+
+export type PluginProtocolEvent =
+  | (PluginProtocolEnvelope & {
+      id: string;
+      type: "event";
+      event: "progress";
+      payload: PluginProgressPayload;
+    })
+  | (PluginProtocolEnvelope & {
+      id: string;
+      type: "event";
+      event: "log";
+      payload: Record<string, unknown>;
+    });
+
+export type PluginProtocolControl =
+  | (PluginProtocolEnvelope & {
+      id: string;
+      type: "control";
+      action: "cancel";
+    })
+  | (PluginProtocolEnvelope & {
+      id: string | null;
+      type: "control";
+      action: "heartbeat";
+    });
+
+export type PluginProtocolMessage =
+  | PluginProtocolRequest
+  | PluginProtocolResponse
+  | PluginProtocolEvent
+  | PluginProtocolControl;
+
+export interface PluginSupportedApiVersions {
+  hostApi: number[];
+  exporter?: number[];
+  prelabel?: number[];
+}
+
+export interface PluginHelloParams {
+  protocolVersion: typeof PLUGIN_PROTOCOL_VERSION;
+  hostApiVersion: number;
+  supportedVersions: PluginSupportedApiVersions;
+}
+
+export interface PluginHelloCapabilities {
+  exporter?: boolean;
+  prelabel?: boolean;
+  batch?: boolean;
+  progress?: boolean;
+  cancel?: boolean;
+  configMigration?: boolean;
+}
+
+export interface PluginHelloResult {
+  protocolVersion: typeof PLUGIN_PROTOCOL_VERSION;
+  capabilities?: PluginHelloCapabilities;
+}
+
+export interface PluginNegotiatedCapabilities {
+  exporter: boolean;
+  prelabel: boolean;
+  batch: boolean;
+  progress: boolean;
+  cancel: boolean;
+  configMigration: boolean;
+}
+
+export interface PluginNegotiatedSession {
+  protocolVersion: typeof PLUGIN_PROTOCOL_VERSION;
+  capabilities: PluginNegotiatedCapabilities;
+}
 export const MAX_PLUGIN_CONTRACT_VERSION = 4_294_967_295;
 
 export const PLUGIN_MANIFEST_FIELDS = [

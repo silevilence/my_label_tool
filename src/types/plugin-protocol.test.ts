@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import protocolSchema from "../../docs/plugin-protocol.schema.json";
+import {
+  PLUGIN_PROTOCOL_ERROR_CODES,
+  PLUGIN_PROTOCOL_MESSAGE_TYPES,
+  PLUGIN_PROTOCOL_VERSION,
+  type PluginHelloParams,
+  type PluginHelloResult,
+  type PluginProtocolMessage,
+} from "./plugin";
+
+describe("plugin protocol contract", () => {
+  it("keeps TypeScript and JSON Schema versions and discriminators aligned", () => {
+    const schemaTypes = protocolSchema.oneOf.map(({ $ref }) => $ref.replace("#/$defs/", ""));
+    expect(schemaTypes).toEqual([...PLUGIN_PROTOCOL_MESSAGE_TYPES]);
+    expect(protocolSchema.$defs.request.properties.v.const).toBe(PLUGIN_PROTOCOL_VERSION);
+    expect(protocolSchema.$defs.helloParams.properties.protocolVersion.const).toBe(
+      PLUGIN_PROTOCOL_VERSION,
+    );
+    expect(protocolSchema.$defs.helloResult.properties.protocolVersion.const).toBe(
+      PLUGIN_PROTOCOL_VERSION,
+    );
+  });
+
+  it("keeps all ten standard error codes aligned with the Schema", () => {
+    expect(protocolSchema.$defs.errorCode.enum).toEqual([...PLUGIN_PROTOCOL_ERROR_CODES]);
+    expect(PLUGIN_PROTOCOL_ERROR_CODES).toHaveLength(10);
+  });
+
+  it("models the four message unions and hello payloads", () => {
+    const messages: PluginProtocolMessage[] = [
+      { v: 1, id: "1", type: "request", method: "hello", params: {} },
+      { v: 1, id: "1", type: "response", result: {} },
+      { v: 1, id: "1", type: "event", event: "progress", payload: {} },
+      { v: 1, id: null, type: "control", action: "heartbeat" },
+    ];
+    const helloParams: PluginHelloParams = {
+      protocolVersion: 1,
+      hostApiVersion: 1,
+      supportedVersions: { hostApi: [1], exporter: [1], prelabel: [1] },
+    };
+    const helloResult: PluginHelloResult = {
+      protocolVersion: 1,
+      capabilities: { exporter: true },
+    };
+
+    expect(messages.map(({ type }) => type)).toEqual([...PLUGIN_PROTOCOL_MESSAGE_TYPES]);
+    expect(helloParams.supportedVersions.hostApi).toEqual([1]);
+    expect(helloResult.capabilities?.prelabel).toBeUndefined();
+  });
+
+  it("keeps response exclusivity, progress percent, and cancel id constraints in Schema", () => {
+    const progressSchema = protocolSchema.$defs.event.oneOf[0] as {
+      properties: { payload: { properties: { percent: { type: string } } } };
+    };
+    expect(protocolSchema.$defs.response.oneOf).toHaveLength(2);
+    expect(protocolSchema.$defs.response.oneOf[0].not.required).toEqual(["error"]);
+    expect(protocolSchema.$defs.response.oneOf[1].not.required).toEqual(["result"]);
+    expect(progressSchema.properties.payload.properties.percent.type).toBe("number");
+    expect(protocolSchema.$defs.control.oneOf[0].properties.id).toEqual({
+      type: "string",
+      minLength: 1,
+    });
+  });
+});

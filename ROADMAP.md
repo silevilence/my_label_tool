@@ -94,14 +94,14 @@
   - [x] 更新语义：同 id 重装 = 更新，保留 `grants` 与项目内插件配置；`configVersion` 变化触发迁移流程（见配置任务）；卸载只删包目录与注册表项，项目内插件配置与标签快照保留
   - 验收：正常安装（Python 示例）→ 授权 → 启用；取消授权不残留目录；损坏 zip / 缺 manifest / 非法 manifest / apiVersion 不兼容 / runtime 不可用五类失败各有可操作错误且可重复；卸载后项目文件与标注不受影响
 
-- [ ] **插件协议 v1：NDJSON 信封、能力协商、进度/取消/标准错误码**
-  - [ ] 目标：宿主与插件进程的跨语言通信协议；纯逻辑实现 `src-tauri/src/plugins/protocol.rs`（解析/序列化/错误码，不依赖进程运行时，可独立单测）
-  - [ ] 传输：stdio，每行一个 JSON 对象（NDJSON），UTF-8；行长度上限 16 MiB（超限返回 `PROTOCOL_ERROR` 并丢弃该行继续读取）
-  - [ ] 信封：`{ "v": 1, "id": string|null, "type": "request"|"response"|"event"|"control", ... }`；`id` 为请求方递增标识，响应/错误/进度事件回显；协议版本 `v` 独立于宿主 API 版本，解析层强制校验存在
-  - [ ] 消息形状：`request { method, params }`；`response { result }` 或 `{ error: { code, message, data? } }`（error 与 result 互斥）；`event { event: "progress"|"log", payload }`——progress 的 `percent?: number` 可选（缺省 = 无百分比进度），`id` 关联所属调用；`control { action: "cancel"|"heartbeat", id? }`——cancel 的 `id` 指向被取消请求，插件收到后停止当前调用并以 `CANCELLED` 响应结束，heartbeat 双向探活
-  - [ ] 标准错误码常量表（与 CONTEXT.md 逐项一致，共 10 个）：`PARSE_ERROR` / `PROTOCOL_ERROR` / `METHOD_NOT_FOUND` / `PERMISSION_DENIED` / `TIMEOUT` / `CANCELLED` / `INTERNAL_ERROR` / `CONFIG_MIGRATION_REQUIRED` / `INVALID_ARGUMENT` / `API_VERSION_UNSUPPORTED`（协商阶段版本不匹配）；解析层只产生 `PARSE_ERROR`（非法 JSON）与 `PROTOCOL_ERROR`（非对象信封/缺 v/未知 type/未知消息类型），其余错误码由分发层与运行时产生
-  - [ ] 握手 `hello`：宿主 spawn 后首条消息 `request method:"hello"`，params `{ protocolVersion: 1, hostApiVersion: <当前>, supportedVersions: { hostApi: [<整体版本>], exporter?: [..], prelabel?: [..] } }`；插件以自身目标版本校验，不匹配返回 `API_VERSION_UNSUPPORTED`；插件响应实际能力声明（缺省即不支持）；协商结果缓存到会话，后续调用以协商结果为准，禁止按版本号推断能力
-  - [ ] conformance 测试：纯 Rust 单测——四类消息解析/序列化往返、非法 JSON→PARSE_ERROR、超长行/未知 type/缺 v→PROTOCOL_ERROR、progress 带/不带 percent、cancel 关联 id、10 个错误码逐项存在（含 API_VERSION_UNSUPPORTED）；配套协议文档 `docs/plugin-protocol.md`（信封/消息形状/错误码表/握手/进度/取消）与实现一致
+- [x] **插件协议 v1：NDJSON 信封、能力协商、进度/取消/标准错误码**
+  - [x] 目标：宿主与插件进程的跨语言通信协议；纯逻辑实现 `src-tauri/src/plugins/protocol.rs`（解析/序列化/错误码，不依赖进程运行时，可独立单测）
+  - [x] 传输：stdio，每行一个 JSON 对象（NDJSON），UTF-8；行长度上限 16 MiB（超限返回 `PROTOCOL_ERROR` 并丢弃该行继续读取）
+  - [x] 信封：`{ "v": 1, "id": string|null, "type": "request"|"response"|"event"|"control", ... }`；`id` 为请求方递增标识，响应/错误/进度事件回显；协议版本 `v` 独立于宿主 API 版本，解析层强制校验存在
+  - [x] 消息形状：`request { method, params }`；`response { result }` 或 `{ error: { code, message, data? } }`（error 与 result 互斥）；`event { event: "progress"|"log", payload }`——progress 的 `percent?: number` 可选（缺省 = 无百分比进度），`id` 关联所属调用；`control { action: "cancel"|"heartbeat", id? }`——cancel 的 `id` 指向被取消请求，插件收到后停止当前调用并以 `CANCELLED` 响应结束，heartbeat 双向探活
+  - [x] 标准错误码常量表（与 CONTEXT.md 逐项一致，共 10 个）：`PARSE_ERROR` / `PROTOCOL_ERROR` / `METHOD_NOT_FOUND` / `PERMISSION_DENIED` / `TIMEOUT` / `CANCELLED` / `INTERNAL_ERROR` / `CONFIG_MIGRATION_REQUIRED` / `INVALID_ARGUMENT` / `API_VERSION_UNSUPPORTED`（协商阶段版本不匹配）；解析层只产生 `PARSE_ERROR`（非法 JSON）与 `PROTOCOL_ERROR`（非对象信封/缺 v/未知 type/未知消息类型），其余错误码由分发层与运行时产生
+  - [x] 握手 `hello`：宿主 spawn 后首条消息 `request method:"hello"`，params `{ protocolVersion: 1, hostApiVersion: <当前>, supportedVersions: { hostApi: [<整体版本>], exporter?: [..], prelabel?: [..] } }`；插件以自身目标版本校验，不匹配返回 `API_VERSION_UNSUPPORTED`；插件响应实际能力声明（缺省即不支持）；协商结果缓存到会话，后续调用以协商结果为准，禁止按版本号推断能力
+  - [x] conformance 测试：纯 Rust 单测——四类消息解析/序列化往返、非法 JSON→PARSE_ERROR、超长行/未知 type/缺 v→PROTOCOL_ERROR、progress 带/不带 percent、cancel 关联 id、10 个错误码逐项存在（含 API_VERSION_UNSUPPORTED）；配套协议文档 `docs/plugin-protocol.md`（信封/消息形状/错误码表/握手/进度/取消）与实现一致
   - 验收：`cargo test` conformance 全绿；文档与实现逐项核对无出入
 
 - [ ] **插件运行时与故障隔离（Rust）**

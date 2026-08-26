@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://my-label-tool.local/schema/plugin-protocol-v1.json",
+  "title": "my_label_tool Plugin Protocol v1",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" },
+    { "$ref": "#/$defs/event" },
+    { "$ref": "#/$defs/control" }
+  ],
+  "$defs": {
+    "id": {
+      "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
+    "errorCode": {
+      "enum": [
+        "PARSE_ERROR",
+        "PROTOCOL_ERROR",
+        "METHOD_NOT_FOUND",
+        "PERMISSION_DENIED",
+        "TIMEOUT",
+        "CANCELLED",
+        "INTERNAL_ERROR",
+        "CONFIG_MIGRATION_REQUIRED",
+        "INVALID_ARGUMENT",
+        "API_VERSION_UNSUPPORTED"
+      ]
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "$ref": "#/$defs/errorCode" },
+        "message": { "type": "string", "minLength": 1 },
+        "data": {}
+      },
+      "additionalProperties": true
+    },
+    "request": {
+      "type": "object",
+      "required": ["v", "id", "type", "method", "params"],
+      "properties": {
+        "v": { "const": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "method": { "type": "string", "minLength": 1 },
+        "params": {}
+      },
+      "additionalProperties": true
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["v", "id", "type", "result"],
+          "properties": {
+            "v": { "const": 1 },
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "response" },
+            "result": {}
+          },
+          "not": { "required": ["error"] },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": ["v", "id", "type", "error"],
+          "properties": {
+            "v": { "const": 1 },
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "response" },
+            "error": { "$ref": "#/$defs/error" }
+          },
+          "not": { "required": ["result"] },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["v", "id", "type", "event", "payload"],
+          "properties": {
+            "v": { "const": 1 },
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "event" },
+            "event": { "const": "progress" },
+            "payload": {
+              "type": "object",
+              "properties": { "percent": { "type": "number" } },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": ["v", "id", "type", "event", "payload"],
+          "properties": {
+            "v": { "const": 1 },
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "event" },
+            "event": { "const": "log" },
+            "payload": { "type": "object", "additionalProperties": true }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "control": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["v", "id", "type", "action"],
+          "properties": {
+            "v": { "const": 1 },
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "control" },
+            "action": { "const": "cancel" }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": ["v", "id", "type", "action"],
+          "properties": {
+            "v": { "const": 1 },
+            "id": { "$ref": "#/$defs/id" },
+            "type": { "const": "control" },
+            "action": { "const": "heartbeat" }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "supportedVersions": {
+      "type": "object",
+      "required": ["hostApi"],
+      "properties": {
+        "hostApi": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "exporter": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "prelabel": { "type": "array", "items": { "type": "integer", "minimum": 1 } }
+      },
+      "additionalProperties": true
+    },
+    "helloParams": {
+      "type": "object",
+      "required": ["protocolVersion", "hostApiVersion", "supportedVersions"],
+      "properties": {
+        "protocolVersion": { "const": 1 },
+        "hostApiVersion": { "type": "integer", "minimum": 1 },
+        "supportedVersions": { "$ref": "#/$defs/supportedVersions" }
+      },
+      "additionalProperties": true
+    },
+    "helloCapabilities": {
+      "type": "object",
+      "properties": {
+        "exporter": { "type": "boolean", "default": false },
+        "prelabel": { "type": "boolean", "default": false },
+        "batch": { "type": "boolean", "default": false },
+        "progress": { "type": "boolean", "default": false },
+        "cancel": { "type": "boolean", "default": false },
+        "configMigration": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": true,
+      "default": {}
+    },
+    "helloResult": {
+      "type": "object",
+      "required": ["protocolVersion"],
+      "properties": {
+        "protocolVersion": { "const": 1 },
+        "capabilities": { "$ref": "#/$defs/helloCapabilities" }
+      },
+      "additionalProperties": true
+    }
+  }
+}
