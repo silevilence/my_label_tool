@@ -45,6 +45,7 @@ describe("prelabel model imports", () => {
       confidenceThreshold: 0.25,
       iouThreshold: 0.45,
       addedAt: "2026-08-20T00:00:00.000Z",
+      device: "auto",
     });
   });
 

@@ -8,6 +8,8 @@ export interface OnnxModelSummary {
   classNames: string[];
 }
 
+export type PrelabelDevice = "auto" | "cpu" | "gpu";
+
 export interface PrelabelModelConfig extends OnnxModelSummary {
   id: string;
   name: string;
@@ -16,6 +18,7 @@ export interface PrelabelModelConfig extends OnnxModelSummary {
   confidenceThreshold: number;
   iouThreshold: number;
   addedAt: string;
+  device: PrelabelDevice;
 }
 
 export interface PrelabelModelLibrary {
@@ -39,6 +42,22 @@ export interface OnnxRuntimeStatus {
   runtimeDirectory: string;
   downloadAvailable: boolean;
   message: string;
+  /** Whether the installed runtime build carries the DirectML (GPU) backend. `null` when no runtime
+   * is installed yet. Reflects capability, not whether a usable GPU is present. */
+  gpuAvailable: boolean | null;
+}
+
+export type RuntimeDownloadEvent =
+  | { event: "started"; fileName: string }
+  | { event: "progress"; fileName: string; downloaded: number; total: number | null }
+  | { event: "completed"; fileName: string };
+
+export interface RuntimeDownloadOutcome {
+  cancelled: boolean;
+}
+
+export interface CancellationResult {
+  status: "accepted" | "already-completed";
 }
 
 export interface ModelValidationReport {
@@ -109,6 +128,16 @@ export interface PrelabelDetection {
 export interface PrelabelImageInference {
   imagePath: string;
   detections: PrelabelDetection[];
+}
+
+export type PrelabelProgressEvent =
+  | { event: "modelLoading" }
+  | { event: "started"; index: number; total: number; imagePath: string }
+  | { event: "completed"; index: number; total: number };
+
+export interface PrelabelInferenceOutcome {
+  results: PrelabelImageInference[];
+  cancelled: boolean;
 }
 
 export type PrelabelClassMappingAction = "bind" | "create" | "exclude";

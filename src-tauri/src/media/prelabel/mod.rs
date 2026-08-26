@@ -1,3 +1,4 @@
 pub mod inference;
 pub mod pipeline;
 pub mod runtime;
+pub mod task;

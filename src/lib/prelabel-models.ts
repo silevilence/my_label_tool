@@ -40,6 +40,7 @@ export function createPrelabelModelConfig(
     confidenceThreshold: DEFAULT_PRELABEL_CONFIDENCE_THRESHOLD,
     iouThreshold: DEFAULT_PRELABEL_IOU_THRESHOLD,
     addedAt,
+    device: "auto",
   };
 }
 

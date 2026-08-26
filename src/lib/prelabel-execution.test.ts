@@ -19,10 +19,9 @@ describe("prelabel execution planning", () => {
       "b.jpg": [],
     };
 
-    expect(selectPrelabelBatchImages(images, annotations, false).map((image) => image.path)).toEqual([
-      "b.jpg",
-      "c.jpg",
-    ]);
+    expect(
+      selectPrelabelBatchImages(images, annotations, false).map((image) => image.path),
+    ).toEqual(["b.jpg", "c.jpg"]);
     expect(selectPrelabelBatchImages(images, annotations, true)).toEqual(images);
   });
 
@@ -39,11 +38,13 @@ describe("prelabel execution planning", () => {
     const summary = await executePrelabelBatch({
       images,
       chunkSize: 2,
-      infer: async (paths) =>
-        paths.map((imagePath) => ({
+      infer: async (paths) => ({
+        cancelled: false,
+        results: paths.map((imagePath) => ({
           imagePath,
           detections: [{ classIndex: 0, confidence: 0.9, points: [1, 2, 3, 4] }],
         })),
+      }),
       toAnnotations: (result) => [
         { id: result.imagePath, type: "rect", labelId: "person", points: [1, 2, 3, 4] },
       ],
@@ -70,7 +71,10 @@ describe("prelabel execution planning", () => {
       executePrelabelBatch({
         images: [images[0]],
         chunkSize: 1,
-        infer: async () => [{ imagePath: "a.jpg", detections: [] }],
+        infer: async () => ({
+          cancelled: false,
+          results: [{ imagePath: "a.jpg", detections: [] }],
+        }),
         toAnnotations: () => [],
         commit: () => {
           throw new Error("must not commit");
@@ -80,6 +84,39 @@ describe("prelabel execution planning", () => {
         onProgress: () => undefined,
       }),
     ).rejects.toThrow("项目、标签或模型已在执行期间改变");
+  });
+
+  it("commits partial results and stops when cancelled mid-chunk", async () => {
+    const committed: string[][] = [];
+    const progress: number[] = [];
+    let inferCalls = 0;
+
+    const summary = await executePrelabelBatch({
+      images,
+      chunkSize: 3,
+      infer: async (paths) => {
+        inferCalls += 1;
+        // Simulate a backend abort completing only the first image of the chunk.
+        return {
+          cancelled: true,
+          results: [{ imagePath: paths[0], detections: [] }],
+        };
+      },
+      toAnnotations: () => [],
+      commit: (entries) => committed.push(entries.map((entry) => entry.imagePath)),
+      isCancelled: () => false,
+      onProgress: (processed) => progress.push(processed),
+    });
+
+    expect(inferCalls).toBe(1);
+    expect(committed).toEqual([["a.jpg"]]);
+    expect(progress).toEqual([1]);
+    expect(summary).toEqual({
+      processed: 1,
+      annotationCount: 0,
+      cancelled: true,
+      skippedConflictCount: 0,
+    });
   });
 
   it("keeps prior chunks when a later inference fails and skips edited-image conflicts", async () => {
@@ -94,7 +131,10 @@ describe("prelabel execution planning", () => {
           if (callCount === 2) {
             throw new Error("inference failed");
           }
-          return paths.map((imagePath) => ({ imagePath, detections: [] }));
+          return {
+            cancelled: false,
+            results: paths.map((imagePath) => ({ imagePath, detections: [] })),
+          };
         },
         toAnnotations: () => [],
         commit: (entries) => committed.push(entries.map((entry) => entry.imagePath)),

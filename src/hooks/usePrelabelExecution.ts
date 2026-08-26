@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { runPrelabelInference, type ImageFile } from "../lib/tauri-api";
+import { cancelPrelabelInference, runPrelabelInference, type ImageFile } from "../lib/tauri-api";
 import { executePrelabelBatch, selectPrelabelBatchImages } from "../lib/prelabel-execution";
 import {
   isUnmatchedPrelabelMapping,
@@ -69,6 +69,7 @@ export function usePrelabelExecution({
   const [progress, setProgress] = useState<PrelabelExecutionProgress>(IDLE_PROGRESS);
   const cancelRequestedRef = useRef(false);
   const runningRef = useRef(false);
+  const taskIdRef = useRef<string | null>(null);
   const activeProjectConfigRef = useRef(activeProjectConfig);
   const annotationsByImageRef = useRef(annotationsByImage);
   const imagesRef = useRef(images);
@@ -103,8 +104,10 @@ export function usePrelabelExecution({
     }
     const taskContext = { activeProjectConfig, images, labels, model: currentModel };
     const mappings = currentMappings;
+    const taskId = crypto.randomUUID();
     runningRef.current = true;
     cancelRequestedRef.current = false;
+    taskIdRef.current = taskId;
     setError("");
     setProgress({
       operation: "single",
@@ -112,28 +115,41 @@ export function usePrelabelExecution({
       cancelRequested: false,
       processed: 0,
       total: 1,
-      message: text.singleRunning,
+      message: text.loadingModel,
     });
     try {
-      const [result] = await runPrelabelInference(currentModel, [selectedPath]);
+      const outcome = await runPrelabelInference(taskId, currentModel, [selectedPath], (event) => {
+        if (event.event === "modelLoading") {
+          setProgress((current) => ({ ...current, message: text.loadingModel }));
+        } else if (event.event === "started") {
+          setProgress((current) => ({ ...current, message: text.singleProcessing }));
+        }
+      });
       if (!isContextCurrent(taskContext)) {
         throw new Error(text.executionContextChanged);
       }
+      const result = outcome.results[0];
       const annotations = result ? mapPrelabelDetections(result.detections, mappings) : [];
-      insertAnnotationsBatch([{ imagePath: selectedPath, annotations }], "append");
+      // Do not persist an empty annotation record for an aborted run.
+      if (!outcome.cancelled && result) {
+        insertAnnotationsBatch([{ imagePath: selectedPath, annotations }], "append");
+      }
       setProgress({
         operation: "single",
         isRunning: false,
         cancelRequested: false,
-        processed: 1,
+        processed: outcome.cancelled ? 0 : 1,
         total: 1,
-        message: text.singleCompleted(annotations.length),
+        message: outcome.cancelled
+          ? text.inferenceCancelled
+          : text.singleCompleted(annotations.length),
       });
     } catch (reason) {
       setError(text.inferenceFailed(reason));
       setProgress({ ...IDLE_PROGRESS, message: text.inferenceStopped });
     } finally {
       runningRef.current = false;
+      taskIdRef.current = null;
     }
   }
 
@@ -156,8 +172,10 @@ export function usePrelabelExecution({
       ]),
     );
     const historyGroupId = crypto.randomUUID();
+    const taskId = crypto.randomUUID();
     runningRef.current = true;
     cancelRequestedRef.current = false;
+    taskIdRef.current = taskId;
     setError("");
     setProgress({
       operation: "batch",
@@ -165,14 +183,24 @@ export function usePrelabelExecution({
       cancelRequested: false,
       processed: 0,
       total: targets.length,
-      message: text.batchRunning,
+      message: text.loadingModel,
     });
     let processed = 0;
     try {
       const summary = await executePrelabelBatch({
         images: targets,
         chunkSize: BATCH_CHUNK_SIZE,
-        infer: (imagePaths) => runPrelabelInference(currentModel, imagePaths),
+        infer: (imagePaths) =>
+          runPrelabelInference(taskId, currentModel, imagePaths, (event) => {
+            if (event.event === "modelLoading") {
+              setProgress((current) => ({ ...current, message: text.loadingModel }));
+            } else if (event.event === "started") {
+              setProgress((current) => ({
+                ...current,
+                message: text.batchProcessingImage(event.index + 1, event.total),
+              }));
+            }
+          }),
         toAnnotations: (result) => mapPrelabelDetections(result.detections, mappings),
         commit: (entries) =>
           insertAnnotationsBatch(entries, forceOverwrite ? "replace" : "append", historyGroupId),
@@ -229,6 +257,7 @@ export function usePrelabelExecution({
       });
     } finally {
       runningRef.current = false;
+      taskIdRef.current = null;
     }
   }
 
@@ -237,11 +266,15 @@ export function usePrelabelExecution({
       return;
     }
     cancelRequestedRef.current = true;
+    const taskId = taskIdRef.current;
     setProgress((current) => ({
       ...current,
       cancelRequested: true,
-      message: text.batchCancelling,
+      message: text.cancellingInference,
     }));
+    if (taskId) {
+      cancelPrelabelInference(taskId).catch((reason) => setError(text.inferenceFailed(reason)));
+    }
   }
 
   function isContextCurrent(taskContext: {

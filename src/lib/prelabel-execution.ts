@@ -1,12 +1,14 @@
 import type { AnnotationShape } from "../types/annotation";
 import type { ImageFile } from "./tauri-api";
-import type { PrelabelImageInference } from "../types/prelabel";
+import type { PrelabelImageInference, PrelabelInferenceOutcome } from "../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../i18n/prelabel.zh-CN";
 
 interface ExecutePrelabelBatchOptions {
   images: ImageFile[];
   chunkSize: number;
-  infer: (imagePaths: string[]) => Promise<PrelabelImageInference[]>;
+  /** Runs one chunk. The backend may cancel it mid-chunk, in which case it resolves with
+   * `{ cancelled: true }` and the results processed so far are still committed. */
+  infer: (imagePaths: string[]) => Promise<PrelabelInferenceOutcome>;
   toAnnotations: (result: PrelabelImageInference) => AnnotationShape[];
   commit: (entries: Array<{ imagePath: string; annotations: AnnotationShape[] }>) => void;
   shouldCommit?: (entry: { imagePath: string; annotations: AnnotationShape[] }) => boolean;
@@ -56,7 +58,7 @@ export async function executePrelabelBatch({
   let annotationCount = 0;
   let skippedConflictCount = 0;
   for (const chunk of chunkPrelabelImages(images, chunkSize)) {
-    const results = await infer(chunk.map((image) => image.path));
+    const { results, cancelled } = await infer(chunk.map((image) => image.path));
     if (!isContextCurrent()) {
       throw new Error(text.executionContextChanged);
     }
@@ -71,9 +73,9 @@ export async function executePrelabelBatch({
       0,
     );
     commit(committableEntries);
-    processed += chunk.length;
+    processed += results.length;
     onProgress(processed);
-    if (isCancelled()) {
+    if (cancelled || isCancelled()) {
       return { processed, annotationCount, cancelled: true, skippedConflictCount };
     }
   }

@@ -49,23 +49,24 @@ jobs:
       - name: Prepare verified ONNX Runtime assets
         shell: pwsh
         run: |
-          python -m pip download onnxruntime==1.24.3 --only-binary=:all: --no-deps --dest runtime-package
+          python -m pip download onnxruntime-directml==1.24.3 --only-binary=:all: --no-deps --dest runtime-package
           $wheel = Get-ChildItem runtime-package -Filter "*.whl" | Select-Object -First 1
           if (-not $wheel) {
-            throw "ONNX Runtime wheel was not downloaded."
+            throw "ONNX Runtime (DirectML) wheel was not downloaded."
           }
           Copy-Item $wheel.FullName runtime-package/onnxruntime.zip
           Expand-Archive runtime-package/onnxruntime.zip runtime-package/extracted
 
           New-Item -ItemType Directory -Force runtime-assets | Out-Null
           $expected = @{
-            "onnxruntime.dll" = "E6ABE8B3FE7EB38E0424FA366EB7EDAC2090AC2D211592C26D674F928B44F785"
-            "onnxruntime_providers_shared.dll" = "1647771B4593C729DF99A4A86E66AAD6A77C9E6E3C8EFD97322EF42EF9B1CC0B"
+            "onnxruntime.dll" = "6169297EE0BBB3A3BA8D2C7EA8033E6D13D1E0C0F57EA849D7904C2F9F5B87A0"
+            "onnxruntime_providers_shared.dll" = "CA503E4C86C729326512401BE672DC33B717A2641DE78E28A40A54A59F033CD9"
+            "DirectML.dll" = "2D1D0C0E7362D5F52062510AE454474F18044B570A175F34BE05F4717A5904CC"
           }
           foreach ($name in $expected.Keys) {
             $source = Get-ChildItem runtime-package/extracted -Recurse -Filter $name | Select-Object -First 1
             if (-not $source) {
-              throw "Missing $name in the official ONNX Runtime wheel."
+              throw "Missing $name in the official ONNX Runtime (DirectML) wheel."
             }
             $actual = (Get-FileHash $source.FullName -Algorithm SHA256).Hash
             if ($actual -ne $expected[$name]) {
@@ -143,6 +144,7 @@ jobs:
           gh release upload "${{ github.ref_name }}" `
             runtime-assets/onnxruntime.dll `
             runtime-assets/onnxruntime_providers_shared.dll `
+            runtime-assets/DirectML.dll `
             --clobber
 
       - name: Publish complete release

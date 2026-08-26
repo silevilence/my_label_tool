@@ -8,7 +8,7 @@ use crate::{
         pipeline::{decode_outputs, preprocess_image, Detection, RawTensor},
         runtime::{validate_session_contract, MAX_PRELABEL_OUTPUT_ELEMENTS},
     },
-    models::prelabel::{PrelabelModelConfig, YoloModelFormat},
+    models::prelabel::{PrelabelDevice, PrelabelModelConfig, YoloModelFormat},
 };
 
 pub struct PrelabelSession {
@@ -25,10 +25,36 @@ const MAX_ENCODED_IMAGE_BYTES: usize = 128 * 1024 * 1024;
 impl PrelabelSession {
     pub fn from_config(config: &PrelabelModelConfig) -> Result<Self, String> {
         validate_config_basics(config)?;
-        let session = Session::builder()
-            .map_err(text::runtime_session_failed)?
-            .commit_from_file(&config.path)
-            .map_err(text::model_session_failed)?;
+        let mut builder = Session::builder().map_err(text::runtime_session_failed)?;
+        // Configure the execution provider for the requested device. The DirectML runtime bundles
+        // both CPU and DML providers, so this works on CPU-only machines too.
+        let providers: Vec<ort::ep::ExecutionProviderDispatch> = match config.device {
+            PrelabelDevice::Cpu => Vec::new(),
+            PrelabelDevice::Auto | PrelabelDevice::Gpu => {
+                vec![ort::ep::DirectML::default().build()]
+            }
+        };
+        if !providers.is_empty() {
+            builder = if config.device == PrelabelDevice::Gpu {
+                // GPU-only: a DML registration failure is fatal so the user gets a clear message.
+                match builder.with_execution_providers([providers[0].clone().error_on_failure()]) {
+                    Ok(builder) => builder,
+                    Err(_) => return Err(text::prelabel_gpu_unavailable()),
+                }
+            } else {
+                // Auto: DML fails silently and falls back to CPU.
+                builder
+                    .with_execution_providers([providers[0].clone()])
+                    .map_err(text::runtime_session_failed)?
+            };
+        }
+        let session = builder.commit_from_file(&config.path).map_err(|error| {
+            if config.device == PrelabelDevice::Gpu {
+                text::prelabel_gpu_unavailable()
+            } else {
+                text::model_session_failed(error)
+            }
+        })?;
         let contract = validate_session_contract(&session, Some(config.format.clone()))?;
         validate_contract_class_count(config, contract.class_count)?;
         let [input_width, input_height] =
@@ -321,6 +347,8 @@ mod tests {
             confidence_threshold: confidence,
             iou_threshold: 0.7,
             added_at: "2026-08-20T00:00:00.000Z".to_string(),
+            // These fixture tests run inference on a CPU ONNX Runtime build, so pin to CPU.
+            device: crate::models::prelabel::PrelabelDevice::Cpu,
         }
     }
 

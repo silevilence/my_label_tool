@@ -7,9 +7,13 @@ import type {
   ModelValidationReport,
   OnnxModelSummary,
   OnnxRuntimeStatus,
-  PrelabelImageInference,
+  PrelabelInferenceOutcome,
   PrelabelModelConfig,
   PrelabelModelLibrary,
+  PrelabelProgressEvent,
+  CancellationResult,
+  RuntimeDownloadEvent,
+  RuntimeDownloadOutcome,
   PtCancellationResult,
   PtConversionEnvironment,
   PtConversionEvent,
@@ -220,8 +224,22 @@ export function installOnnxRuntimeFromFile(sourcePath: string): Promise<OnnxRunt
   return invoke<OnnxRuntimeStatus>("install_onnx_runtime_from_file", { sourcePath });
 }
 
-export function downloadOnnxRuntime(): Promise<OnnxRuntimeStatus> {
-  return invoke<OnnxRuntimeStatus>("download_onnx_runtime");
+export function downloadOnnxRuntime(
+  downloadId: string,
+  onProgress: (event: RuntimeDownloadEvent) => void,
+): Promise<RuntimeDownloadOutcome> {
+  const progressChannel = new Channel<RuntimeDownloadEvent>();
+  progressChannel.onmessage = onProgress;
+  return invoke<RuntimeDownloadOutcome>("download_onnx_runtime", {
+    downloadId,
+    onProgress: progressChannel,
+  });
+}
+
+export function cancelOnnxRuntimeDownload(downloadId: string): Promise<CancellationResult> {
+  return invoke<CancellationResult>("cancel_onnx_runtime_download", {
+    downloadId,
+  });
 }
 
 export function validatePrelabelModel(path: string): Promise<ModelValidationReport> {
@@ -229,13 +247,29 @@ export function validatePrelabelModel(path: string): Promise<ModelValidationRepo
 }
 
 export function runPrelabelInference(
+  taskId: string,
   model: PrelabelModelConfig,
   imagePaths: string[],
-): Promise<PrelabelImageInference[]> {
-  return invoke<PrelabelImageInference[]>("run_prelabel_inference", { model, imagePaths });
+  onProgress: (event: PrelabelProgressEvent) => void,
+): Promise<PrelabelInferenceOutcome> {
+  const progressChannel = new Channel<PrelabelProgressEvent>();
+  progressChannel.onmessage = onProgress;
+  return invoke<PrelabelInferenceOutcome>("run_prelabel_inference", {
+    taskId,
+    model,
+    imagePaths,
+    onProgress: progressChannel,
+  });
 }
 
-export function installPlugin(path: string, projectDir: string | null): Promise<PluginInstallPreview> {
+export function cancelPrelabelInference(taskId: string): Promise<CancellationResult> {
+  return invoke<CancellationResult>("cancel_prelabel_inference", { taskId });
+}
+
+export function installPlugin(
+  path: string,
+  projectDir: string | null,
+): Promise<PluginInstallPreview> {
   return invoke<PluginInstallPreview>("install_plugin", { path, projectDir });
 }
 
@@ -259,10 +293,7 @@ export function listPlugins(): Promise<PluginRegistrySnapshot> {
   return invoke<PluginRegistrySnapshot>("list_plugins");
 }
 
-export function setPluginEnabled(
-  pluginId: string,
-  enabled: boolean,
-): Promise<PluginRegistryEntry> {
+export function setPluginEnabled(pluginId: string, enabled: boolean): Promise<PluginRegistryEntry> {
   return invoke<PluginRegistryEntry>("set_plugin_enabled", { pluginId, enabled });
 }
 
