@@ -1,9 +1,11 @@
 use super::*;
 use crate::plugins::manifest::parse_plugin_manifest;
+use crate::plugins::runtime::{save_plugin_runtime_settings, PluginRuntimeSettings};
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use zip::write::SimpleFileOptions;
 
 #[test]
@@ -45,6 +47,74 @@ fn prepares_authorizes_and_persists_a_valid_archive() {
 }
 
 #[test]
+fn registry_entries_without_timeout_use_the_backward_compatible_default() {
+    let root = temp_dir("registry-timeout-default");
+    let archive = write_manifest_archive(&root, "labels.zip", label_manifest(0));
+    let preview = prepare_plugin_install(&root, &archive).expect("prepare install");
+    authorize_plugin_install(&root, &preview.install_token, Some(preview.permissions))
+        .expect("authorize")
+        .expect("registered entry");
+    let registry_path = root.join("plugin-registry.json");
+    let mut registry: Value =
+        serde_json::from_reader(fs::File::open(&registry_path).expect("open registry"))
+            .expect("parse registry");
+    registry[0]
+        .as_object_mut()
+        .expect("registry entry")
+        .remove("timeoutMs");
+    serde_json::to_writer_pretty(
+        fs::File::create(&registry_path).expect("replace registry"),
+        &registry,
+    )
+    .expect("write legacy registry");
+
+    let loaded = load_plugin_registry(&root);
+    assert_eq!(loaded.warning, None);
+    assert_eq!(loaded.plugins[0].timeout_ms, DEFAULT_PLUGIN_TIMEOUT_MS);
+    cleanup(root);
+}
+
+#[test]
+fn concurrent_runtime_failures_preserve_updates_for_every_plugin() {
+    let root = temp_dir("registry-concurrent-failures");
+    for (archive_name, plugin_id) in [
+        ("first.zip", "dev.acme.first"),
+        ("second.zip", "dev.acme.second"),
+    ] {
+        let mut manifest = label_manifest(0);
+        manifest["id"] = json!(plugin_id);
+        let archive = write_manifest_archive(&root, archive_name, manifest);
+        let preview = prepare_plugin_install(&root, &archive).expect("prepare plugin");
+        authorize_plugin_install(&root, &preview.install_token, Some(preview.permissions))
+            .expect("authorize plugin")
+            .expect("registered plugin");
+    }
+    let root = Arc::new(root);
+    let tasks = ["dev.acme.first", "dev.acme.second"]
+        .into_iter()
+        .map(|plugin_id| {
+            let root = Arc::clone(&root);
+            std::thread::spawn(move || {
+                for failure in 0..3 {
+                    record_plugin_runtime_failure(&root, plugin_id, &format!("failure-{failure}"))
+                        .expect("record failure");
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    for task in tasks {
+        task.join().expect("join registry writer");
+    }
+    let snapshot = load_plugin_registry(&root);
+    assert_eq!(snapshot.plugins.len(), 2);
+    assert!(snapshot
+        .plugins
+        .iter()
+        .all(|plugin| plugin.failure_count == 3 && plugin.state == PluginState::AutoDisabled));
+    cleanup(Arc::into_inner(root).expect("release fixture root"));
+}
+
+#[test]
 fn prepares_authorizes_and_enables_a_python_plugin() {
     let root = temp_dir("python-authorize");
     let manifest = serde_json::to_vec(&python_manifest()).expect("manifest JSON");
@@ -67,6 +137,52 @@ fn prepares_authorizes_and_enables_a_python_plugin() {
     assert_eq!(entry.state, PluginState::Enabled);
     assert_eq!(entry.id, "dev.acme.python");
     assert!(root.join("plugins/dev.acme.python/main.py").is_file());
+    cleanup(root);
+}
+
+#[test]
+fn safe_mode_rejects_code_plugins_but_keeps_label_presets_available() {
+    let root = temp_dir("safe-mode-install");
+    save_plugin_runtime_settings(&root, PluginRuntimeSettings { safe_mode: true })
+        .expect("enable safe mode");
+    let manifest = serde_json::to_vec(&python_manifest()).expect("manifest JSON");
+    let code_archive = write_entries(
+        &root,
+        "python.plugin",
+        &[("manifest.json", &manifest), ("main.py", b"print('ok')")],
+    );
+    let error = prepare_plugin_install_with_probe(&root, &code_archive, |_, _| Ok(()))
+        .expect_err("safe mode must reject code plugin");
+    assert_eq!(error.code, "SAFE_MODE");
+    assert_pending_empty(&root);
+
+    let label_archive = write_manifest_archive(&root, "labels.zip", label_manifest(0));
+    prepare_plugin_install(&root, &label_archive).expect("label preset remains installable");
+    cleanup(root);
+}
+
+#[test]
+fn enabling_safe_mode_after_preview_blocks_authorization() {
+    let root = temp_dir("safe-mode-authorize");
+    let manifest = serde_json::to_vec(&python_manifest()).expect("manifest JSON");
+    let archive = write_entries(
+        &root,
+        "python.plugin",
+        &[("manifest.json", &manifest), ("main.py", b"print('ok')")],
+    );
+    let preview = prepare_plugin_install_with_probe(&root, &archive, |_, _| Ok(()))
+        .expect("prepare code plugin");
+    save_plugin_runtime_settings(&root, PluginRuntimeSettings { safe_mode: true })
+        .expect("enable safe mode");
+    let error = authorize_plugin_install_with_probe(
+        &root,
+        &preview.install_token,
+        Some(preview.permissions),
+        |_, _| panic!("safe mode must block before process probe"),
+    )
+    .expect_err("safe mode must block authorization");
+    assert_eq!(error.code, "SAFE_MODE");
+    assert_pending_empty(&root);
     cleanup(root);
 }
 

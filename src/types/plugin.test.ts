@@ -45,6 +45,7 @@ describe("parsePluginManifest", () => {
       },
       permissions: [],
       configVersion: 0,
+      timeoutMs: 30_000,
     };
     expect(result.value).toEqual(expected);
   });
@@ -166,6 +167,7 @@ describe("parsePluginManifest", () => {
     expect(result.value.entry?.args).toEqual(["--stdio"]);
     expect(result.value.capabilities.exporter.apiVersion.min).toBe(3);
     expect(result.value.configVersion).toBe(7);
+    expect(result.value.timeoutMs).toBe(30_000);
   });
 
   it("reports required and primitive type errors without throwing", () => {
@@ -341,5 +343,7 @@ describe("parsePluginManifest", () => {
     expect(permissionPattern.test("fs.read:%PROJECT%/im\0ages")).toBe(false);
     expect(manifestSchema.$defs.apiVersion.additionalProperties).toBe(false);
     expect(manifestSchema.$defs.apiVersion.properties.min.maximum).toBe(4_294_967_295);
+    expect(manifestSchema.properties.timeoutMs.default).toBe(30_000);
+    expect(manifestSchema.properties.timeoutMs.maximum).toBe(300_000);
   });
 });

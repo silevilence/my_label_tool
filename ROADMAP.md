@@ -104,14 +104,14 @@
   - [x] conformance 测试：纯 Rust 单测——四类消息解析/序列化往返、非法 JSON→PARSE_ERROR、超长行/未知 type/缺 v→PROTOCOL_ERROR、progress 带/不带 percent、cancel 关联 id、10 个错误码逐项存在（含 API_VERSION_UNSUPPORTED）；配套协议文档 `docs/plugin-protocol.md`（信封/消息形状/错误码表/握手/进度/取消）与实现一致
   - 验收：`cargo test` conformance 全绿；文档与实现逐项核对无出入
 
-- [ ] **插件运行时与故障隔离（Rust）**
-  - [ ] 目标：插件进程生命周期管理与隔离保证；`src-tauri/src/plugins/runtime.rs`；导出/预打标/迁移等所有插件能力入口统一经 runtime 调用
-  - [ ] 进程生命周期：懒启动（首次调用才 spawn，会话内复用，进程退出后下次调用重启）；spawn 用 `std::process::Command`，工作目录 = 插件包根目录，环境注入 `MY_LABEL_TOOL_PLUGIN_DIR`；stdin 写 NDJSON、stdout 按行解析、stderr 逐行收集进环形日志（每插件保留最近 500 行）
-  - [ ] 调用级超时：默认 30 秒；manifest 可声明 `timeoutMs?` 可选字段（缺省 30000，上限 300000）；超时 = 杀进程树（Windows `taskkill /T /F`，Unix 进程组，复用 `.pt` 转换的进程树终止实现）→ 调用返回 `TIMEOUT` → 插件计入失败
-  - [ ] 失败计数与自动禁用：连续失败 3 次（超时/崩溃/握手失败计数，成功调用清零）→ 状态 `auto-disabled`，`failureCount` + `lastError` 写入注册表并 UI 展示；`clear_plugin_failures`（手动重新启用）清零
-  - [ ] 关键路径不阻塞：宿主启动、项目打开、项目保存不 spawn、不等任何插件；未就绪插件的能力入口置灰并显示原因
-  - [ ] 安全模式：全局开关（设置面板 + 持久化），开启后 runtime 拒绝加载全部代码型插件（`exporter`/`prelabel`），数据型（`label-preset`）不受影响；安全模式期间安装代码型插件被拒绝并提示先退出
-  - [ ] 应用退出清理：退出时终止所有存活插件进程（复用转换任务的应用退出清理模式）
+- [x] **插件运行时与故障隔离（Rust）**
+  - [x] 目标：插件进程生命周期管理与隔离保证；`src-tauri/src/plugins/runtime.rs`；导出/预打标/迁移等所有插件能力入口统一经 runtime 调用
+  - [x] 进程生命周期：懒启动（首次调用才 spawn，会话内复用，进程退出后下次调用重启）；spawn 用 `std::process::Command`，工作目录 = 插件包根目录，环境注入 `MY_LABEL_TOOL_PLUGIN_DIR`；stdin 写 NDJSON、stdout 按行解析、stderr 逐行收集进环形日志（每插件保留最近 500 行）
+  - [x] 调用级超时：默认 30 秒；manifest 可声明 `timeoutMs?` 可选字段（缺省 30000，上限 300000）；超时 = 杀进程树（Windows `taskkill /T /F`，Unix 进程组，复用 `.pt` 转换的进程树终止实现）→ 调用返回 `TIMEOUT` → 插件计入失败
+  - [x] 失败计数与自动禁用：连续失败 3 次（超时/崩溃/握手失败计数，成功调用清零）→ 状态 `auto-disabled`，`failureCount` + `lastError` 写入注册表并 UI 展示；`clear_plugin_failures`（手动重新启用）清零
+  - [x] 关键路径不阻塞：宿主启动、项目打开、项目保存不 spawn、不等任何插件；未就绪插件的能力入口置灰并显示原因
+  - [x] 安全模式：全局开关（设置面板 + 持久化），开启后 runtime 拒绝加载全部代码型插件（`exporter`/`prelabel`），数据型（`label-preset`）不受影响；安全模式期间安装代码型插件被拒绝并提示先退出
+  - [x] 应用退出清理：退出时终止所有存活插件进程（复用转换任务的应用退出清理模式）
   - 验收：三个坏插件样例（启动即崩 / 调用死循环 / stdout 写垃圾）分别验证——主程序启动、项目打开、项目保存不受影响；死循环样例 30s 返回 `TIMEOUT` 且进程无残留；连续 3 次后 `auto-disabled` 且可手动恢复；安全模式开启后代码型入口全部置灰
 
 - [ ] **插件权限模型落地**

@@ -5,9 +5,12 @@ import {
   clearPluginFailures,
   confirmAction,
   installPlugin,
+  getPluginRuntimeSettings,
+  getPluginRuntimeLogs,
   listPlugins,
   selectPluginPackage,
   setPluginEnabled,
+  setPluginSafeMode,
   uninstallPlugin,
 } from "../../lib/tauri-api";
 import type {
@@ -52,11 +55,15 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
   const [preview, setPreview] = useState<PluginInstallPreview | null>(null);
   const [confirmedPermissions, setConfirmedPermissions] = useState<Set<number>>(new Set());
   const [openDiagnostics, setOpenDiagnostics] = useState<Set<string>>(new Set());
+  const [safeMode, setSafeMode] = useState(false);
+  const [isChangingSafeMode, setIsChangingSafeMode] = useState(false);
+  const [runtimeLogs, setRuntimeLogs] = useState<Record<string, string[]>>({});
 
   const refresh = useCallback(async () => {
-    const snapshot = await listPlugins();
+    const [snapshot, settings] = await Promise.all([listPlugins(), getPluginRuntimeSettings()]);
     setPlugins(snapshot.plugins);
     setWarning(snapshot.warning);
+    setSafeMode(settings.safeMode);
   }, []);
 
   useEffect(() => {
@@ -148,13 +155,35 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
     }
   }
 
-  function toggleDiagnostic(pluginId: string) {
+  async function toggleDiagnostic(pluginId: string) {
+    const opening = !openDiagnostics.has(pluginId);
     setOpenDiagnostics((current) => {
       const next = new Set(current);
       if (next.has(pluginId)) next.delete(pluginId);
       else next.add(pluginId);
       return next;
     });
+    if (opening) {
+      try {
+        const lines = await getPluginRuntimeLogs(pluginId);
+        setRuntimeLogs((current) => ({ ...current, [pluginId]: lines }));
+      } catch (reason) {
+        setError(formatError(reason));
+      }
+    }
+  }
+
+  async function toggleSafeMode() {
+    setIsChangingSafeMode(true);
+    setError(null);
+    try {
+      const settings = await setPluginSafeMode(!safeMode);
+      setSafeMode(settings.safeMode);
+    } catch (reason) {
+      setError(formatError(reason));
+    } finally {
+      setIsChangingSafeMode(false);
+    }
   }
 
   return (
@@ -178,14 +207,23 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
           </button>
         </header>
 
-        <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-5 py-3">
           <div className="min-w-0 flex-1">
             {warning && <p className="text-sm text-amber-300">{warning || text.registryWarning}</p>}
             {error && <p className="break-words text-sm text-red-300">{text.operationFailed(error)}</p>}
           </div>
+          <label className="flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-100">
+            <input
+              checked={safeMode}
+              disabled={isChangingSafeMode || isInstalling || busyPluginId !== null}
+              type="checkbox"
+              onChange={() => void toggleSafeMode()}
+            />
+            <span>{text.safeMode}</span>
+          </label>
           <button
             className="shrink-0 rounded bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-400 disabled:cursor-wait disabled:opacity-60"
-            disabled={isInstalling || busyPluginId !== null}
+            disabled={isInstalling || busyPluginId !== null || isChangingSafeMode}
             type="button"
             onClick={() => void beginInstall()}
           >
@@ -204,7 +242,11 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
             plugins.map((plugin) => {
               const isBusy = busyPluginId === plugin.id;
               const diagnosticOpen = openDiagnostics.has(plugin.id);
-              const canToggle = plugin.state !== "auto-disabled" && plugin.state !== "pending-migration";
+              const runtimeBlockedBySafeMode = safeMode && plugin.extensionKind !== "label-preset";
+              const canToggle =
+                !runtimeBlockedBySafeMode &&
+                plugin.state !== "auto-disabled" &&
+                plugin.state !== "pending-migration";
               return (
                 <article className="rounded-lg border border-slate-700 bg-slate-950/60 p-4" key={plugin.id}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -219,6 +261,9 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
                         {plugin.id} · v{plugin.version} · {EXTENSION_LABELS[plugin.extensionKind]}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">{text.installedAt(plugin.installedAt)}</p>
+                      {safeMode && plugin.extensionKind !== "label-preset" && (
+                        <p className="mt-2 text-xs text-amber-300">{text.safeModeRuntimeBlocked}</p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -233,7 +278,7 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
                         className="rounded border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50"
                         disabled={isBusy}
                         type="button"
-                        onClick={() => toggleDiagnostic(plugin.id)}
+                        onClick={() => void toggleDiagnostic(plugin.id)}
                       >
                         {diagnosticOpen ? text.hideLog : text.viewLog}
                       </button>
@@ -263,7 +308,7 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
                   )}
                   {diagnosticOpen && (
                     <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-slate-300">
-                      {plugin.lastError ?? text.noLog}
+                      {runtimeLogs[plugin.id]?.join("\n") || plugin.lastError || text.noLog}
                     </pre>
                   )}
                 </article>

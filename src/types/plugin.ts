@@ -4,6 +4,8 @@ import { PLUGIN_ZH_CN as text } from "../i18n/plugin.zh-CN";
 /** Manifest structure version. Independent from host API and protocol versions. */
 export const PLUGIN_MANIFEST_SCHEMA_VERSION = 1 as const;
 export const PLUGIN_PROTOCOL_VERSION = 1 as const;
+export const DEFAULT_PLUGIN_TIMEOUT_MS = 30_000;
+export const MAX_PLUGIN_TIMEOUT_MS = 300_000;
 
 export const PLUGIN_PROTOCOL_MESSAGE_TYPES = ["request", "response", "event", "control"] as const;
 export const PLUGIN_PROTOCOL_ERROR_CODES = [
@@ -145,6 +147,7 @@ export const PLUGIN_MANIFEST_FIELDS = [
   "capabilities",
   "permissions",
   "configVersion",
+  "timeoutMs",
 ] as const satisfies readonly (keyof PluginManifest)[];
 
 export type PluginExtensionKind = "label-preset" | "exporter" | "prelabel";
@@ -196,6 +199,7 @@ export interface PluginManifest {
   capabilities: PluginCapabilities;
   permissions: PluginPermission[];
   configVersion: number;
+  timeoutMs: number;
 }
 
 export type PluginState = "enabled" | "disabled" | "auto-disabled" | "pending-migration";
@@ -217,6 +221,7 @@ export interface PluginRegistryEntry {
   failureCount: number;
   lastError: string | null;
   configVersion: number;
+  timeoutMs: number;
   installedAt: string;
   updatedAt: string;
 }
@@ -224,6 +229,10 @@ export interface PluginRegistryEntry {
 export interface PluginRegistrySnapshot {
   plugins: PluginRegistryEntry[];
   warning: string | null;
+}
+
+export interface PluginRuntimeSettings {
+  safeMode: boolean;
 }
 
 export interface PluginInstallPreview {
@@ -297,6 +306,14 @@ export function parsePluginManifest(input: unknown): PluginManifestParseResult {
     0,
     errors,
   );
+  const timeoutMs = parseBoundedInteger(
+    input.timeoutMs,
+    "timeoutMs",
+    1,
+    MAX_PLUGIN_TIMEOUT_MS,
+    DEFAULT_PLUGIN_TIMEOUT_MS,
+    errors,
+  );
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -312,6 +329,7 @@ export function parsePluginManifest(input: unknown): PluginManifestParseResult {
       capabilities,
       permissions,
       configVersion,
+      timeoutMs,
     },
   };
 }

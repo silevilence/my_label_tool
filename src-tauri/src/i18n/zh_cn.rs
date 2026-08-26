@@ -346,11 +346,51 @@ pub const PLUGIN_REGISTRY_SEMANTIC_INVALID: &str =
     "插件注册表包含非法 ID、入口或权限授权，已按损坏注册表处理";
 pub const PLUGIN_REGISTRY_CORRUPT_WRITE_BLOCKED: &str =
     "插件注册表损坏，为保护已有注册数据已拒绝写入；请先备份并修复或移除该文件";
+pub const PLUGIN_REGISTRY_LOCK_POISONED: &str = "插件注册表暂时不可用";
 pub fn plugin_registry_load_failed(error: impl std::fmt::Display) -> String {
     format!("加载插件注册表失败：{error}")
 }
 pub fn plugin_app_data_dir_failed(error: impl std::fmt::Display) -> String {
     format!("无法确定插件应用数据目录：{error}")
+}
+
+pub fn plugin_settings_read_failed(error: impl std::fmt::Display) -> String {
+    format!("读取插件运行设置失败：{error}")
+}
+
+pub fn plugin_settings_write_failed(error: impl std::fmt::Display) -> String {
+    format!("保存插件运行设置失败：{error}")
+}
+
+pub const PLUGIN_SAFE_MODE_CODE_INSTALL_BLOCKED: &str =
+    "安全模式已开启，不能安装或更新代码型插件；请先退出安全模式";
+pub const PLUGIN_RUNTIME_LOCK_POISONED: &str = "插件运行时状态不可用";
+pub const PLUGIN_RUNTIME_DATA_PLUGIN: &str = "数据型插件没有可调用的进程运行时";
+pub const PLUGIN_RUNTIME_SAFE_MODE: &str = "安全模式已开启，代码型插件不会运行";
+pub const PLUGIN_RUNTIME_DISABLED: &str = "插件已停用";
+pub const PLUGIN_RUNTIME_AUTO_DISABLED: &str = "插件连续失败，已自动停用";
+pub const PLUGIN_RUNTIME_ENTRY_MISSING: &str = "插件缺少进程入口";
+pub const PLUGIN_RUNTIME_RESPONSE_INVALID: &str = "插件返回了不匹配的协议消息";
+pub const PLUGIN_RUNTIME_TIMEOUT: &str = "插件调用超时，进程树已终止";
+pub const PLUGIN_RUNTIME_EXITED: &str = "插件进程在返回结果前退出";
+pub const PLUGIN_RUNTIME_STDIO_MISSING: &str = "无法建立插件进程标准输入输出管道";
+pub const PLUGIN_SETTINGS_LOCK_POISONED: &str = "插件运行设置暂时不可用";
+pub const PLUGIN_RUNTIME_STATE_CHANGED: &str = "插件状态已变更，本次调用已取消";
+pub const PLUGIN_RUNTIME_MAINTENANCE: &str = "插件正在安装、更新或卸载，暂时不可调用";
+pub const PLUGIN_RUNTIME_NOT_READY: &str = "插件握手尚未完成";
+pub const PLUGIN_RUNTIME_CAPABILITY_UNAVAILABLE: &str = "插件未在握手中声明此项能力";
+pub const PLUGIN_RUNTIME_STDERR_TRUNCATED: &str = "…（该行过长，已截断）";
+pub fn plugin_failure_persist_failed(
+    call_error: impl std::fmt::Display,
+    persist_error: impl std::fmt::Display,
+) -> String {
+    format!("插件调用失败（{call_error}），且无法保存失败计数：{persist_error}")
+}
+pub fn plugin_runtime_write_failed(error: impl std::fmt::Display) -> String {
+    format!("向插件进程写入请求失败：{error}")
+}
+pub fn plugin_runtime_read_failed(error: impl std::fmt::Display) -> String {
+    format!("读取插件进程输出失败：{error}")
 }
 pub const PLUGIN_NOT_FOUND: &str = "插件未注册或已卸载";
 pub const PLUGIN_AUTO_DISABLED_REQUIRES_CLEAR: &str = "插件已自动禁用，请先清除失败记录";

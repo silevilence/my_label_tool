@@ -23,6 +23,7 @@ import type {
   PluginPermissionGrant,
   PluginRegistryEntry,
   PluginRegistrySnapshot,
+  PluginRuntimeSettings,
 } from "../types/plugin";
 
 export interface ImageFile {
@@ -266,4 +267,16 @@ export function getPluginStatus(pluginId: string): Promise<PluginRegistryEntry> 
 
 export function clearPluginFailures(pluginId: string): Promise<PluginRegistryEntry> {
   return invoke<PluginRegistryEntry>("clear_plugin_failures", { pluginId });
+}
+
+export function getPluginRuntimeSettings(): Promise<PluginRuntimeSettings> {
+  return invoke<PluginRuntimeSettings>("get_plugin_runtime_settings");
+}
+
+export function setPluginSafeMode(safeMode: boolean): Promise<PluginRuntimeSettings> {
+  return invoke<PluginRuntimeSettings>("set_plugin_safe_mode", { safeMode });
+}
+
+export function getPluginRuntimeLogs(pluginId: string): Promise<string[]> {
+  return invoke<string[]>("get_plugin_runtime_logs", { pluginId });
 }

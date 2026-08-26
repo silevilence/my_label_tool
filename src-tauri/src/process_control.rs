@@ -2,6 +2,11 @@ use std::process::{Command, Stdio};
 
 use crate::i18n::zh_cn as text;
 
+#[cfg(windows)]
+mod piped;
+#[cfg(windows)]
+pub(crate) use piped::PipedJobProcess;
+
 #[cfg(unix)]
 pub(crate) fn configure_process_group(command: &mut Command) {
     use std::os::unix::process::CommandExt;
@@ -293,7 +298,7 @@ impl Drop for SuspendedJobProcess {
 }
 
 #[cfg(windows)]
-fn create_kill_on_close_job() -> Result<windows::Win32::Foundation::HANDLE, String> {
+pub(super) fn create_kill_on_close_job() -> Result<windows::Win32::Foundation::HANDLE, String> {
     use std::mem::size_of;
     use windows::Win32::System::JobObjects::{
         CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
@@ -327,14 +332,14 @@ fn create_kill_on_close_job() -> Result<windows::Win32::Foundation::HANDLE, Stri
 /// # Safety
 /// `handle` must be a valid, uniquely owned Win32 handle that has not already
 /// been closed and will not be used after this call.
-unsafe fn close_handle(handle: windows::Win32::Foundation::HANDLE) {
+pub(super) unsafe fn close_handle(handle: windows::Win32::Foundation::HANDLE) {
     use windows::Win32::Foundation::CloseHandle;
     // SAFETY: the caller provides the validity and unique-ownership invariant.
     let _ = unsafe { CloseHandle(handle) };
 }
 
 #[cfg(windows)]
-fn windows_command_line(
+pub(super) fn windows_command_line(
     executable: &std::ffi::OsStr,
     arguments: &[String],
 ) -> Result<Vec<u16>, String> {
@@ -385,7 +390,7 @@ fn push_windows_argument(target: &mut Vec<u16>, argument: &std::ffi::OsStr) -> R
 }
 
 #[cfg(windows)]
-fn wide_null(value: &std::ffi::OsStr) -> Result<Vec<u16>, String> {
+pub(super) fn wide_null(value: &std::ffi::OsStr) -> Result<Vec<u16>, String> {
     use std::os::windows::ffi::OsStrExt;
 
     let mut encoded = value.encode_wide().collect::<Vec<_>>();
@@ -397,7 +402,7 @@ fn wide_null(value: &std::ffi::OsStr) -> Result<Vec<u16>, String> {
 }
 
 #[cfg(windows)]
-fn windows_environment_block(overrides: &[(&str, &str)]) -> Result<Vec<u16>, String> {
+pub(super) fn windows_environment_block(overrides: &[(&str, &str)]) -> Result<Vec<u16>, String> {
     use std::{collections::HashSet, ffi::OsString, os::windows::ffi::OsStrExt};
 
     let overridden = overrides

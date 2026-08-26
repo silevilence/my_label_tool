@@ -48,7 +48,10 @@ pub fn run() {
             commands::list_plugins,
             commands::set_plugin_enabled,
             commands::get_plugin_status,
-            commands::clear_plugin_failures
+            commands::clear_plugin_failures,
+            commands::get_plugin_runtime_settings,
+            commands::set_plugin_safe_mode,
+            commands::get_plugin_runtime_logs
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -58,6 +61,7 @@ pub fn run() {
                 tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
             ) {
                 commands::cancel_all_pt_conversions_and_wait();
+                plugins::runtime::shutdown_all_plugin_processes();
             }
         });
 }

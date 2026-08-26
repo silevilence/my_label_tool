@@ -19,6 +19,7 @@ fn normalizes_valid_code_plugin_manifest() {
     assert_eq!(manifest.entry.expect("entry").args, Vec::<String>::new());
     assert_eq!(manifest.permissions, Vec::<PluginPermission>::new());
     assert_eq!(manifest.config_version, 0);
+    assert_eq!(manifest.timeout_ms, DEFAULT_PLUGIN_TIMEOUT_MS);
     assert_eq!(manifest.capabilities.exporter.api_version.min, 1);
 }
 
@@ -84,6 +85,7 @@ fn normalized_manifest_serializes_public_camel_case_fields() {
             "capabilities",
             "permissions",
             "configVersion",
+            "timeoutMs",
         ])
     );
 }
@@ -120,6 +122,11 @@ fn rejects_unsafe_paths_versions_and_permission_placeholders() {
             json!({ "apiVersion": { "min": 4_294_967_296_u64 } }),
             "apiVersion.min",
             "INVALID_VERSION",
+        ),
+        (
+            json!({ "timeoutMs": 300_001 }),
+            "timeoutMs",
+            "INVALID_VALUE",
         ),
         (
             json!({ "permissions": ["fs.read:%HOME%/x"] }),

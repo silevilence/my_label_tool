@@ -5,6 +5,8 @@ use std::collections::HashSet;
 use std::path::{Component, Path};
 
 pub const PLUGIN_MANIFEST_SCHEMA_VERSION: u32 = 1;
+pub const DEFAULT_PLUGIN_TIMEOUT_MS: u32 = 30_000;
+pub const MAX_PLUGIN_TIMEOUT_MS: u32 = 300_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -178,6 +180,7 @@ pub struct PluginManifest {
     pub capabilities: PluginCapabilities,
     pub permissions: Vec<PluginPermission>,
     pub config_version: u32,
+    pub timeout_ms: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -243,6 +246,14 @@ pub fn parse_plugin_manifest(input: &Value) -> ManifestValidationResult {
         0,
         &mut errors,
     );
+    let timeout_ms = parse_bounded_u32(
+        object.get("timeoutMs"),
+        "timeoutMs",
+        1,
+        MAX_PLUGIN_TIMEOUT_MS,
+        DEFAULT_PLUGIN_TIMEOUT_MS,
+        &mut errors,
+    );
     if !errors.is_empty() {
         return invalid(errors);
     }
@@ -260,6 +271,7 @@ pub fn parse_plugin_manifest(input: &Value) -> ManifestValidationResult {
             capabilities,
             permissions,
             config_version,
+            timeout_ms,
         }),
         errors,
     }

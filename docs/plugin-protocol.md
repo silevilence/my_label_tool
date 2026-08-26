@@ -36,7 +36,7 @@
 ### request
 
 ```json
-{"v":1,"id":"7","type":"request","method":"export.run","params":{}}
+{"v":1,"id":"7","type":"request","method":"exporter.export","params":{}}
 ```
 
 `method` 为非空字符串，`params` 必须存在（可以为 `null`）。请求方产生并递增 `id`。

@@ -1,7 +1,12 @@
+// The registry keeps archive publication and durable state transitions in one
+// transactional module; it exceeds 1000 lines so rollback invariants and their
+// private test seams are not split across partially authoritative modules.
 use super::manifest::{
     is_safe_relative_path, is_valid_permission_target, is_valid_plugin_id, is_valid_semver,
     parse_plugin_manifest, PluginCapabilities, PluginEntry, PluginExtensionKind, PluginManifest,
+    DEFAULT_PLUGIN_TIMEOUT_MS, MAX_PLUGIN_TIMEOUT_MS,
 };
+use super::runtime::load_plugin_runtime_settings;
 use super::runtime_probe::probe_plugin_process_available;
 pub use super::versioning::{
     SUPPORTED_EXPORTER_API_VERSIONS, SUPPORTED_HOST_API_VERSIONS, SUPPORTED_PRELABEL_API_VERSIONS,
@@ -13,12 +18,16 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, OnceLock,
+};
 
 const MAX_ARCHIVE_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
 const MAX_ARCHIVE_FILE_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_COMPRESSION_RATIO: u64 = 1_000;
 static INSTALL_TOKEN_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static REGISTRY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +76,8 @@ pub struct PluginRegistryEntry {
     pub failure_count: u32,
     pub last_error: Option<String>,
     pub config_version: u32,
+    #[serde(default = "default_plugin_timeout_ms")]
+    pub timeout_ms: u32,
     pub installed_at: String,
     pub updated_at: String,
 }
@@ -195,6 +206,7 @@ fn prepare_plugin_install_inner(
             .join("；");
         invalid_package(text::plugin_manifest_invalid(&reasons))
     })?;
+    reject_code_plugin_in_safe_mode(app_data_dir, &manifest)?;
     negotiate_manifest(&manifest)?;
     validate_runtime(&manifest, pending_root, probe, false)?;
     let permissions = manifest.permissions.iter().map(permission_grant).collect();
@@ -206,6 +218,21 @@ fn prepare_plugin_install_inner(
         warning: text::PLUGIN_UNVERIFIED_AUTHOR_WARNING.to_string(),
         is_update,
     })
+}
+
+fn reject_code_plugin_in_safe_mode(
+    app_data_dir: &Path,
+    manifest: &PluginManifest,
+) -> Result<(), PluginRegistryError> {
+    if manifest.extension_kind != PluginExtensionKind::LabelPreset
+        && load_plugin_runtime_settings(app_data_dir)?.safe_mode
+    {
+        return Err(PluginRegistryError {
+            code: "SAFE_MODE".to_string(),
+            message: text::PLUGIN_SAFE_MODE_CODE_INSTALL_BLOCKED.to_string(),
+        });
+    }
+    Ok(())
 }
 
 fn validate_extracted_bytes(
@@ -455,6 +482,15 @@ pub fn authorize_plugin_install(
     authorize_plugin_install_with_probe(app_data_dir, install_token, grants, probe_plugin_entry)
 }
 
+pub fn pending_plugin_install_id(
+    app_data_dir: &Path,
+    install_token: &str,
+) -> Result<String, PluginRegistryError> {
+    let pending_root = pending_install_root(app_data_dir, install_token)?;
+    verify_bound_install_token(&pending_root, install_token)?;
+    read_manifest(&pending_root.join("manifest.json")).map(|manifest| manifest.id)
+}
+
 fn authorize_plugin_install_with_probe(
     app_data_dir: &Path,
     install_token: &str,
@@ -492,6 +528,7 @@ fn authorize_plugin_install_inner(
     probe: &impl Fn(&PluginEntry, &Path) -> Result<(), String>,
 ) -> Result<PluginRegistryEntry, PluginRegistryError> {
     let manifest = read_manifest(&pending_root.join("manifest.json"))?;
+    reject_code_plugin_in_safe_mode(app_data_dir, &manifest)?;
     negotiate_manifest(&manifest)?;
     let expected: HashSet<_> = manifest
         .permissions
@@ -508,6 +545,7 @@ fn authorize_plugin_install_inner(
     validate_runtime(&manifest, pending_root, probe, true)?;
     verify_bound_install_token(pending_root, install_token)?;
 
+    let _registry_guard = registry_lock().lock().map_err(|_| registry_lock_error())?;
     let mut snapshot = load_plugin_registry_for_update(app_data_dir)?;
     let existing_index = snapshot
         .plugins
@@ -540,6 +578,7 @@ fn authorize_plugin_install_inner(
         failure_count: existing.as_ref().map_or(0, |entry| entry.failure_count),
         last_error: existing.as_ref().and_then(|entry| entry.last_error.clone()),
         config_version: manifest.config_version,
+        timeout_ms: manifest.timeout_ms,
         installed_at: existing
             .as_ref()
             .map_or_else(|| now.clone(), |entry| entry.installed_at.clone()),
@@ -583,6 +622,16 @@ fn authorize_plugin_install_inner(
 }
 
 pub fn load_plugin_registry(app_data_dir: &Path) -> PluginRegistrySnapshot {
+    let Ok(_guard) = registry_lock().lock() else {
+        return PluginRegistrySnapshot {
+            plugins: Vec::new(),
+            warning: Some(text::PLUGIN_REGISTRY_LOAD_WARNING.to_string()),
+        };
+    };
+    load_plugin_registry_unlocked(app_data_dir)
+}
+
+fn load_plugin_registry_unlocked(app_data_dir: &Path) -> PluginRegistrySnapshot {
     let path = app_data_dir.join("plugin-registry.json");
     if !path.is_file() {
         return PluginRegistrySnapshot {
@@ -639,6 +688,7 @@ fn registry_entries_are_valid(plugins: &[PluginRegistryEntry]) -> bool {
             )
             && plugin.capabilities.exporter.api_version.min >= 1
             && plugin.capabilities.prelabel.api_version.min >= 1
+            && (1..=MAX_PLUGIN_TIMEOUT_MS).contains(&plugin.timeout_ms)
             && grants_to_set(&plugin.grants).is_ok()
     })
 }
@@ -646,7 +696,7 @@ fn registry_entries_are_valid(plugins: &[PluginRegistryEntry]) -> bool {
 fn load_plugin_registry_for_update(
     app_data_dir: &Path,
 ) -> Result<PluginRegistrySnapshot, PluginRegistryError> {
-    let snapshot = load_plugin_registry(app_data_dir);
+    let snapshot = load_plugin_registry_unlocked(app_data_dir);
     if snapshot.warning.is_some() {
         Err(PluginRegistryError {
             code: "INTERNAL_ERROR".to_string(),
@@ -671,6 +721,7 @@ fn uninstall_registered_plugin_with_remove(
     plugin_id: &str,
     remove: impl FnOnce(&Path) -> std::io::Result<()>,
 ) -> Result<(), PluginRegistryError> {
+    let _registry_guard = registry_lock().lock().map_err(|_| registry_lock_error())?;
     let mut snapshot = load_plugin_registry_for_update(app_data_dir)?;
     let original_plugins = snapshot.plugins.clone();
     let original_len = snapshot.plugins.len();
@@ -755,10 +806,39 @@ pub fn clear_registered_plugin_failures(
     })
 }
 
+pub fn record_plugin_runtime_success(
+    app_data_dir: &Path,
+    plugin_id: &str,
+) -> Result<PluginRegistryEntry, PluginRegistryError> {
+    update_registry_entry(app_data_dir, plugin_id, |entry| {
+        entry.failure_count = 0;
+        entry.last_error = None;
+        entry.updated_at = timestamp();
+        Ok(())
+    })
+}
+
+pub fn record_plugin_runtime_failure(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    message: &str,
+) -> Result<PluginRegistryEntry, PluginRegistryError> {
+    update_registry_entry(app_data_dir, plugin_id, |entry| {
+        entry.failure_count = entry.failure_count.saturating_add(1);
+        entry.last_error = Some(message.to_string());
+        if entry.failure_count >= 3 {
+            entry.state = PluginState::AutoDisabled;
+        }
+        entry.updated_at = timestamp();
+        Ok(())
+    })
+}
+
 pub fn get_registered_plugin(
     app_data_dir: &Path,
     plugin_id: &str,
 ) -> Result<PluginRegistryEntry, PluginRegistryError> {
+    let _registry_guard = registry_lock().lock().map_err(|_| registry_lock_error())?;
     load_plugin_registry_for_update(app_data_dir)?
         .plugins
         .into_iter()
@@ -771,6 +851,7 @@ fn update_registry_entry(
     plugin_id: &str,
     update: impl FnOnce(&mut PluginRegistryEntry) -> Result<(), PluginRegistryError>,
 ) -> Result<PluginRegistryEntry, PluginRegistryError> {
+    let _registry_guard = registry_lock().lock().map_err(|_| registry_lock_error())?;
     let mut snapshot = load_plugin_registry_for_update(app_data_dir)?;
     let entry = snapshot
         .plugins
@@ -781,6 +862,18 @@ fn update_registry_entry(
     let updated = entry.clone();
     save_plugin_registry(app_data_dir, &snapshot.plugins)?;
     Ok(updated)
+}
+
+const fn default_plugin_timeout_ms() -> u32 {
+    DEFAULT_PLUGIN_TIMEOUT_MS
+}
+
+fn registry_lock() -> &'static Mutex<()> {
+    REGISTRY_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn registry_lock_error() -> PluginRegistryError {
+    internal_error(text::PLUGIN_REGISTRY_LOCK_POISONED.to_string())
 }
 
 fn save_plugin_registry(
