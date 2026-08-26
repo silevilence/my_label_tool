@@ -61,6 +61,8 @@
   - [ ] 补充 MCP 连接配置、工具说明、安全提示和故障排查文档
   - 验收：外部客户端可在控制权规则下完成“读取项目—修改标注—保存或导出”流程；安全测试、自动化测试和手动验收清单全部通过
 
+## 🚧 开发中 (In Progress)
+
 - [ ] **插件系统契约：Manifest Schema、稳定 ID 与版本分层**
   - [ ] 目标：定义插件系统全部对外契约（manifest 结构、校验语义、版本规则），作为后续所有插件任务的实现依据；产出 `src/types/plugin.ts`（前端契约）+ Rust 端 `src-tauri/src/plugins/manifest.rs`（字段一一对应）+ `docs/plugin-manifest.schema.json`（JSON Schema）+ 校验单测
   - [ ] `PluginManifest` 字段（除注明外均必填）：
@@ -173,8 +175,6 @@
   - [ ] 文档核对：`docs/plugins.md`、`docs/plugin-protocol.md`、`docs/plugin-manifest.schema.json` 与实现一致；CONTEXT.md 术语与 ADR 无冲突
   - [ ] 自动化：`npm run typecheck`、`npm run lint`、`npm run test:coverage`（插件纯逻辑保持 90% 行覆盖）、`cargo clippy`、`cargo test`（含 conformance 与权限单测）全部通过
   - 验收：坏插件/权限/超时/取消/自动禁用/安全模式/迁移/卸载八类场景各有一份可复现的记录（截图或日志）
-
-## 🚧 开发中 (In Progress)
 
 ## ✅ 已完成 (Completed)
 
