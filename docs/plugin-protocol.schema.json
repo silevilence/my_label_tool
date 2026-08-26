@@ -46,6 +46,43 @@
         "method": { "type": "string", "minLength": 1 },
         "params": {}
       },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": { "properties": { "method": { "const": "fs.read" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/fsReadParams" } } }
+        },
+        {
+          "if": { "properties": { "method": { "const": "fs.write" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/fsWriteParams" } } }
+        }
+      ]
+    },
+    "fsReadParams": {
+      "type": "object",
+      "required": ["path"],
+      "properties": { "path": { "type": "string", "minLength": 1 } },
+      "additionalProperties": true
+    },
+    "fsReadResult": {
+      "type": "object",
+      "required": ["contentUtf8"],
+      "properties": { "contentUtf8": { "type": "string" } },
+      "additionalProperties": true
+    },
+    "fsWriteParams": {
+      "type": "object",
+      "required": ["path", "contentUtf8"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "contentUtf8": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "fsWriteResult": {
+      "type": "object",
+      "required": ["writtenBytes"],
+      "properties": { "writtenBytes": { "type": "integer", "minimum": 0 } },
       "additionalProperties": true
     },
     "response": {

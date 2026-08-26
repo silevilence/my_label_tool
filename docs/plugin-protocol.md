@@ -80,6 +80,38 @@
 `cancel.id` 指向待取消请求。插件停止该调用后必须以 `CANCELLED` 错误响应结束。
 `heartbeat` 用于双向探活，`id` 可为 `null` 或调用标识。
 
+## 文件权限代理
+
+插件只能在宿主发起的调用期间反向发送文件代理请求。安装授权时，manifest 中的
+`%PROJECT%`、`%MODELS%`、`%APP_DATA%` 会解析为绝对目录并写入注册表；运行时以
+解析后的目录级授权判定访问，未授权、`..` 穿越或经符号链接逃逸均返回
+`PERMISSION_DENIED`，错误响应不得包含文件内容。
+
+占位符根目录固定为：`%PROJECT%` = 当前打开的图片项目目录，`%MODELS%` =
+应用数据目录下的 `models` 子目录，`%APP_DATA%` = 应用数据目录。旧版注册表若仍
+保存占位符字符串，宿主会安全停用该插件，直到用户重新安装或更新并确认实际目录。
+
+读取 UTF-8 文本：
+
+```json
+{"v":1,"id":"plugin-1","type":"request","method":"fs.read","params":{"path":"C:\\project\\images\\note.txt"}}
+{"v":1,"id":"plugin-1","type":"response","result":{"contentUtf8":"..."}}
+```
+
+写入 UTF-8 文本：
+
+```json
+{"v":1,"id":"plugin-2","type":"request","method":"fs.write","params":{"path":"C:\\project\\exports\\result.txt","contentUtf8":"..."}}
+{"v":1,"id":"plugin-2","type":"response","result":{"writtenBytes":3}}
+```
+
+`fs.read` 与 `fs.write` 分别校验，写授权不隐含读授权。为避免创建路径时的链接竞态，
+v1 的 `fs.write` 只写入已存在的普通文件，不创建新文件；单文件/内容上限为 8 MiB，
+每次宿主调用最多处理 8 个文件代理请求且累计预算不超过 64 MiB。
+Windows 下文件代理拒绝远程卷，避免网络文件系统 I/O 绕过调用超时边界。
+其他宿主代理方法（包括网络方法）在 v1 未实现，返回 `METHOD_NOT_FOUND`。代码型
+插件进程启动时会移除常见代理环境变量；`network` 声明在 v1 不会开放网络代理。
+
 ## 标准错误码
 
 | 错误码 | 产生位置 |

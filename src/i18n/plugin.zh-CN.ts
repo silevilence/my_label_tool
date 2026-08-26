@@ -71,7 +71,7 @@ export const PLUGIN_ZH_CN = {
   installedAt: (value: string) => `安装于 ${value}`,
   safeMode: "安全模式（禁止安装和运行代码型插件）",
   safeModeRuntimeBlocked: "安全模式已阻止此代码型插件运行。",
-  permissionNetwork: "访问网络（默认拒绝，授权后开放）",
+  permissionNetwork: "声明网络访问（v1 不提供宿主网络代理）",
   permissionRead: (target: string) => `读取目录：${target}`,
   permissionWrite: (target: string) => `写入目录：${target}`,
 } as const;

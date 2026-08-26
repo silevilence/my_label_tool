@@ -6,6 +6,7 @@ import {
   PLUGIN_PROTOCOL_VERSION,
   type PluginHelloParams,
   type PluginHelloResult,
+  type PluginHostRequest,
   type PluginProtocolMessage,
 } from "./plugin";
 
@@ -47,6 +48,25 @@ describe("plugin protocol contract", () => {
     expect(messages.map(({ type }) => type)).toEqual([...PLUGIN_PROTOCOL_MESSAGE_TYPES]);
     expect(helloParams.supportedVersions.hostApi).toEqual([1]);
     expect(helloResult.capabilities?.prelabel).toBeUndefined();
+  });
+
+  it("keeps reverse file proxy request contracts aligned with Schema", () => {
+    const requests: PluginHostRequest[] = [
+      { v: 1, id: "read-1", type: "request", method: "fs.read", params: { path: "C:/data/a.txt" } },
+      {
+        v: 1,
+        id: "write-1",
+        type: "request",
+        method: "fs.write",
+        params: { path: "C:/data/b.txt", contentUtf8: "saved" },
+      },
+    ];
+
+    expect(requests.map(({ method }) => method)).toEqual(["fs.read", "fs.write"]);
+    expect(protocolSchema.$defs.fsReadParams.required).toEqual(["path"]);
+    expect(protocolSchema.$defs.fsWriteParams.required).toEqual(["path", "contentUtf8"]);
+    expect(protocolSchema.$defs.fsReadResult.required).toEqual(["contentUtf8"]);
+    expect(protocolSchema.$defs.fsWriteResult.required).toEqual(["writtenBytes"]);
   });
 
   it("keeps response exclusivity, progress percent, and cancel id constraints in Schema", () => {

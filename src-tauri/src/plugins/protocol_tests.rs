@@ -243,6 +243,11 @@ fn all_ten_standard_error_codes_are_stable_and_documented() {
         schema["$defs"]["request"]["properties"]["v"]["const"],
         PLUGIN_PROTOCOL_VERSION
     );
+    assert_eq!(schema["$defs"]["fsReadParams"]["required"], json!(["path"]));
+    assert_eq!(
+        schema["$defs"]["fsWriteParams"]["required"],
+        json!(["path", "contentUtf8"])
+    );
     let schema_message_types = schema["oneOf"]
         .as_array()
         .expect("message variants")

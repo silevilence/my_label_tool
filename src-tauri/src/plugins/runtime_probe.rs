@@ -5,6 +5,11 @@ use std::{
 };
 
 use crate::i18n::zh_cn as text;
+#[cfg(unix)]
+use crate::plugins::process_environment::apply_offline_environment;
+use crate::plugins::process_environment::{
+    OFFLINE_ENVIRONMENT_OVERRIDES, PROXY_ENVIRONMENT_VARIABLES,
+};
 #[cfg(windows)]
 use crate::process_control::SuspendedJobProcess;
 #[cfg(unix)]
@@ -36,12 +41,8 @@ fn probe_plugin_process_with_window(
         executable,
         arguments,
         working_directory,
-        &[
-            ("YOLO_AUTOINSTALL", "false"),
-            ("YOLO_OFFLINE", "true"),
-            ("PIP_NO_INDEX", "1"),
-            ("HF_HUB_OFFLINE", "1"),
-        ],
+        &OFFLINE_ENVIRONMENT_OVERRIDES,
+        &PROXY_ENVIRONMENT_VARIABLES,
     )?;
 
     #[cfg(unix)]
@@ -107,13 +108,10 @@ impl RuntimeProbeGuard {
         command
             .args(arguments)
             .current_dir(working_directory)
-            .env("YOLO_AUTOINSTALL", "false")
-            .env("YOLO_OFFLINE", "true")
-            .env("PIP_NO_INDEX", "1")
-            .env("HF_HUB_OFFLINE", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        apply_offline_environment(&mut command);
         configure_process_group(&mut command);
         let child = command
             .spawn()

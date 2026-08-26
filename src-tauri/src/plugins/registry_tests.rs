@@ -47,6 +47,45 @@ fn prepares_authorizes_and_persists_a_valid_archive() {
 }
 
 #[test]
+fn permission_preview_and_registry_store_resolved_absolute_targets() {
+    let root = temp_dir("resolved-permission-preview");
+    let project = root.join("current-project");
+    fs::create_dir_all(&project).expect("create project");
+    let archive = write_manifest_archive(&root, "plugin.zip", label_manifest(0));
+
+    let preview = prepare_plugin_install_for_project(&root, &archive, Some(&project))
+        .expect("prepare with project context");
+    assert_eq!(
+        preview.permissions,
+        vec![PluginPermissionGrant {
+            permission: "fs.read".to_string(),
+            target: Some(
+                fs::canonicalize(&project)
+                    .expect("canonical project")
+                    .join("images")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        }]
+    );
+    let entry = authorize_plugin_install_for_project(
+        &root,
+        &preview.install_token,
+        Some(preview.permissions.clone()),
+        Some(&project),
+    )
+    .expect("authorize resolved grant")
+    .expect("registered plugin");
+    assert_eq!(entry.grants, preview.permissions);
+
+    let archive = write_manifest_archive(&root, "missing-project.zip", label_manifest(0));
+    let error = prepare_plugin_install_for_project(&root, &archive, None)
+        .expect_err("project placeholder must require an open project");
+    assert_eq!(error.code, "PERMISSION_DENIED");
+    cleanup(root);
+}
+
+#[test]
 fn registry_entries_without_timeout_use_the_backward_compatible_default() {
     let root = temp_dir("registry-timeout-default");
     let archive = write_manifest_archive(&root, "labels.zip", label_manifest(0));
@@ -71,6 +110,50 @@ fn registry_entries_without_timeout_use_the_backward_compatible_default() {
     let loaded = load_plugin_registry(&root);
     assert_eq!(loaded.warning, None);
     assert_eq!(loaded.plugins[0].timeout_ms, DEFAULT_PLUGIN_TIMEOUT_MS);
+    cleanup(root);
+}
+
+#[test]
+fn legacy_placeholder_grants_load_disabled_and_require_reauthorization() {
+    let root = installed_registry("legacy-placeholder-grant");
+    let registry_path = root.join("plugin-registry.json");
+    let mut registry: Value =
+        serde_json::from_str(&fs::read_to_string(&registry_path).expect("registry fixture"))
+            .expect("registry JSON");
+    registry[0]["grants"] = json!([{
+        "permission": "fs.read",
+        "target": "%PROJECT%/images"
+    }]);
+    fs::write(
+        &registry_path,
+        serde_json::to_string_pretty(&registry).expect("legacy registry"),
+    )
+    .expect("write legacy registry");
+
+    let snapshot = load_plugin_registry(&root);
+    assert_eq!(snapshot.plugins.len(), 1);
+    assert_eq!(snapshot.warning, None);
+    assert_eq!(snapshot.plugins[0].state, PluginState::Disabled);
+    assert_eq!(snapshot.plugins[0].failure_count, 0);
+    assert_eq!(
+        snapshot.plugins[0].last_error.as_deref(),
+        Some(text::PLUGIN_PERMISSION_REAUTHORIZE_REQUIRED)
+    );
+    assert!(PermissionPolicy::from_grants(&snapshot.plugins[0].grants).is_err());
+    let error = set_registered_plugin_enabled(&root, &snapshot.plugins[0].id, true)
+        .expect_err("legacy grant cannot be enabled without reauthorization");
+    assert_eq!(error.code, "PERMISSION_DENIED");
+
+    let archive = write_manifest_archive(&root, "reauthorize.zip", label_manifest(0));
+    let preview = prepare_plugin_install(&root, &archive).expect("prepare reauthorization");
+    let updated =
+        authorize_plugin_install(&root, &preview.install_token, Some(preview.permissions))
+            .expect("authorize replacement")
+            .expect("updated plugin");
+    assert_eq!(updated.state, PluginState::Enabled);
+    assert_eq!(updated.failure_count, 0);
+    assert_eq!(updated.last_error, None);
+    assert!(PermissionPolicy::from_grants(&updated.grants).is_ok());
     cleanup(root);
 }
 

@@ -1,4 +1,6 @@
 pub mod manifest;
+pub mod permissions;
+pub(crate) mod process_environment;
 pub mod protocol;
 pub mod registry;
 pub mod runtime;

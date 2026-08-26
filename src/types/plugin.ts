@@ -43,6 +43,39 @@ export interface PluginProtocolRequest extends PluginProtocolEnvelope {
   params: unknown;
 }
 
+export interface PluginFsReadParams {
+  path: string;
+}
+
+export interface PluginFsReadResult {
+  contentUtf8: string;
+}
+
+export interface PluginFsWriteParams {
+  path: string;
+  contentUtf8: string;
+}
+
+export interface PluginFsWriteResult {
+  writtenBytes: number;
+}
+
+export type PluginHostMethod = "fs.read" | "fs.write";
+
+export type PluginHostRequest =
+  | (PluginProtocolEnvelope & {
+      id: string;
+      type: "request";
+      method: "fs.read";
+      params: PluginFsReadParams;
+    })
+  | (PluginProtocolEnvelope & {
+      id: string;
+      type: "request";
+      method: "fs.write";
+      params: PluginFsWriteParams;
+    });
+
 export type PluginProtocolResponse =
   | (PluginProtocolEnvelope & {
       id: string;

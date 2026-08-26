@@ -235,15 +235,20 @@ export function runPrelabelInference(
   return invoke<PrelabelImageInference[]>("run_prelabel_inference", { model, imagePaths });
 }
 
-export function installPlugin(path: string): Promise<PluginInstallPreview> {
-  return invoke<PluginInstallPreview>("install_plugin", { path });
+export function installPlugin(path: string, projectDir: string | null): Promise<PluginInstallPreview> {
+  return invoke<PluginInstallPreview>("install_plugin", { path, projectDir });
 }
 
 export function authorizePlugin(
   installToken: string,
   grants: PluginPermissionGrant[] | null,
+  projectDir: string | null,
 ): Promise<PluginRegistryEntry | null> {
-  return invoke<PluginRegistryEntry | null>("authorize_plugin", { installToken, grants });
+  return invoke<PluginRegistryEntry | null>("authorize_plugin", {
+    installToken,
+    grants,
+    projectDir,
+  });
 }
 
 export function uninstallPlugin(pluginId: string): Promise<void> {

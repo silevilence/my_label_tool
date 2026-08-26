@@ -6,6 +6,9 @@ use super::manifest::{
     parse_plugin_manifest, PluginCapabilities, PluginEntry, PluginExtensionKind, PluginManifest,
     DEFAULT_PLUGIN_TIMEOUT_MS, MAX_PLUGIN_TIMEOUT_MS,
 };
+use super::permissions::{
+    resolve_permission_grants_for_install, PermissionPolicy, PermissionRoots,
+};
 use super::runtime::load_plugin_runtime_settings;
 use super::runtime_probe::probe_plugin_process_available;
 pub use super::versioning::{
@@ -36,12 +39,7 @@ pub struct PluginRegistryError {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct PluginPermissionGrant {
-    pub permission: String,
-    pub target: Option<String>,
-}
+pub use super::permissions::PluginPermissionGrant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -93,12 +91,40 @@ pub fn prepare_plugin_install(
     app_data_dir: &Path,
     archive_path: &Path,
 ) -> Result<PluginInstallPreview, PluginRegistryError> {
-    prepare_plugin_install_with_probe(app_data_dir, archive_path, probe_plugin_entry)
+    prepare_plugin_install_for_project(app_data_dir, archive_path, Some(app_data_dir))
 }
 
+pub fn prepare_plugin_install_for_project(
+    app_data_dir: &Path,
+    archive_path: &Path,
+    project_dir: Option<&Path>,
+) -> Result<PluginInstallPreview, PluginRegistryError> {
+    prepare_plugin_install_with_probe_for_project(
+        app_data_dir,
+        archive_path,
+        project_dir,
+        probe_plugin_entry,
+    )
+}
+
+#[cfg(test)]
 fn prepare_plugin_install_with_probe(
     app_data_dir: &Path,
     archive_path: &Path,
+    probe: impl Fn(&PluginEntry, &Path) -> Result<(), String>,
+) -> Result<PluginInstallPreview, PluginRegistryError> {
+    prepare_plugin_install_with_probe_for_project(
+        app_data_dir,
+        archive_path,
+        Some(app_data_dir),
+        probe,
+    )
+}
+
+fn prepare_plugin_install_with_probe_for_project(
+    app_data_dir: &Path,
+    archive_path: &Path,
+    project_dir: Option<&Path>,
     probe: impl Fn(&PluginEntry, &Path) -> Result<(), String>,
 ) -> Result<PluginInstallPreview, PluginRegistryError> {
     let token = next_install_token();
@@ -110,6 +136,7 @@ fn prepare_plugin_install_with_probe(
         archive_path,
         &pending_root,
         token.clone(),
+        project_dir,
         &probe,
     ) {
         Ok(mut preview) => match bind_install_token(app_data_dir, &pending_root, &token) {
@@ -134,6 +161,7 @@ fn prepare_plugin_install_inner(
     archive_path: &Path,
     pending_root: &Path,
     token: String,
+    project_dir: Option<&Path>,
     probe: &impl Fn(&PluginEntry, &Path) -> Result<(), String>,
 ) -> Result<PluginInstallPreview, PluginRegistryError> {
     let file = fs::File::open(archive_path)
@@ -209,7 +237,11 @@ fn prepare_plugin_install_inner(
     reject_code_plugin_in_safe_mode(app_data_dir, &manifest)?;
     negotiate_manifest(&manifest)?;
     validate_runtime(&manifest, pending_root, probe, false)?;
-    let permissions = manifest.permissions.iter().map(permission_grant).collect();
+    let permissions = resolve_permission_grants_for_install(
+        &manifest.permissions,
+        &permission_roots(app_data_dir, project_dir),
+    )
+    .map_err(permission_registry_error)?;
     let is_update = app_data_dir.join("plugins").join(&manifest.id).is_dir();
     Ok(PluginInstallPreview {
         install_token: token,
@@ -460,26 +492,27 @@ fn validate_packaged_executable(path: &Path) -> Result<(), String> {
     }
 }
 
-fn permission_grant(permission: &super::manifest::PluginPermission) -> PluginPermissionGrant {
-    let value = permission.manifest_value();
-    match value.split_once(':') {
-        Some((permission, target)) => PluginPermissionGrant {
-            permission: permission.to_string(),
-            target: Some(target.to_string()),
-        },
-        None => PluginPermissionGrant {
-            permission: value,
-            target: None,
-        },
-    }
-}
-
 pub fn authorize_plugin_install(
     app_data_dir: &Path,
     install_token: &str,
     grants: Option<Vec<PluginPermissionGrant>>,
 ) -> Result<Option<PluginRegistryEntry>, PluginRegistryError> {
-    authorize_plugin_install_with_probe(app_data_dir, install_token, grants, probe_plugin_entry)
+    authorize_plugin_install_for_project(app_data_dir, install_token, grants, Some(app_data_dir))
+}
+
+pub fn authorize_plugin_install_for_project(
+    app_data_dir: &Path,
+    install_token: &str,
+    grants: Option<Vec<PluginPermissionGrant>>,
+    project_dir: Option<&Path>,
+) -> Result<Option<PluginRegistryEntry>, PluginRegistryError> {
+    authorize_plugin_install_with_probe_for_project(
+        app_data_dir,
+        install_token,
+        grants,
+        project_dir,
+        probe_plugin_entry,
+    )
 }
 
 pub fn pending_plugin_install_id(
@@ -491,10 +524,27 @@ pub fn pending_plugin_install_id(
     read_manifest(&pending_root.join("manifest.json")).map(|manifest| manifest.id)
 }
 
+#[cfg(test)]
 fn authorize_plugin_install_with_probe(
     app_data_dir: &Path,
     install_token: &str,
     grants: Option<Vec<PluginPermissionGrant>>,
+    probe: impl Fn(&PluginEntry, &Path) -> Result<(), String>,
+) -> Result<Option<PluginRegistryEntry>, PluginRegistryError> {
+    authorize_plugin_install_with_probe_for_project(
+        app_data_dir,
+        install_token,
+        grants,
+        Some(app_data_dir),
+        probe,
+    )
+}
+
+fn authorize_plugin_install_with_probe_for_project(
+    app_data_dir: &Path,
+    install_token: &str,
+    grants: Option<Vec<PluginPermissionGrant>>,
+    project_dir: Option<&Path>,
     probe: impl Fn(&PluginEntry, &Path) -> Result<(), String>,
 ) -> Result<Option<PluginRegistryEntry>, PluginRegistryError> {
     let pending_root = pending_install_root(app_data_dir, install_token)?;
@@ -510,8 +560,14 @@ fn authorize_plugin_install_with_probe(
         let _ = fs::remove_dir_all(&pending_root);
         return Err(error);
     }
-    match authorize_plugin_install_inner(app_data_dir, install_token, &pending_root, grants, &probe)
-    {
+    match authorize_plugin_install_inner(
+        app_data_dir,
+        install_token,
+        &pending_root,
+        grants,
+        project_dir,
+        &probe,
+    ) {
         Ok(entry) => Ok(Some(entry)),
         Err(error) => {
             let _ = fs::remove_dir_all(&pending_root);
@@ -525,16 +581,18 @@ fn authorize_plugin_install_inner(
     install_token: &str,
     pending_root: &Path,
     grants: Vec<PluginPermissionGrant>,
+    project_dir: Option<&Path>,
     probe: &impl Fn(&PluginEntry, &Path) -> Result<(), String>,
 ) -> Result<PluginRegistryEntry, PluginRegistryError> {
     let manifest = read_manifest(&pending_root.join("manifest.json"))?;
     reject_code_plugin_in_safe_mode(app_data_dir, &manifest)?;
     negotiate_manifest(&manifest)?;
-    let expected: HashSet<_> = manifest
-        .permissions
-        .iter()
-        .map(|permission| permission.manifest_value())
-        .collect();
+    let expected_grants = resolve_permission_grants_for_install(
+        &manifest.permissions,
+        &permission_roots(app_data_dir, project_dir),
+    )
+    .map_err(permission_registry_error)?;
+    let expected = grants_to_set(&expected_grants)?;
     let actual = grants_to_set(&grants)?;
     if expected != actual {
         return Err(PluginRegistryError {
@@ -552,6 +610,9 @@ fn authorize_plugin_install_inner(
         .iter()
         .position(|plugin| plugin.id == manifest.id);
     let existing = existing_index.map(|index| snapshot.plugins[index].clone());
+    let existing_requires_reauthorization = existing
+        .as_ref()
+        .is_some_and(|entry| PermissionPolicy::from_grants(&entry.grants).is_err());
     let persisted_grants = existing
         .as_ref()
         .filter(|entry| grants_to_set(&entry.grants).is_ok_and(|values| values == expected))
@@ -562,6 +623,8 @@ fn authorize_plugin_install_inner(
             || entry.state == PluginState::PendingMigration
         {
             PluginState::PendingMigration
+        } else if existing_requires_reauthorization {
+            PluginState::Enabled
         } else {
             entry.state
         }
@@ -575,8 +638,16 @@ fn authorize_plugin_install_inner(
         capabilities: manifest.capabilities.clone(),
         grants: persisted_grants,
         state,
-        failure_count: existing.as_ref().map_or(0, |entry| entry.failure_count),
-        last_error: existing.as_ref().and_then(|entry| entry.last_error.clone()),
+        failure_count: if existing_requires_reauthorization {
+            0
+        } else {
+            existing.as_ref().map_or(0, |entry| entry.failure_count)
+        },
+        last_error: if existing_requires_reauthorization {
+            None
+        } else {
+            existing.as_ref().and_then(|entry| entry.last_error.clone())
+        },
         config_version: manifest.config_version,
         timeout_ms: manifest.timeout_ms,
         installed_at: existing
@@ -644,6 +715,14 @@ fn load_plugin_registry_unlocked(app_data_dir: &Path) -> PluginRegistrySnapshot 
         .and_then(serde_json::from_reader::<_, Vec<PluginRegistryEntry>>)
     {
         Ok(mut plugins) if registry_entries_are_valid(&plugins) => {
+            for plugin in &mut plugins {
+                if PermissionPolicy::from_grants(&plugin.grants).is_err() {
+                    plugin.state = PluginState::Disabled;
+                    plugin.failure_count = 0;
+                    plugin.last_error =
+                        Some(text::PLUGIN_PERMISSION_REAUTHORIZE_REQUIRED.to_string());
+                }
+            }
             plugins.sort_by(|left, right| left.id.cmp(&right.id));
             PluginRegistrySnapshot {
                 plugins,
@@ -689,7 +768,7 @@ fn registry_entries_are_valid(plugins: &[PluginRegistryEntry]) -> bool {
             && plugin.capabilities.exporter.api_version.min >= 1
             && plugin.capabilities.prelabel.api_version.min >= 1
             && (1..=MAX_PLUGIN_TIMEOUT_MS).contains(&plugin.timeout_ms)
-            && grants_to_set(&plugin.grants).is_ok()
+            && registry_grants_are_valid(&plugin.grants)
     })
 }
 
@@ -769,6 +848,12 @@ pub fn set_registered_plugin_enabled(
     enabled: bool,
 ) -> Result<PluginRegistryEntry, PluginRegistryError> {
     update_registry_entry(app_data_dir, plugin_id, |entry| {
+        if enabled && PermissionPolicy::from_grants(&entry.grants).is_err() {
+            return Err(PluginRegistryError {
+                code: "PERMISSION_DENIED".to_string(),
+                message: text::PLUGIN_PERMISSION_REAUTHORIZE_REQUIRED.to_string(),
+            });
+        }
         if entry.state == PluginState::PendingMigration {
             return Err(PluginRegistryError {
                 code: "CONFIG_MIGRATION_REQUIRED".to_string(),
@@ -931,12 +1016,13 @@ fn read_manifest(path: &Path) -> Result<PluginManifest, PluginRegistryError> {
 }
 
 fn grants_to_set(grants: &[PluginPermissionGrant]) -> Result<HashSet<String>, PluginRegistryError> {
+    PermissionPolicy::from_grants(grants).map_err(permission_registry_error)?;
     let mut result = HashSet::new();
     for grant in grants {
         let value = match (&grant.permission[..], grant.target.as_deref()) {
             ("network", None) => "network".to_string(),
-            ("fs.read" | "fs.write", Some(target)) if is_valid_permission_target(target) => {
-                format!("{}:{}", grant.permission, target.replace('\\', "/"))
+            ("fs.read" | "fs.write", Some(target)) => {
+                format!("{}:{target}", grant.permission)
             }
             _ => {
                 return Err(PluginRegistryError {
@@ -953,6 +1039,38 @@ fn grants_to_set(grants: &[PluginPermissionGrant]) -> Result<HashSet<String>, Pl
         }
     }
     Ok(result)
+}
+
+fn registry_grants_are_valid(grants: &[PluginPermissionGrant]) -> bool {
+    if PermissionPolicy::from_grants(grants).is_ok() {
+        return true;
+    }
+    let mut seen = HashSet::new();
+    grants.iter().all(|grant| {
+        let value = match (grant.permission.as_str(), grant.target.as_deref()) {
+            ("network", None) => "network".to_string(),
+            ("fs.read" | "fs.write", Some(target)) if is_valid_permission_target(target) => {
+                format!("{}:{}", grant.permission, target.replace('\\', "/"))
+            }
+            _ => return false,
+        };
+        seen.insert(value)
+    })
+}
+
+fn permission_roots(app_data_dir: &Path, project_dir: Option<&Path>) -> PermissionRoots {
+    PermissionRoots {
+        project: project_dir.map(Path::to_path_buf),
+        models: app_data_dir.join("models"),
+        app_data: app_data_dir.to_path_buf(),
+    }
+}
+
+fn permission_registry_error(error: super::permissions::PermissionError) -> PluginRegistryError {
+    PluginRegistryError {
+        code: "PERMISSION_DENIED".to_string(),
+        message: error.message,
+    }
 }
 
 fn pending_install_root(

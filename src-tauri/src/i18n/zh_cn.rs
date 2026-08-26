@@ -270,6 +270,20 @@ pub const PLUGIN_ANNOTATION_TYPE_DUPLICATE: &str = "标注类型不能重复声�
 pub const PLUGIN_PERMISSIONS_MUST_BE_ARRAY: &str = "权限授予声明必须是数组";
 pub const PLUGIN_PERMISSION_UNKNOWN: &str = "包含未知或无效的权限面";
 pub const PLUGIN_PERMISSION_DUPLICATE: &str = "权限授予声明不能重复";
+pub const PLUGIN_PERMISSION_ROOT_INVALID: &str = "权限目录必须是规范化的绝对路径";
+pub const PLUGIN_PERMISSION_PROJECT_REQUIRED: &str =
+    "插件申请了项目目录权限，请先打开图片项目后再安装";
+pub const PLUGIN_PERMISSION_GRANT_INVALID: &str = "插件权限授权包含非法目录或权限面";
+pub const PLUGIN_PERMISSION_ACCESS_DENIED: &str = "插件未获授权访问该路径";
+pub const PLUGIN_PERMISSION_PLACEHOLDER_ESCAPE: &str = "权限目录经符号链接解析后超出占位符对应目录";
+pub const PLUGIN_PERMISSION_REAUTHORIZE_REQUIRED: &str =
+    "该插件使用旧版占位符授权，已安全停用；请重新安装或更新插件并确认实际目录";
+pub const PLUGIN_PROXY_METHOD_NOT_FOUND: &str = "宿主未实现该插件代理方法";
+pub const PLUGIN_PROXY_ARGUMENT_INVALID: &str = "插件文件代理参数无效";
+pub const PLUGIN_PROXY_FILE_INVALID: &str = "插件文件代理路径不存在、不是文件或超过大小限制";
+pub const PLUGIN_PROXY_IO_FAILED: &str = "插件文件代理读写失败";
+pub const PLUGIN_PROXY_BUDGET_EXCEEDED: &str = "单次插件调用的文件代理请求已超过数量或数据预算";
+pub const PLUGIN_PROXY_WORKER_UNAVAILABLE: &str = "插件文件代理工作线程暂时不可用";
 pub const PLUGIN_COMMAND_ARGUMENT_MUST_BE_STRING: &str = "命令参数必须是字符串";
 
 pub fn plugin_required_field(field: &str) -> String {

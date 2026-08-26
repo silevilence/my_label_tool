@@ -432,7 +432,10 @@ export function AppSidebar({
         </div>
       </section>
       {isPluginSettingsOpen && (
-        <PluginSettings onClose={() => setIsPluginSettingsOpen(false)} />
+        <PluginSettings
+          projectDir={folderPath || null}
+          onClose={() => setIsPluginSettingsOpen(false)}
+        />
       )}
     </aside>
   );

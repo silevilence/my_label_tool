@@ -21,6 +21,10 @@ use serde_json::Value;
 
 use super::{
     manifest::{PluginCapabilities, PluginExtensionKind},
+    permissions::{
+        dispatch_file_proxy_request, FileProxyPolicy, ProxyDispatchError, MAX_PROXY_FILE_BYTES,
+    },
+    process_environment::{OFFLINE_ENVIRONMENT_OVERRIDES, PROXY_ENVIRONMENT_VARIABLES},
     protocol::{
         encode_message, host_hello_request, negotiate_hello_response, NdjsonDecoder,
         NegotiatedSession, PluginMessage, ResponseOutcome, PLUGIN_PROTOCOL_VERSION,
@@ -30,6 +34,9 @@ use super::{
         PluginRegistryEntry, PluginRegistryError, PluginState,
     },
 };
+
+#[cfg(unix)]
+use super::process_environment::apply_offline_environment;
 
 #[cfg(windows)]
 use crate::process_control::PipedJobProcess;
@@ -42,6 +49,8 @@ const SETTINGS_FILE: &str = "plugin-settings.json";
 const STDERR_LOG_LINES: usize = 500;
 const STDERR_LINE_BYTES: usize = 64 * 1024;
 const RUNTIME_MESSAGE_QUEUE_CAPACITY: usize = 8;
+const MAX_PROXY_REQUESTS_PER_CALL: usize = 8;
+const MAX_PROXY_BYTES_PER_CALL: u64 = MAX_PROXY_FILE_BYTES * MAX_PROXY_REQUESTS_PER_CALL as u64;
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static RUNTIME: OnceLock<Mutex<PluginRuntimeManager>> = OnceLock::new();
 static MAINTENANCE: OnceLock<PluginMaintenanceCoordinator> = OnceLock::new();
@@ -519,6 +528,35 @@ struct PluginSession {
     stdin: Box<dyn Write + Send>,
     messages: Receiver<Result<PluginMessage, PluginCallError>>,
     negotiated: Option<NegotiatedSession>,
+    permissions: FileProxyPolicy,
+}
+
+#[derive(Debug, Default)]
+struct ProxyCallBudget {
+    requests: usize,
+    bytes: u64,
+}
+
+impl ProxyCallBudget {
+    fn reserve(&mut self, method: &str, params: &Value) -> bool {
+        let bytes = match method {
+            "fs.read" => MAX_PROXY_FILE_BYTES,
+            "fs.write" => params
+                .get("contentUtf8")
+                .and_then(Value::as_str)
+                .map_or(0, |content| content.len() as u64),
+            _ => 0,
+        };
+        let Some(next_bytes) = self.bytes.checked_add(bytes) else {
+            return false;
+        };
+        if self.requests >= MAX_PROXY_REQUESTS_PER_CALL || next_bytes > MAX_PROXY_BYTES_PER_CALL {
+            return false;
+        }
+        self.requests += 1;
+        self.bytes = next_bytes;
+        true
+    }
 }
 
 impl PluginSession {
@@ -526,6 +564,8 @@ impl PluginSession {
         app_data_dir: &Path,
         entry: &PluginRegistryEntry,
     ) -> Result<SessionParts, PluginCallError> {
+        let permissions = FileProxyPolicy::from_grants(&entry.grants)
+            .map_err(|error| call_error("PERMISSION_DENIED", &error.message))?;
         let package_root = app_data_dir.join("plugins").join(&entry.id);
         let declared = entry
             .entry
@@ -558,16 +598,21 @@ impl PluginSession {
                 stdin,
                 messages: receiver,
                 negotiated: None,
+                permissions,
             },
             process,
             stderr_lines,
         ))
     }
 
-    fn handshake_before(&mut self, deadline: Instant) -> Result<(), PluginCallError> {
+    fn handshake_before(
+        &mut self,
+        deadline: Instant,
+        proxy_budget: &mut ProxyCallBudget,
+    ) -> Result<(), PluginCallError> {
         let id = next_request_id("hello");
         self.send(&host_hello_request(id.clone()))?;
-        let response = self.receive_response(&id, deadline)?;
+        let response = self.receive_response(&id, deadline, proxy_budget)?;
         let negotiated = negotiate_hello_response(&response, &id).map_err(protocol_call_error)?;
         self.negotiated = Some(negotiated);
         Ok(())
@@ -583,12 +628,14 @@ impl PluginSession {
     ) -> Result<Value, PluginCallError> {
         let deadline = Instant::now() + timeout;
         let watchdog = CallWatchdog::start(Arc::clone(&self.process), timeout);
+        let mut proxy_budget = ProxyCallBudget::default();
         let result = self.invoke_before(
             extension_kind,
             declared_capabilities,
             method,
             params,
             deadline,
+            &mut proxy_budget,
         );
         if watchdog.finish() {
             Err(runtime_call_error("TIMEOUT", text::PLUGIN_RUNTIME_TIMEOUT))
@@ -604,12 +651,13 @@ impl PluginSession {
         method: &str,
         params: Value,
         deadline: Instant,
+        proxy_budget: &mut ProxyCallBudget,
     ) -> Result<Value, PluginCallError> {
         if self.negotiated.is_none() {
-            self.handshake_before(deadline)?;
+            self.handshake_before(deadline, proxy_budget)?;
         }
         self.ensure_capability(extension_kind, declared_capabilities, method)?;
-        self.call(method, params, deadline)
+        self.call(method, params, deadline, proxy_budget)
     }
 
     fn ensure_capability(
@@ -650,6 +698,7 @@ impl PluginSession {
         method: &str,
         params: Value,
         deadline: Instant,
+        proxy_budget: &mut ProxyCallBudget,
     ) -> Result<Value, PluginCallError> {
         let id = next_request_id("call");
         self.send(&PluginMessage::Request {
@@ -658,7 +707,7 @@ impl PluginSession {
             method: method.to_string(),
             params,
         })?;
-        match self.receive_response(&id, deadline)? {
+        match self.receive_response(&id, deadline, proxy_budget)? {
             PluginMessage::Response {
                 outcome: ResponseOutcome::Result(value),
                 ..
@@ -689,6 +738,7 @@ impl PluginSession {
         &mut self,
         expected_id: &str,
         deadline: Instant,
+        proxy_budget: &mut ProxyCallBudget,
     ) -> Result<PluginMessage, PluginCallError> {
         loop {
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
@@ -699,11 +749,63 @@ impl PluginSession {
                 .messages
                 .recv_timeout(remaining.min(Duration::from_millis(25)))
             {
-                Ok(Ok(message)) => match &message {
-                    PluginMessage::Response { id, .. } if id.as_deref() == Some(expected_id) => {
+                Ok(Ok(message)) => match message {
+                    PluginMessage::Response { ref id, .. }
+                        if id.as_deref() == Some(expected_id) =>
+                    {
                         return Ok(message);
                     }
                     PluginMessage::Event { .. } => {}
+                    PluginMessage::Request {
+                        id: Some(id),
+                        method,
+                        params,
+                        ..
+                    } => {
+                        let outcome = if proxy_budget.reserve(&method, &params) {
+                            let Some(proxy_timeout) =
+                                deadline.checked_duration_since(Instant::now())
+                            else {
+                                self.terminate();
+                                return Err(runtime_call_error(
+                                    "TIMEOUT",
+                                    text::PLUGIN_RUNTIME_TIMEOUT,
+                                ));
+                            };
+                            match dispatch_file_proxy_request(
+                                self.permissions.clone(),
+                                method,
+                                params,
+                                proxy_timeout,
+                            ) {
+                                Ok(outcome) => outcome,
+                                Err(ProxyDispatchError::Timeout) => {
+                                    self.terminate();
+                                    return Err(runtime_call_error(
+                                        "TIMEOUT",
+                                        text::PLUGIN_RUNTIME_TIMEOUT,
+                                    ));
+                                }
+                                Err(ProxyDispatchError::Unavailable) => {
+                                    self.terminate();
+                                    return Err(runtime_call_error(
+                                        "INTERNAL_ERROR",
+                                        text::PLUGIN_PROXY_WORKER_UNAVAILABLE,
+                                    ));
+                                }
+                            }
+                        } else {
+                            ResponseOutcome::Error(super::protocol::ProtocolError::new(
+                                super::protocol::ProtocolErrorCode::InvalidArgument,
+                                text::PLUGIN_PROXY_BUDGET_EXCEEDED,
+                            ))
+                        };
+                        self.send(&PluginMessage::Response {
+                            v: PLUGIN_PROTOCOL_VERSION,
+                            id: Some(id),
+                            outcome,
+                        })?;
+                    }
                     _ => {
                         return Err(runtime_call_error(
                             "PROTOCOL_ERROR",
@@ -904,11 +1006,12 @@ impl RuntimeProcess {
             working_directory,
             &[
                 ("MY_LABEL_TOOL_PLUGIN_DIR", plugin_dir),
-                ("YOLO_AUTOINSTALL", "false"),
-                ("YOLO_OFFLINE", "true"),
-                ("PIP_NO_INDEX", "1"),
-                ("HF_HUB_OFFLINE", "1"),
+                OFFLINE_ENVIRONMENT_OVERRIDES[0],
+                OFFLINE_ENVIRONMENT_OVERRIDES[1],
+                OFFLINE_ENVIRONMENT_OVERRIDES[2],
+                OFFLINE_ENVIRONMENT_OVERRIDES[3],
             ],
+            &PROXY_ENVIRONMENT_VARIABLES,
         )?;
         let stdin = inner
             .take_stdin()
@@ -957,13 +1060,10 @@ impl RuntimeProcess {
             .args(arguments)
             .current_dir(working_directory)
             .env("MY_LABEL_TOOL_PLUGIN_DIR", plugin_dir)
-            .env("YOLO_AUTOINSTALL", "false")
-            .env("YOLO_OFFLINE", "true")
-            .env("PIP_NO_INDEX", "1")
-            .env("HF_HUB_OFFLINE", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        apply_offline_environment(&mut command);
         configure_process_group(&mut command);
         let mut child = command
             .spawn()
@@ -1102,6 +1202,20 @@ mod tests {
                 .safe_mode
         );
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn reverse_file_proxy_budget_is_bounded_per_host_call() {
+        let mut budget = ProxyCallBudget::default();
+        for _ in 0..MAX_PROXY_REQUESTS_PER_CALL {
+            assert!(budget.reserve("fs.read", &Value::Null));
+        }
+        assert_eq!(budget.requests, MAX_PROXY_REQUESTS_PER_CALL);
+        assert_eq!(budget.bytes, MAX_PROXY_BYTES_PER_CALL);
+        assert!(!budget.reserve("fs.read", &Value::Null));
+
+        let mut next_call = ProxyCallBudget::default();
+        assert!(next_call.reserve("fs.write", &serde_json::json!({ "contentUtf8": "saved" })));
     }
 
     #[cfg(windows)]
@@ -1419,6 +1533,41 @@ mod tests {
             .expect_err("manifest must also declare migration capability");
         assert_eq!(error.code, "METHOD_NOT_FOUND");
         manager.remove(&undeclared_migration.id);
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn file_proxy_returns_only_authorized_content_and_denies_outside_paths() {
+        let _runtime_test_guard = runtime_test_guard();
+        let root = test_directory("file-proxy");
+        let allowed = root.join("project").join("images");
+        let outside = root.join("outside");
+        fs::create_dir_all(&allowed).expect("create allowed directory");
+        fs::create_dir_all(&outside).expect("create outside directory");
+        fs::write(outside.join("secret.txt"), "never-disclose-this").expect("write secret file");
+        let mut entry = test_entry("dev.test.fileproxy", powershell_file_proxy_plugin(), 2_000);
+        entry.grants = vec![crate::plugins::permissions::PluginPermissionGrant {
+            permission: "fs.read".to_string(),
+            target: Some(allowed.to_string_lossy().into_owned()),
+        }];
+        create_package(&root, &entry.id);
+        write_registry(&root, std::slice::from_ref(&entry));
+
+        let denied = invoke_plugin(
+            &root,
+            &entry.id,
+            "exporter.export",
+            serde_json::json!({ "path": outside.join("secret.txt") }),
+        )
+        .expect("denied proxy response is returned to the plugin");
+        assert_eq!(
+            denied.pointer("/error/code"),
+            Some(&Value::String("PERMISSION_DENIED".to_string())),
+            "proxy response: {denied}"
+        );
+        assert!(!denied.to_string().contains("never-disclose-this"));
+        stop_plugin_process(&entry.id);
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
@@ -1760,6 +1909,11 @@ mod tests {
         format!(
             "while (($line = [Console]::In.ReadLine()) -ne $null) {{ $msg = $line | ConvertFrom-Json; if ($msg.method -eq 'hello') {{ $response = @{{ v = 1; id = $msg.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ exporter = $true }} }} }} }} else {{ $response = @{{ v = 1; id = $msg.id; type = 'response'; error = @{{ code = '{code}'; message = 'expected business error' }} }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush() }}"
         )
+    }
+
+    #[cfg(windows)]
+    fn powershell_file_proxy_plugin() -> String {
+        "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $helloLine = [Console]::In.ReadLine(); $hello = $helloLine | ConvertFrom-Json; $helloResponse = @{ v = 1; id = $hello.id; type = 'response'; result = @{ protocolVersion = 1; capabilities = @{ exporter = $true } } }; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush(); $callLine = [Console]::In.ReadLine(); $call = $callLine | ConvertFrom-Json; $proxy = @{ v = 1; id = 'proxy-read'; type = 'request'; method = 'fs.read'; params = @{ path = $call.params.path } }; [Console]::Out.WriteLine(($proxy | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush(); $proxyLine = [Console]::In.ReadLine(); $proxyResponse = $proxyLine | ConvertFrom-Json; $response = @{ v = 1; id = $call.id; type = 'response'; result = $proxyResponse }; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); Start-Sleep -Seconds 30".to_string()
     }
 
     #[cfg(windows)]

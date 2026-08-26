@@ -4,8 +4,8 @@ use tauri::Manager;
 
 use crate::i18n::zh_cn as text;
 use crate::plugins::registry::{
-    authorize_plugin_install, clear_registered_plugin_failures, get_registered_plugin,
-    load_plugin_registry, pending_plugin_install_id, prepare_plugin_install,
+    authorize_plugin_install_for_project, clear_registered_plugin_failures, get_registered_plugin,
+    load_plugin_registry, pending_plugin_install_id, prepare_plugin_install_for_project,
     set_registered_plugin_enabled, uninstall_registered_plugin, PluginInstallPreview,
     PluginPermissionGrant, PluginRegistryEntry, PluginRegistryError, PluginRegistrySnapshot,
 };
@@ -19,9 +19,11 @@ use crate::plugins::runtime::{
 pub fn install_plugin(
     app: tauri::AppHandle,
     path: PathBuf,
+    project_dir: Option<PathBuf>,
 ) -> Result<PluginInstallPreview, String> {
     let app_data_dir = plugin_app_data_dir(&app)?;
-    prepare_plugin_install(&app_data_dir, &path).map_err(command_error)
+    prepare_plugin_install_for_project(&app_data_dir, &path, project_dir.as_deref())
+        .map_err(command_error)
 }
 
 #[tauri::command]
@@ -29,6 +31,7 @@ pub fn authorize_plugin(
     app: tauri::AppHandle,
     install_token: String,
     grants: Option<Vec<PluginPermissionGrant>>,
+    project_dir: Option<PathBuf>,
 ) -> Result<Option<PluginRegistryEntry>, String> {
     let app_data_dir = plugin_app_data_dir(&app)?;
     let _maintenance = if grants.is_some() {
@@ -38,7 +41,13 @@ pub fn authorize_plugin(
     } else {
         None
     };
-    authorize_plugin_install(&app_data_dir, &install_token, grants).map_err(command_error)
+    authorize_plugin_install_for_project(
+        &app_data_dir,
+        &install_token,
+        grants,
+        project_dir.as_deref(),
+    )
+    .map_err(command_error)
 }
 
 #[tauri::command]

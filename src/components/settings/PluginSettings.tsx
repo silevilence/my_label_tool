@@ -22,6 +22,7 @@ import type {
 } from "../../types/plugin";
 
 interface PluginSettingsProps {
+  projectDir: string | null;
   onClose: () => void;
 }
 
@@ -45,7 +46,7 @@ const EXTENSION_LABELS: Record<PluginExtensionKind, string> = {
   prelabel: text.extensionPrelabel,
 };
 
-export function PluginSettings({ onClose }: PluginSettingsProps) {
+export function PluginSettings({ projectDir, onClose }: PluginSettingsProps) {
   const [plugins, setPlugins] = useState<PluginRegistryEntry[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +79,7 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
     if (!path) return;
     setIsInstalling(true);
     try {
-      const nextPreview = await installPlugin(path);
+      const nextPreview = await installPlugin(path, projectDir);
       setPreview(nextPreview);
       setConfirmedPermissions(new Set());
     } catch (reason) {
@@ -95,7 +96,7 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
     setIsInstalling(true);
     setError(null);
     try {
-      await authorizePlugin(preview.installToken, null);
+      await authorizePlugin(preview.installToken, null, projectDir);
       setPreview(null);
       setConfirmedPermissions(new Set());
     } catch (reason) {
@@ -110,7 +111,7 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
     setIsInstalling(true);
     setError(null);
     try {
-      await authorizePlugin(preview.installToken, preview.permissions);
+      await authorizePlugin(preview.installToken, preview.permissions, projectDir);
       setPreview(null);
       setConfirmedPermissions(new Set());
       await refresh();
@@ -305,6 +306,11 @@ export function PluginSettings({ onClose }: PluginSettingsProps) {
                         {text.clearFailures}
                       </button>
                     </div>
+                  )}
+                  {plugin.state === "disabled" && plugin.failureCount === 0 && plugin.lastError && (
+                    <p className="mt-3 rounded border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-200">
+                      {plugin.lastError}
+                    </p>
                   )}
                   {diagnosticOpen && (
                     <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-slate-300">

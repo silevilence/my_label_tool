@@ -63,6 +63,7 @@ impl SuspendedJobProcess {
         arguments: &[String],
         working_directory: &std::path::Path,
         environment_overrides: &[(&str, &str)],
+        environment_removals: &[&str],
     ) -> Result<Self, String> {
         use std::mem::size_of;
         use windows::{
@@ -92,7 +93,8 @@ impl SuspendedJobProcess {
         let display = executable.to_string_lossy();
         let mut command_line = windows_command_line(executable.as_os_str(), arguments)?;
         let current_directory = wide_null(working_directory.as_os_str())?;
-        let environment = windows_environment_block(environment_overrides)?;
+        let environment =
+            windows_environment_block_filtered(environment_overrides, environment_removals)?;
         let security = SECURITY_ATTRIBUTES {
             nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
             bInheritHandle: true.into(),
@@ -402,19 +404,40 @@ pub(super) fn wide_null(value: &std::ffi::OsStr) -> Result<Vec<u16>, String> {
 }
 
 #[cfg(windows)]
-pub(super) fn windows_environment_block(overrides: &[(&str, &str)]) -> Result<Vec<u16>, String> {
+pub(super) fn windows_environment_block_filtered(
+    overrides: &[(&str, &str)],
+    removals: &[&str],
+) -> Result<Vec<u16>, String> {
+    windows_environment_block_from(std::env::vars_os(), overrides, removals)
+}
+
+#[cfg(windows)]
+fn windows_environment_block_from(
+    current: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+    overrides: &[(&str, &str)],
+    removals: &[&str],
+) -> Result<Vec<u16>, String> {
     use std::{collections::HashSet, ffi::OsString, os::windows::ffi::OsStrExt};
 
     let overridden = overrides
         .iter()
         .map(|(key, _)| key.to_ascii_lowercase())
         .collect::<HashSet<_>>();
-    let mut variables = std::env::vars_os()
-        .filter(|(key, _)| !overridden.contains(&key.to_string_lossy().to_ascii_lowercase()))
+    let removed = removals
+        .iter()
+        .map(|key| key.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    let mut variables = current
+        .into_iter()
+        .filter(|(key, _)| {
+            let key = key.to_string_lossy().to_ascii_lowercase();
+            !overridden.contains(&key) && !removed.contains(&key)
+        })
         .collect::<Vec<_>>();
     variables.extend(
         overrides
             .iter()
+            .filter(|(key, _)| !removed.contains(&key.to_ascii_lowercase()))
             .map(|(key, value)| (OsString::from(key), OsString::from(value))),
     );
     variables.sort_by_key(|(key, _)| key.to_string_lossy().to_ascii_lowercase());
@@ -433,4 +456,32 @@ pub(super) fn windows_environment_block(overrides: &[(&str, &str)]) -> Result<Ve
     }
     block.push(0);
     Ok(block)
+}
+
+#[cfg(all(test, windows))]
+mod environment_tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn filtered_environment_removes_proxy_variables_case_insensitively() {
+        let block = windows_environment_block_from(
+            [
+                (OsString::from("Path"), OsString::from("C:\\bin")),
+                (OsString::from("HTTP_PROXY"), OsString::from("http://proxy")),
+                (
+                    OsString::from("https_proxy"),
+                    OsString::from("http://proxy"),
+                ),
+            ],
+            &[("MY_LABEL_TOOL_PLUGIN_DIR", "C:\\plugin")],
+            &["http_proxy", "HTTPS_PROXY"],
+        )
+        .expect("environment block");
+        let decoded = String::from_utf16_lossy(&block).replace('\0', "|");
+        assert!(decoded.contains("Path=C:\\bin"));
+        assert!(decoded.contains("MY_LABEL_TOOL_PLUGIN_DIR=C:\\plugin"));
+        assert!(!decoded.to_ascii_lowercase().contains("http_proxy="));
+        assert!(!decoded.to_ascii_lowercase().contains("https_proxy="));
+    }
 }

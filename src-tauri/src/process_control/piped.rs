@@ -21,7 +21,7 @@ use windows::{
 
 use super::{
     close_handle, create_kill_on_close_job, wide_null, windows_command_line,
-    windows_environment_block,
+    windows_environment_block_filtered,
 };
 use crate::i18n::zh_cn as text;
 
@@ -44,11 +44,13 @@ impl PipedJobProcess {
         arguments: &[String],
         working_directory: &Path,
         environment_overrides: &[(&str, &str)],
+        environment_removals: &[&str],
     ) -> Result<Self, String> {
         let display = executable.to_string_lossy();
         let mut command_line = windows_command_line(executable.as_os_str(), arguments)?;
         let current_directory = wide_null(working_directory.as_os_str())?;
-        let environment = windows_environment_block(environment_overrides)?;
+        let environment =
+            windows_environment_block_filtered(environment_overrides, environment_removals)?;
         let security = SECURITY_ATTRIBUTES {
             nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
             bInheritHandle: true.into(),
