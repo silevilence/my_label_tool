@@ -2,7 +2,15 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default [
-  { ignores: ["dist", "dist-ssr", "node_modules", "src-tauri/target"] },
+  {
+    ignores: [
+      "dist",
+      "dist-ssr",
+      "node_modules",
+      "src-tauri/target",
+      ".agents/plugin-skills-workspace",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

@@ -1,0 +1,477 @@
+import type { AnnotationShapeType } from "./annotation";
+import { PLUGIN_ZH_CN as text } from "../i18n/plugin.zh-CN";
+
+/** Manifest structure version. Independent from host API and protocol versions. */
+export const PLUGIN_MANIFEST_SCHEMA_VERSION = 1 as const;
+export const MAX_PLUGIN_CONTRACT_VERSION = 4_294_967_295;
+
+export const PLUGIN_MANIFEST_FIELDS = [
+  "schemaVersion",
+  "id",
+  "name",
+  "version",
+  "apiVersion",
+  "extensionKind",
+  "runtime",
+  "entry",
+  "capabilities",
+  "permissions",
+  "configVersion",
+] as const satisfies readonly (keyof PluginManifest)[];
+
+export type PluginExtensionKind = "label-preset" | "exporter" | "prelabel";
+export type PluginRuntime = "process";
+export type PluginPermission = `fs.read:${string}` | `fs.write:${string}` | "network";
+
+/**
+ * A target host API version. The host dispatches the matching implementation;
+ * breaking changes receive a new version while old versions remain available
+ * for the documented deprecation period.
+ */
+export interface PluginApiVersionTarget {
+  min: number;
+}
+
+export interface PluginEntry {
+  command: string;
+  args: string[];
+}
+
+export interface PluginCapabilityVersion {
+  apiVersion: PluginApiVersionTarget;
+}
+
+export interface PluginCapabilities {
+  annotationTypes: AnnotationShapeType[];
+  batch: boolean;
+  progress: boolean;
+  cancel: boolean;
+  configMigration: boolean;
+  exporter: PluginCapabilityVersion;
+  prelabel: PluginCapabilityVersion;
+}
+
+/**
+ * Public plugin manifest contract. Plugin version, host API target versions and
+ * the NDJSON protocol version are independent. The protocol version is
+ * negotiated in hello and deliberately does not appear in this manifest.
+ */
+export interface PluginManifest {
+  schemaVersion: typeof PLUGIN_MANIFEST_SCHEMA_VERSION;
+  id: string;
+  name: string;
+  version: string;
+  apiVersion: PluginApiVersionTarget;
+  extensionKind: PluginExtensionKind;
+  runtime?: PluginRuntime;
+  entry?: PluginEntry;
+  capabilities: PluginCapabilities;
+  permissions: PluginPermission[];
+  configVersion: number;
+}
+
+type AssertNever<T extends never> = T;
+export type PluginManifestFieldCoverage = AssertNever<
+  Exclude<keyof PluginManifest, (typeof PLUGIN_MANIFEST_FIELDS)[number]>
+>;
+
+export type PluginManifestErrorCode =
+  | "REQUIRED"
+  | "INVALID_TYPE"
+  | "INVALID_VALUE"
+  | "INVALID_FORMAT"
+  | "INVALID_VERSION"
+  | "INVALID_PATH"
+  | "FORBIDDEN"
+  | "DUPLICATE"
+  | "UNKNOWN_PERMISSION"
+  | "UNSUPPORTED_RUNTIME"
+  | "UNSUPPORTED_VERSION";
+
+export interface PluginManifestError {
+  field: string;
+  code: PluginManifestErrorCode;
+  reason: string;
+}
+
+export type PluginManifestParseResult =
+  { ok: true; value: PluginManifest } | { ok: false; errors: PluginManifestError[] };
+
+const PLUGIN_ID_PATTERN = /^[a-z0-9]+(?:\.[a-z0-9]+){1,}$/;
+const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+const EXTENSION_KINDS: PluginExtensionKind[] = ["label-preset", "exporter", "prelabel"];
+const ANNOTATION_TYPES: AnnotationShapeType[] = ["rect", "polygon", "point"];
+
+export function parsePluginManifest(input: unknown): PluginManifestParseResult {
+  const errors: PluginManifestError[] = [];
+  if (!isRecord(input)) {
+    return failure("$", "INVALID_TYPE", text.manifestMustBeObject);
+  }
+
+  const schemaVersion = parseSchemaVersion(input.schemaVersion, errors);
+  const id = parseNonEmptyString(input.id, "id", errors);
+  if (id && !PLUGIN_ID_PATTERN.test(id)) {
+    addError(errors, "id", "INVALID_FORMAT", text.pluginIdInvalid);
+  }
+  const name = parseNonEmptyString(input.name, "name", errors);
+  const version = parseNonEmptyString(input.version, "version", errors);
+  if (version && !SEMVER_PATTERN.test(version)) {
+    addError(errors, "version", "INVALID_FORMAT", text.pluginVersionInvalid);
+  }
+  const apiVersion = parseApiVersion(input.apiVersion, "apiVersion", errors);
+  const extensionKind = parseExtensionKind(input.extensionKind, errors);
+  const runtime = parseRuntime(input.runtime, extensionKind, errors);
+  const entry = parseEntry(input.entry, extensionKind, errors);
+  const capabilities = parseCapabilities(input.capabilities, extensionKind, apiVersion, errors);
+  const permissions = parsePermissions(input.permissions, errors);
+  const configVersion = parseBoundedInteger(
+    input.configVersion,
+    "configVersion",
+    0,
+    MAX_PLUGIN_CONTRACT_VERSION,
+    0,
+    errors,
+  );
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    value: {
+      schemaVersion: schemaVersion as 1,
+      id: id as string,
+      name: name as string,
+      version: version as string,
+      apiVersion: apiVersion as PluginApiVersionTarget,
+      extensionKind: extensionKind as PluginExtensionKind,
+      ...(runtime ? { runtime } : {}),
+      ...(entry ? { entry } : {}),
+      capabilities,
+      permissions,
+      configVersion,
+    },
+  };
+}
+
+function parseSchemaVersion(value: unknown, errors: PluginManifestError[]): number | undefined {
+  if (value === undefined) {
+    addError(errors, "schemaVersion", "REQUIRED", text.schemaVersionRequired);
+    return undefined;
+  }
+  if (value !== PLUGIN_MANIFEST_SCHEMA_VERSION) {
+    addError(errors, "schemaVersion", "UNSUPPORTED_VERSION", text.schemaVersionUnsupported);
+    return undefined;
+  }
+  return value;
+}
+
+function parseExtensionKind(
+  value: unknown,
+  errors: PluginManifestError[],
+): PluginExtensionKind | undefined {
+  if (value === undefined) {
+    addError(errors, "extensionKind", "REQUIRED", text.extensionKindRequired);
+    return undefined;
+  }
+  if (typeof value !== "string" || !EXTENSION_KINDS.includes(value as PluginExtensionKind)) {
+    addError(errors, "extensionKind", "INVALID_VALUE", text.extensionKindUnsupported);
+    return undefined;
+  }
+  return value as PluginExtensionKind;
+}
+
+function parseRuntime(
+  value: unknown,
+  extensionKind: PluginExtensionKind | undefined,
+  errors: PluginManifestError[],
+): PluginRuntime | undefined {
+  if (extensionKind === "label-preset") {
+    if (value !== undefined)
+      addError(errors, "runtime", "FORBIDDEN", text.dataPluginRuntimeForbidden);
+    return undefined;
+  }
+  if (value === undefined) {
+    if (extensionKind) addError(errors, "runtime", "REQUIRED", text.codePluginRuntimeRequired);
+    return undefined;
+  }
+  if (value !== "process") {
+    addError(errors, "runtime", "UNSUPPORTED_RUNTIME", text.runtimeUnsupported);
+    return undefined;
+  }
+  return value;
+}
+
+function parseEntry(
+  value: unknown,
+  extensionKind: PluginExtensionKind | undefined,
+  errors: PluginManifestError[],
+): PluginEntry | undefined {
+  if (extensionKind === "label-preset") {
+    if (value !== undefined) addError(errors, "entry", "FORBIDDEN", text.dataPluginEntryForbidden);
+    return undefined;
+  }
+  if (value === undefined) {
+    if (extensionKind) addError(errors, "entry", "REQUIRED", text.codePluginEntryRequired);
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    addError(errors, "entry", "INVALID_TYPE", text.entryMustBeObject);
+    return undefined;
+  }
+  const command = parseNonEmptyString(value.command, "entry.command", errors);
+  if (command && !isSafeRelativePath(command)) {
+    addError(errors, "entry.command", "INVALID_PATH", text.entryPathInvalid);
+  }
+  const args = parseStringArray(value.args, "entry.args", [], errors);
+  return command && isSafeRelativePath(command) ? { command, args } : undefined;
+}
+
+function parseCapabilities(
+  value: unknown,
+  extensionKind: PluginExtensionKind | undefined,
+  overallApiVersion: PluginApiVersionTarget | undefined,
+  errors: PluginManifestError[],
+): PluginCapabilities {
+  const source = value === undefined ? {} : value;
+  if (!isRecord(source)) {
+    addError(errors, "capabilities", "INVALID_TYPE", text.capabilitiesMustBeObject);
+  }
+  const record = isRecord(source) ? source : {};
+  const annotationTypes = parseAnnotationTypes(record.annotationTypes, errors);
+  if (extensionKind === "prelabel" && annotationTypes.length === 0) {
+    addError(
+      errors,
+      "capabilities.annotationTypes",
+      "REQUIRED",
+      text.prelabelAnnotationTypesRequired,
+    );
+  }
+  const fallback = overallApiVersion ?? { min: 1 };
+  return {
+    annotationTypes,
+    batch: parseBoolean(record.batch, "capabilities.batch", errors),
+    progress: parseBoolean(record.progress, "capabilities.progress", errors),
+    cancel: parseBoolean(record.cancel, "capabilities.cancel", errors),
+    configMigration: parseBoolean(record.configMigration, "capabilities.configMigration", errors),
+    exporter: {
+      apiVersion:
+        parseCapabilityApiVersion(record.exporter, "capabilities.exporter", errors) ?? fallback,
+    },
+    prelabel: {
+      apiVersion:
+        parseCapabilityApiVersion(record.prelabel, "capabilities.prelabel", errors) ?? fallback,
+    },
+  };
+}
+
+function parseCapabilityApiVersion(
+  value: unknown,
+  field: string,
+  errors: PluginManifestError[],
+): PluginApiVersionTarget | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) {
+    addError(errors, field, "INVALID_TYPE", text.capabilityVersionMustBeObject);
+    return undefined;
+  }
+  return parseApiVersion(value.apiVersion, `${field}.apiVersion`, errors);
+}
+
+function parseApiVersion(
+  value: unknown,
+  field: string,
+  errors: PluginManifestError[],
+): PluginApiVersionTarget | undefined {
+  if (value === undefined) {
+    addError(errors, field, "REQUIRED", text.apiVersionRequired);
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    addError(errors, field, "INVALID_TYPE", text.apiVersionMustBeObject);
+    return undefined;
+  }
+  Object.keys(value)
+    .filter((key) => key !== "min")
+    .forEach((key) => addError(errors, `${field}.${key}`, "FORBIDDEN", text.apiVersionOnlyMin));
+  if (
+    !Number.isSafeInteger(value.min) ||
+    Number(value.min) < 1 ||
+    Number(value.min) > MAX_PLUGIN_CONTRACT_VERSION
+  ) {
+    addError(errors, `${field}.min`, "INVALID_VERSION", text.apiVersionInvalid);
+    return undefined;
+  }
+  return { min: Number(value.min) };
+}
+
+function parseAnnotationTypes(
+  value: unknown,
+  errors: PluginManifestError[],
+): AnnotationShapeType[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    addError(
+      errors,
+      "capabilities.annotationTypes",
+      "INVALID_TYPE",
+      text.annotationTypesMustBeArray,
+    );
+    return [];
+  }
+  const result: AnnotationShapeType[] = [];
+  value.forEach((item, index) => {
+    if (typeof item !== "string" || !ANNOTATION_TYPES.includes(item as AnnotationShapeType)) {
+      addError(
+        errors,
+        `capabilities.annotationTypes[${index}]`,
+        "INVALID_VALUE",
+        text.annotationTypeUnsupported,
+      );
+    } else if (result.includes(item as AnnotationShapeType)) {
+      addError(
+        errors,
+        `capabilities.annotationTypes[${index}]`,
+        "DUPLICATE",
+        text.annotationTypeDuplicate,
+      );
+    } else {
+      result.push(item as AnnotationShapeType);
+    }
+  });
+  return result;
+}
+
+function parsePermissions(value: unknown, errors: PluginManifestError[]): PluginPermission[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    addError(errors, "permissions", "INVALID_TYPE", text.permissionsMustBeArray);
+    return [];
+  }
+  const result: PluginPermission[] = [];
+  const seen = new Set<string>();
+  value.forEach((item, index) => {
+    const field = `permissions[${index}]`;
+    if (typeof item !== "string" || !isKnownPermission(item)) {
+      addError(errors, field, "UNKNOWN_PERMISSION", text.permissionUnknown);
+      return;
+    }
+    const normalized = item.replace(/\\/g, "/") as PluginPermission;
+    if (seen.has(normalized)) {
+      addError(errors, field, "DUPLICATE", text.permissionDuplicate);
+    } else {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  });
+  return result;
+}
+
+function isKnownPermission(value: string): value is PluginPermission {
+  if (value === "network") return true;
+  const match = /^(fs\.read|fs\.write):(.+)$/.exec(value);
+  if (!match) return false;
+  const segments = match[2].replace(/\\/g, "/").split("/");
+  return (
+    ["%PROJECT%", "%MODELS%", "%APP_DATA%"].includes(segments[0]) &&
+    segments.every((segment) => segment !== "" && segment !== "." && segment !== "..") &&
+    !value.includes("\0")
+  );
+}
+
+function parseNonEmptyString(
+  value: unknown,
+  field: string,
+  errors: PluginManifestError[],
+): string | undefined {
+  if (value === undefined) {
+    addError(errors, field, "REQUIRED", text.requiredField(field));
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    addError(errors, field, "INVALID_TYPE", text.fieldMustBeString(field));
+    return undefined;
+  }
+  if (value.trim() === "") {
+    addError(errors, field, "INVALID_VALUE", text.fieldMustNotBeEmpty(field));
+    return undefined;
+  }
+  return value;
+}
+
+function parseStringArray(
+  value: unknown,
+  field: string,
+  fallback: string[],
+  errors: PluginManifestError[],
+): string[] {
+  if (value === undefined) return fallback;
+  if (!Array.isArray(value)) {
+    addError(errors, field, "INVALID_TYPE", text.fieldMustBeStringArray(field));
+    return fallback;
+  }
+  const result: string[] = [];
+  value.forEach((item, index) => {
+    if (typeof item !== "string") {
+      addError(errors, `${field}[${index}]`, "INVALID_TYPE", text.commandArgumentMustBeString);
+    } else {
+      result.push(item);
+    }
+  });
+  return result;
+}
+
+function parseBoolean(value: unknown, field: string, errors: PluginManifestError[]): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") {
+    addError(errors, field, "INVALID_TYPE", text.fieldMustBeBoolean(field));
+    return false;
+  }
+  return value;
+}
+
+function parseBoundedInteger(
+  value: unknown,
+  field: string,
+  minimum: number,
+  maximum: number,
+  fallback: number,
+  errors: PluginManifestError[],
+): number {
+  if (value === undefined) return fallback;
+  if (!Number.isSafeInteger(value) || Number(value) < minimum || Number(value) > maximum) {
+    addError(
+      errors,
+      field,
+      "INVALID_VALUE",
+      text.fieldMustBeBoundedInteger(field, minimum, maximum),
+    );
+    return fallback;
+  }
+  return Number(value);
+}
+
+function isSafeRelativePath(value: string): boolean {
+  if (/^(?:[a-zA-Z]:|[\\/])/.test(value)) return false;
+  const segments = value.replace(/\\/g, "/").split("/");
+  return segments.every((segment) => segment !== ".." && segment !== "" && segment !== ".");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function failure(
+  field: string,
+  code: PluginManifestErrorCode,
+  reason: string,
+): PluginManifestParseResult {
+  return { ok: false, errors: [{ field, code, reason }] };
+}
+
+function addError(
+  errors: PluginManifestError[],
+  field: string,
+  code: PluginManifestErrorCode,
+  reason: string,
+): void {
+  errors.push({ field, code, reason });
+}

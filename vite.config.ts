@@ -39,6 +39,7 @@ export default defineConfig(async () => ({
         "src/lib/**/*.ts",
         "src/store/**/*.ts",
         "src/types/annotation.ts",
+        "src/types/plugin.ts",
       ],
       exclude: ["src/lib/defaults/**/*.ts", "src/lib/tauri-api.ts", "src/lib/updater.ts"],
       thresholds: {

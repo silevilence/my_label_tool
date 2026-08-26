@@ -243,6 +243,59 @@ pub const PT_CONVERSION_CANCELLED: &str = "模型转换已中止";
 pub const PT_CONVERSION_ID_INVALID: &str = "模型转换任务 ID 不能为空";
 pub const PT_CONVERSION_PLAN_INVALID: &str = "模型转换计划无效，请重新打开参数确认弹窗";
 
+pub const PLUGIN_MANIFEST_MUST_BE_OBJECT: &str = "插件清单必须是 JSON 对象";
+pub const PLUGIN_SCHEMA_VERSION_REQUIRED: &str = "缺少插件清单结构版本";
+pub const PLUGIN_SCHEMA_VERSION_UNSUPPORTED: &str = "仅支持插件清单结构版本 1";
+pub const PLUGIN_ID_INVALID: &str = "插件 ID 必须使用小写反向域名命名空间";
+pub const PLUGIN_VERSION_INVALID: &str = "插件版本必须是有效的 semver";
+pub const PLUGIN_EXTENSION_KIND_REQUIRED: &str = "缺少扩展类型";
+pub const PLUGIN_EXTENSION_KIND_UNSUPPORTED: &str = "扩展类型不受支持";
+pub const PLUGIN_DATA_RUNTIME_FORBIDDEN: &str = "数据型插件禁止声明运行时";
+pub const PLUGIN_CODE_RUNTIME_REQUIRED: &str = "代码型插件必须声明运行时";
+pub const PLUGIN_RUNTIME_UNSUPPORTED: &str = "插件系统 v1 仅支持 process 运行时";
+pub const PLUGIN_DATA_ENTRY_FORBIDDEN: &str = "数据型插件禁止声明进程入口";
+pub const PLUGIN_CODE_ENTRY_REQUIRED: &str = "代码型插件必须声明进程入口";
+pub const PLUGIN_ENTRY_MUST_BE_OBJECT: &str = "进程入口必须是对象";
+pub const PLUGIN_ENTRY_PATH_INVALID: &str = "入口命令必须是包内安全相对路径";
+pub const PLUGIN_CAPABILITIES_MUST_BE_OBJECT: &str = "能力声明必须是对象";
+pub const PLUGIN_PRELABEL_ANNOTATION_TYPES_REQUIRED: &str = "预打标插件必须声明至少一种标注类型";
+pub const PLUGIN_CAPABILITY_VERSION_MUST_BE_OBJECT: &str = "业务能力版本声明必须是对象";
+pub const PLUGIN_API_VERSION_REQUIRED: &str = "缺少目标宿主 API 版本";
+pub const PLUGIN_API_VERSION_MUST_BE_OBJECT: &str = "目标宿主 API 版本必须是对象";
+pub const PLUGIN_API_VERSION_INVALID: &str = "目标宿主 API 版本必须是 1 到 4294967295 的整数";
+pub const PLUGIN_API_VERSION_ONLY_MIN: &str = "目标宿主 API 版本只允许 min 字段";
+pub const PLUGIN_ANNOTATION_TYPES_MUST_BE_ARRAY: &str = "标注类型必须是数组";
+pub const PLUGIN_ANNOTATION_TYPE_UNSUPPORTED: &str = "标注类型不受支持";
+pub const PLUGIN_ANNOTATION_TYPE_DUPLICATE: &str = "标注类型不能重复声明";
+pub const PLUGIN_PERMISSIONS_MUST_BE_ARRAY: &str = "权限授予声明必须是数组";
+pub const PLUGIN_PERMISSION_UNKNOWN: &str = "包含未知或无效的权限面";
+pub const PLUGIN_PERMISSION_DUPLICATE: &str = "权限授予声明不能重复";
+pub const PLUGIN_COMMAND_ARGUMENT_MUST_BE_STRING: &str = "命令参数必须是字符串";
+
+pub fn plugin_required_field(field: &str) -> String {
+    format!("缺少{field}")
+}
+
+pub fn plugin_field_must_be_string(field: &str) -> String {
+    format!("{field} 必须是字符串")
+}
+
+pub fn plugin_field_must_not_be_empty(field: &str) -> String {
+    format!("{field} 不能为空")
+}
+
+pub fn plugin_field_must_be_string_array(field: &str) -> String {
+    format!("{field} 必须是字符串数组")
+}
+
+pub fn plugin_field_must_be_boolean(field: &str) -> String {
+    format!("{field} 必须是布尔值")
+}
+
+pub fn plugin_field_must_be_bounded_integer(field: &str, minimum: u32, maximum: u32) -> String {
+    format!("{field} 必须是 {minimum} 到 {maximum} 的整数")
+}
+
 pub fn pt_conversion_id_already_running(conversion_id: &str) -> String {
     format!("模型转换任务已存在：{conversion_id}")
 }

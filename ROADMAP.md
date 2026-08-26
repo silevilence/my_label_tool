@@ -63,9 +63,9 @@
 
 ## 🚧 开发中 (In Progress)
 
-- [ ] **插件系统契约：Manifest Schema、稳定 ID 与版本分层**
-  - [ ] 目标：定义插件系统全部对外契约（manifest 结构、校验语义、版本规则），作为后续所有插件任务的实现依据；产出 `src/types/plugin.ts`（前端契约）+ Rust 端 `src-tauri/src/plugins/manifest.rs`（字段一一对应）+ `docs/plugin-manifest.schema.json`（JSON Schema）+ 校验单测
-  - [ ] `PluginManifest` 字段（除注明外均必填）：
+- [x] **插件系统契约：Manifest Schema、稳定 ID 与版本分层**
+  - [x] 目标：定义插件系统全部对外契约（manifest 结构、校验语义、版本规则），作为后续所有插件任务的实现依据；产出 `src/types/plugin.ts`（前端契约）+ Rust 端 `src-tauri/src/plugins/manifest.rs`（字段一一对应）+ `docs/plugin-manifest.schema.json`（JSON Schema）+ 校验单测
+  - [x] `PluginManifest` 字段（除注明外均必填）：
     - `schemaVersion`：manifest 结构版本，当前恒为 1；解析时未知版本返回 `UNSUPPORTED_VERSION`
     - `id`：反向域名命名空间，正则 `^[a-z0-9]+(\.[a-z0-9]+){1,}$`（如 `dev.acme.xxx`），永久稳定不复用；格式非法直接校验失败
     - `name`：显示名称，可变更
@@ -77,9 +77,9 @@
     - `capabilities`：可选，缺省为空（能力缺省即不支持）——`{ annotationTypes?: ("rect"|"polygon"|"point")[], batch?: boolean, progress?: boolean, cancel?: boolean, configMigration?: boolean }`；`prelabel` 必须声明非空 `annotationTypes`；业务能力可声明独立目标版本：`capabilities.exporter.apiVersion / capabilities.prelabel.apiVersion`（`{ min }`，缺省 = 整体 `apiVersion`），部分能力的破坏性升级只影响声明该能力的插件
     - `permissions`：可选，缺省为空（默认全拒绝）——只接受 `fs.read:<目录>` / `fs.write:<目录>`（目录支持 `%PROJECT%`/`%MODELS%`/`%APP_DATA%` 占位符）与 `network`；重复声明或未知权限面校验失败
     - `configVersion`：可选整数，缺省 0
-  - [ ] `parsePluginManifest(input: unknown)` 校验语义：不抛异常；失败返回 `{ ok: false, errors: [{ field, code, reason }] }` 收集全部错误（字段路径 + 错误码 + 中文原因）；未知顶层字段忽略（前向兼容）；可选字段按默认值归一化；成功返回带默认值的完整对象
-  - [ ] 版本分层约定（写入类型注释与契约文档）：插件版本（`version`，随插件迭代）/ 宿主 API 版本（整体版本 + `exporter`/`prelabel` 业务能力独立版本，宿主按插件目标版本分派实现，破坏性变更开新版本号、旧版本按弃用期保留，见 ADR 0007）/ 协议版本（不进 manifest，随握手 `hello` 消息协商，见协议任务）
-  - [ ] host API 弃用策略文档（`docs/plugin-api-versioning.md`）：标记 deprecated → 提供替代 → 兼容期（≥2 个 host API 版本）→ 移除；新增字段必须可选且有默认值；禁止删除字段、改变既有语义、重排必需字段
+  - [x] `parsePluginManifest(input: unknown)` 校验语义：不抛异常；失败返回 `{ ok: false, errors: [{ field, code, reason }] }` 收集全部错误（字段路径 + 错误码 + 中文原因）；未知顶层字段忽略（前向兼容）；可选字段按默认值归一化；成功返回带默认值的完整对象
+  - [x] 版本分层约定（写入类型注释与契约文档）：插件版本（`version`，随插件迭代）/ 宿主 API 版本（整体版本 + `exporter`/`prelabel` 业务能力独立版本，宿主按插件目标版本分派实现，破坏性变更开新版本号、旧版本按弃用期保留，见 ADR 0007）/ 协议版本（不进 manifest，随握手 `hello` 消息协商，见协议任务）
+  - [x] host API 弃用策略文档（`docs/plugin-api-versioning.md`）：标记 deprecated → 提供替代 → 兼容期（≥2 个 host API 版本）→ 移除；新增字段必须可选且有默认值；禁止删除字段、改变既有语义、重排必需字段
   - 验收：`npm run typecheck` 通过；Vitest 覆盖三类样例——合法（含可选字段缺省归一化）、非法（缺必需字段/坏 id/数据型带 entry/代码型缺 entry/prelabel 缺 annotationTypes/权限重复/apiVersion 缺失或非法/能力级版本非法/schema 未知版本，断言 errors 含字段路径与错误码）、旧版本前向兼容（未知字段被忽略）；`docs/plugin-manifest.schema.json` 与 TS 类型字段名集合一致（单测对比）
 
 - [ ] **插件安装与注册流程（发现→静态校验→兼容性协商→授权→注册→启用）**

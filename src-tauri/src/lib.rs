@@ -2,6 +2,7 @@ mod commands;
 mod i18n;
 mod media;
 mod models;
+pub mod plugins;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

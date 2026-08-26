@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://my-label-tool.local/schema/plugin-manifest-v1.json",
+  "title": "my_label_tool Plugin Manifest v1",
+  "type": "object",
+  "required": ["schemaVersion", "id", "name", "version", "apiVersion", "extensionKind"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(\\.[a-z0-9]+){1,}$"
+    },
+    "name": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$"
+    },
+    "apiVersion": { "$ref": "#/$defs/apiVersion" },
+    "extensionKind": {
+      "enum": ["label-preset", "exporter", "prelabel"]
+    },
+    "runtime": { "const": "process" },
+    "entry": {
+      "type": "object",
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "(^[A-Za-z]:|^[\\\\/]|[\\\\/]{2}|[\\\\/]$|(^|[\\\\/])\\.{1,2}([\\\\/]|$))"
+          }
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      },
+      "additionalProperties": true
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "annotationTypes": {
+          "type": "array",
+          "items": { "enum": ["rect", "polygon", "point"] },
+          "uniqueItems": true,
+          "default": []
+        },
+        "batch": { "type": "boolean", "default": false },
+        "progress": { "type": "boolean", "default": false },
+        "cancel": { "type": "boolean", "default": false },
+        "configMigration": { "type": "boolean", "default": false },
+        "exporter": { "$ref": "#/$defs/capabilityVersion" },
+        "prelabel": { "$ref": "#/$defs/capabilityVersion" }
+      },
+      "additionalProperties": true,
+      "default": {}
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "anyOf": [
+          { "const": "network" },
+          {
+            "pattern": "^(?!.*\\u0000)fs\\.(read|write):%(PROJECT|MODELS|APP_DATA)%(?:[\\\\/](?!\\.{1,2}(?:[\\\\/]|$))[^\\\\/]+)*$"
+          }
+        ]
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "configVersion": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "default": 0
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "extensionKind": { "const": "label-preset" } } },
+      "then": {
+        "not": { "anyOf": [{ "required": ["runtime"] }, { "required": ["entry"] }] }
+      },
+      "else": { "required": ["runtime", "entry"] }
+    },
+    {
+      "if": { "properties": { "extensionKind": { "const": "prelabel" } } },
+      "then": {
+        "required": ["capabilities"],
+        "properties": {
+          "capabilities": {
+            "required": ["annotationTypes"],
+            "properties": { "annotationTypes": { "minItems": 1 } }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "apiVersion": {
+      "type": "object",
+      "required": ["min"],
+      "properties": {
+        "min": { "type": "integer", "minimum": 1, "maximum": 4294967295 }
+      },
+      "additionalProperties": false
+    },
+    "capabilityVersion": {
+      "type": "object",
+      "required": ["apiVersion"],
+      "properties": { "apiVersion": { "$ref": "#/$defs/apiVersion" } },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
