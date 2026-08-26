@@ -70,6 +70,42 @@ export interface PluginManifest {
   configVersion: number;
 }
 
+export type PluginState = "enabled" | "disabled" | "auto-disabled" | "pending-migration";
+
+export interface PluginPermissionGrant {
+  permission: string;
+  target: string | null;
+}
+
+export interface PluginRegistryEntry {
+  id: string;
+  name: string;
+  version: string;
+  extensionKind: PluginExtensionKind;
+  entry: PluginEntry | null;
+  capabilities: PluginCapabilities;
+  grants: PluginPermissionGrant[];
+  state: PluginState;
+  failureCount: number;
+  lastError: string | null;
+  configVersion: number;
+  installedAt: string;
+  updatedAt: string;
+}
+
+export interface PluginRegistrySnapshot {
+  plugins: PluginRegistryEntry[];
+  warning: string | null;
+}
+
+export interface PluginInstallPreview {
+  installToken: string;
+  manifest: PluginManifest;
+  permissions: PluginPermissionGrant[];
+  warning: string | null;
+  isUpdate: boolean;
+}
+
 type AssertNever<T extends never> = T;
 export type PluginManifestFieldCoverage = AssertNever<
   Exclude<keyof PluginManifest, (typeof PLUGIN_MANIFEST_FIELDS)[number]>

@@ -296,6 +296,135 @@ pub fn plugin_field_must_be_bounded_integer(field: &str, minimum: u32, maximum: 
     format!("{field} 必须是 {minimum} 到 {maximum} 的整数")
 }
 
+pub fn plugin_api_version_unsupported(scope: &str, required: u32, supported: &[u32]) -> String {
+    let versions = supported
+        .iter()
+        .map(|version| format!("v{version}"))
+        .collect::<Vec<_>>()
+        .join("、");
+    format!("插件需要 {scope} v{required}，宿主支持 {versions}；请升级插件或使用兼容版本")
+}
+
+pub const PLUGIN_UNVERIFIED_AUTHOR_WARNING: &str =
+    "未验证作者：代码型插件可能运行任意代码，请仅安装可信来源的插件";
+pub const PLUGIN_ARCHIVE_MISSING_MANIFEST: &str = "插件包根目录缺少 manifest.json";
+pub const PLUGIN_ARCHIVE_UNSAFE_ENTRY: &str = "插件包包含不安全的路径或符号链接条目";
+pub const PLUGIN_ARCHIVE_TOO_LARGE: &str = "插件包解压体积超过安全上限";
+pub const PLUGIN_ARCHIVE_RATIO_TOO_HIGH: &str = "插件包压缩比异常，已拒绝解压";
+
+pub fn plugin_archive_open_failed(error: impl std::fmt::Display) -> String {
+    format!("无法打开插件包：{error}")
+}
+
+pub fn plugin_archive_read_failed(error: impl std::fmt::Display) -> String {
+    format!("无法读取插件包：{error}")
+}
+
+pub fn plugin_archive_extract_failed(error: impl std::fmt::Display) -> String {
+    format!("无法解压插件包：{error}")
+}
+
+pub fn plugin_manifest_invalid(reasons: &str) -> String {
+    format!("插件清单校验失败：{reasons}")
+}
+
+pub const PLUGIN_INSTALL_TOKEN_INVALID: &str = "插件安装令牌无效或已过期";
+pub const PLUGIN_GRANTS_MISMATCH: &str = "权限授予必须与插件清单声明逐项一致";
+pub const PLUGIN_PYTHON_RUNTIME_MISSING: &str = "未检测到插件所需的 Python 3 运行环境";
+pub const PLUGIN_ENTRY_MISSING: &str = "插件入口文件不存在或不是普通文件";
+pub const PLUGIN_EXECUTABLE_RUNTIME_UNAVAILABLE: &str =
+    "插件独立入口无法启动；请确认文件完整、架构匹配且具备执行权限";
+pub const PLUGIN_EXECUTABLE_FORMAT_INVALID: &str =
+    "插件独立入口不是有效的本机可执行文件；完整启动与握手将在首次调用时验证";
+pub fn plugin_executable_inspection_failed(error: impl std::fmt::Display) -> String {
+    format!("无法检查插件独立入口：{error}")
+}
+pub const PLUGIN_PENDING_PACKAGE_CHANGED: &str =
+    "插件包在权限预览后发生变化，已取消安装；请重新选择插件包";
+pub const PLUGIN_REGISTRY_LOAD_WARNING: &str = "插件注册表损坏，已跳过加载且不影响应用启动";
+pub const PLUGIN_REGISTRY_SEMANTIC_INVALID: &str =
+    "插件注册表包含非法 ID、入口或权限授权，已按损坏注册表处理";
+pub const PLUGIN_REGISTRY_CORRUPT_WRITE_BLOCKED: &str =
+    "插件注册表损坏，为保护已有注册数据已拒绝写入；请先备份并修复或移除该文件";
+pub fn plugin_registry_load_failed(error: impl std::fmt::Display) -> String {
+    format!("加载插件注册表失败：{error}")
+}
+pub fn plugin_app_data_dir_failed(error: impl std::fmt::Display) -> String {
+    format!("无法确定插件应用数据目录：{error}")
+}
+pub const PLUGIN_NOT_FOUND: &str = "插件未注册或已卸载";
+pub const PLUGIN_AUTO_DISABLED_REQUIRES_CLEAR: &str = "插件已自动禁用，请先清除失败记录";
+pub const PLUGIN_CONFIG_MIGRATION_REQUIRED: &str = "插件配置等待迁移，迁移完成前不能更改启用状态";
+
+pub fn plugin_registry_write_failed(error: impl std::fmt::Display) -> String {
+    format!("无法保存插件注册表：{error}")
+}
+
+pub fn plugin_package_replace_failed(error: impl std::fmt::Display) -> String {
+    format!("无法发布插件包：{error}")
+}
+
+pub fn plugin_uninstall_rollback_failed(error: impl std::fmt::Display) -> String {
+    format!("清理插件包失败且无法完整回滚卸载状态，请备份插件注册表后重试：{error}")
+}
+
+pub fn process_tree_termination_failed(error: impl std::fmt::Display) -> String {
+    format!("终止进程树失败：{error}")
+}
+
+pub fn process_tree_termination_exit_failed(code: Option<i32>) -> String {
+    format!(
+        "终止进程树失败，退出码：{}",
+        code.map_or_else(|| "未知".to_string(), |value| value.to_string())
+    )
+}
+
+pub fn process_job_creation_failed(error: impl std::fmt::Display) -> String {
+    format!("无法创建进程隔离作业：{error}")
+}
+
+pub fn process_job_configuration_failed(error: impl std::fmt::Display) -> String {
+    format!("无法配置进程隔离作业：{error}")
+}
+
+pub fn process_job_assignment_failed(error: impl std::fmt::Display) -> String {
+    format!("无法将插件进程加入隔离作业：{error}")
+}
+
+pub fn process_job_termination_failed(error: impl std::fmt::Display) -> String {
+    format!("无法终止插件进程隔离作业：{error}")
+}
+
+pub fn process_stdio_setup_failed(error: impl std::fmt::Display) -> String {
+    format!("无法配置插件进程标准输入输出：{error}")
+}
+
+pub fn process_resume_failed(error: impl std::fmt::Display) -> String {
+    format!("插件进程加入隔离作业后无法恢复运行：{error}")
+}
+
+pub fn process_argument_contains_nul() -> String {
+    "插件入口命令、参数、环境或工作目录包含非法空字符".to_string()
+}
+
+pub fn plugin_runtime_start_failed(
+    executable: impl std::fmt::Display,
+    error: impl std::fmt::Display,
+) -> String {
+    format!("无法启动插件入口 {executable}：{error}")
+}
+
+pub fn plugin_runtime_exited(code: Option<i32>) -> String {
+    format!(
+        "插件入口在等待协议握手前退出，退出码：{}",
+        code.map_or_else(|| "未知".to_string(), |value| value.to_string())
+    )
+}
+
+pub fn plugin_runtime_wait_failed(error: impl std::fmt::Display) -> String {
+    format!("等待插件入口启动失败：{error}")
+}
+
 pub fn pt_conversion_id_already_running(conversion_id: &str) -> String {
     format!("模型转换任务已存在：{conversion_id}")
 }
@@ -421,17 +550,6 @@ pub fn pt_conversion_timed_out(seconds: u64) -> String {
 
 pub fn pt_conversion_wait_failed(error: impl std::fmt::Display) -> String {
     format!("等待模型转换进程失败：{error}")
-}
-
-pub fn pt_process_tree_termination_failed(error: impl std::fmt::Display) -> String {
-    format!("终止模型转换进程树失败：{error}")
-}
-
-pub fn pt_process_tree_termination_exit_failed(code: Option<i32>) -> String {
-    format!(
-        "终止模型转换进程树失败，退出码：{}",
-        code.map_or_else(|| "未知".to_string(), |value| value.to_string())
-    )
 }
 
 pub fn pt_conversion_worker_failed(error: impl std::fmt::Display) -> String {

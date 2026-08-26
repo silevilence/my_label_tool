@@ -3,6 +3,7 @@ mod i18n;
 mod media;
 mod models;
 pub mod plugins;
+mod process_control;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -40,7 +41,14 @@ pub fn run() {
             commands::detect_pt_conversion_environment,
             commands::preview_pt_conversion_command,
             commands::convert_pt_to_onnx,
-            commands::cancel_pt_conversion
+            commands::cancel_pt_conversion,
+            commands::install_plugin,
+            commands::authorize_plugin,
+            commands::uninstall_plugin,
+            commands::list_plugins,
+            commands::set_plugin_enabled,
+            commands::get_plugin_status,
+            commands::clear_plugin_failures
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

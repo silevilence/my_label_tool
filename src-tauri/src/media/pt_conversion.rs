@@ -17,6 +17,7 @@ use std::{
 use crate::{
     i18n::zh_cn as text,
     media::onnx_metadata::{inspect_onnx_bytes, OnnxModelSummary},
+    process_control::{configure_process_group, terminate_process_tree},
 };
 use serde::{Deserialize, Serialize};
 
@@ -997,11 +998,14 @@ fn display_command(executable: &str, arguments: &[String]) -> String {
 }
 
 fn probe_command(executable: &str, arguments: &[&str], timeout: Duration) -> Result<(), String> {
-    let mut child = offline_command(executable)
+    let mut command = offline_command(executable);
+    command
         .args(arguments)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    configure_process_group(&mut command);
+    let mut child = command
         .spawn()
         .map_err(|error| text::pt_conversion_start_failed(executable, error))?;
     match wait_for_child(&mut child, timeout)? {
@@ -1157,47 +1161,6 @@ fn emit_output_lines(
     Ok(())
 }
 
-#[cfg(unix)]
-fn configure_process_group(command: &mut Command) {
-    use std::os::unix::process::CommandExt;
-    command.process_group(0);
-}
-
-#[cfg(windows)]
-fn configure_process_group(_: &mut Command) {}
-
-#[cfg(windows)]
-fn terminate_process_tree(process_id: u32) -> Result<(), String> {
-    let status = Command::new("taskkill")
-        .args(["/PID", &process_id.to_string(), "/T", "/F"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(text::pt_process_tree_termination_failed)?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(text::pt_process_tree_termination_exit_failed(status.code()))
-    }
-}
-
-#[cfg(unix)]
-fn terminate_process_tree(process_id: u32) -> Result<(), String> {
-    let status = Command::new("kill")
-        .args(["-KILL", &format!("-{process_id}")])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(text::pt_process_tree_termination_failed)?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(text::pt_process_tree_termination_exit_failed(status.code()))
-    }
-}
-
 fn offline_command(executable: &str) -> Command {
     let mut command = Command::new(executable);
     command
@@ -1233,6 +1196,7 @@ fn wait_for_child(child: &mut Child, timeout: Duration) -> Result<Option<ExitSta
             Ok(Some(status)) => return Ok(Some(status)),
             Ok(None) if started.elapsed() < timeout => thread::sleep(PROCESS_POLL_INTERVAL),
             Ok(None) => {
+                let _ = terminate_process_tree(child.id());
                 let _ = child.kill();
                 let _ = child.wait();
                 return Ok(None);

@@ -82,16 +82,16 @@
   - [x] host API 弃用策略文档（`docs/plugin-api-versioning.md`）：标记 deprecated → 提供替代 → 兼容期（≥2 个 host API 版本）→ 移除；新增字段必须可选且有默认值；禁止删除字段、改变既有语义、重排必需字段
   - 验收：`npm run typecheck` 通过；Vitest 覆盖三类样例——合法（含可选字段缺省归一化）、非法（缺必需字段/坏 id/数据型带 entry/代码型缺 entry/prelabel 缺 annotationTypes/权限重复/apiVersion 缺失或非法/能力级版本非法/schema 未知版本，断言 errors 含字段路径与错误码）、旧版本前向兼容（未知字段被忽略）；`docs/plugin-manifest.schema.json` 与 TS 类型字段名集合一致（单测对比）
 
-- [ ] **插件安装与注册流程（发现→静态校验→兼容性协商→授权→注册→启用）**
-  - [ ] 目标：用户从 zip 文件安装插件直至注册启用，贯穿注册状态机；Rust 端 `src-tauri/src/plugins/registry.rs`（状态机 + 注册表持久化）、`manifest.rs`（复用契约任务校验器）+ Tauri commands + 前端管理 UI
-  - [ ] `install_plugin(path: String)` 命令：任意后缀 zip 包 → 解压到 app data `plugins/<id>/`（zip crate；解压总大小上限 200MB、单文件 50MB、压缩比防护；条目路径规范化后必须以解压根为前缀防 `../` 穿越；拒绝符号链接条目）→ 读取包根 `manifest.json`（缺失即失败）→ 静态校验 → 同 id 已存在时按「更新」处理
-  - [ ] 兼容性协商：插件声明的目标版本（整体 `apiVersion.min` + 各业务能力 `capabilities.<name>.apiVersion.min`）vs 宿主支持的版本集合（当前实现 + 弃用期保留实现）；不匹配返回 `API_VERSION_UNSUPPORTED` 且给出可操作原因（如「需要 exporter v1，宿主已移除，请升级插件」）；runtime 可用性探测——entry 为 `python`/`python3`/`py` 或独立 exe，复用 `.pt` 转换的环境检测逻辑（`src-tauri/src/media/pt_conversion.rs` 抽象出共享探测函数）；探测失败返回可操作原因（如「未检测到 Python 3」）
-  - [ ] 授权：协商通过后向前端返回「权限清单 + 未验证作者警告」；`authorize_plugin(installToken, grants)` 用户逐项确认后才落盘注册；grant 与 manifest 声明不一致（多授/少授/未声明权限）校验失败；权限变更重新走确认流程
-  - [ ] 注册表持久化到 app data `plugin-registry.json`，每条含 `{ id, name, version, extensionKind, entry, capabilities, grants: [{permission, target}], state, failureCount, lastError, installedAt, updatedAt }`；`state ∈ enabled | disabled | auto-disabled | pending-migration`；注册表加载失败不阻断应用启动（记日志 + UI 提示异常）
-  - [ ] 状态机：`discovered → validated → negotiated → authorized → registered → enabled`；任一步失败回到未注册并清理解压目录；`disabled`/`auto-disabled` 状态不加载进程
-  - [ ] Tauri commands（全部经 `lib/tauri-api.ts` 封装，组件禁止直接 `invoke`）：`install_plugin` / `authorize_plugin` / `uninstall_plugin` / `list_plugins` / `set_plugin_enabled` / `get_plugin_status` / `clear_plugin_failures`；错误信息走 Rust i18n（`zh_cn.rs`）
-  - [ ] 管理 UI `src/components/settings/PluginSettings.tsx`：插件列表（名称/版本/扩展类型/状态徽标）、启用/禁用开关（`auto-disabled` 展示 `lastError` 与失败次数）、卸载（二次确认）、日志查看入口、安装按钮（文件选择 + 授权弹窗）；文案进 `src/i18n/plugin.zh-CN.ts`
-  - [ ] 更新语义：同 id 重装 = 更新，保留 `grants` 与项目内插件配置；`configVersion` 变化触发迁移流程（见配置任务）；卸载只删包目录与注册表项，项目内插件配置与标签快照保留
+- [x] **插件安装与注册流程（发现→静态校验→兼容性协商→授权→注册→启用）**
+  - [x] 目标：用户从 zip 文件安装插件直至注册启用，贯穿注册状态机；Rust 端 `src-tauri/src/plugins/registry.rs`（状态机 + 注册表持久化）、`manifest.rs`（复用契约任务校验器）+ Tauri commands + 前端管理 UI
+  - [x] `install_plugin(path: String)` 命令：任意后缀 zip 包 → 解压到 app data `plugins/<id>/`（zip crate；解压总大小上限 200MB、单文件 50MB、压缩比防护；条目路径规范化后必须以解压根为前缀防 `../` 穿越；拒绝符号链接条目）→ 读取包根 `manifest.json`（缺失即失败）→ 静态校验 → 同 id 已存在时按「更新」处理
+  - [x] 兼容性协商：插件声明的目标版本（整体 `apiVersion.min` + 各业务能力 `capabilities.<name>.apiVersion.min`）vs 宿主支持的版本集合（当前实现 + 弃用期保留实现）；不匹配返回 `API_VERSION_UNSUPPORTED` 且给出可操作原因（如「需要 exporter v1，宿主已移除，请升级插件」）；runtime 可用性探测——entry 为 `python`/`python3`/`py` 或独立 exe，复用 `.pt` 转换的环境检测逻辑（`src-tauri/src/media/pt_conversion.rs` 抽象出共享探测函数）；探测失败返回可操作原因（如「未检测到 Python 3」）
+  - [x] 授权：协商通过后向前端返回「权限清单 + 未验证作者警告」；`authorize_plugin(installToken, grants)` 用户逐项确认后才落盘注册；grant 与 manifest 声明不一致（多授/少授/未声明权限）校验失败；权限变更重新走确认流程
+  - [x] 注册表持久化到 app data `plugin-registry.json`，每条含 `{ id, name, version, extensionKind, entry, capabilities, grants: [{permission, target}], state, failureCount, lastError, installedAt, updatedAt }`；`state ∈ enabled | disabled | auto-disabled | pending-migration`；注册表加载失败不阻断应用启动（记日志 + UI 提示异常）
+  - [x] 状态机：`discovered → validated → negotiated → authorized → registered → enabled`；任一步失败回到未注册并清理解压目录；`disabled`/`auto-disabled` 状态不加载进程
+  - [x] Tauri commands（全部经 `lib/tauri-api.ts` 封装，组件禁止直接 `invoke`）：`install_plugin` / `authorize_plugin` / `uninstall_plugin` / `list_plugins` / `set_plugin_enabled` / `get_plugin_status` / `clear_plugin_failures`；错误信息走 Rust i18n（`zh_cn.rs`）
+  - [x] 管理 UI `src/components/settings/PluginSettings.tsx`：插件列表（名称/版本/扩展类型/状态徽标）、启用/禁用开关（`auto-disabled` 展示 `lastError` 与失败次数）、卸载（二次确认）、日志查看入口、安装按钮（文件选择 + 授权弹窗）；文案进 `src/i18n/plugin.zh-CN.ts`
+  - [x] 更新语义：同 id 重装 = 更新，保留 `grants` 与项目内插件配置；`configVersion` 变化触发迁移流程（见配置任务）；卸载只删包目录与注册表项，项目内插件配置与标签快照保留
   - 验收：正常安装（Python 示例）→ 授权 → 启用；取消授权不残留目录；损坏 zip / 缺 manifest / 非法 manifest / apiVersion 不兼容 / runtime 不可用五类失败各有可操作错误且可重复；卸载后项目文件与标注不受影响
 
 - [ ] **插件协议 v1：NDJSON 信封、能力协商、进度/取消/标准错误码**

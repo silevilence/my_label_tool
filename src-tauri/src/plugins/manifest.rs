@@ -83,7 +83,7 @@ impl PluginPermission {
         }
     }
 
-    fn manifest_value(&self) -> String {
+    pub fn manifest_value(&self) -> String {
         match self {
             Self::FsRead(target) => format!("fs.read:{target}"),
             Self::FsWrite(target) => format!("fs.write:{target}"),
@@ -758,7 +758,7 @@ fn parse_bounded_u32(
     }
 }
 
-fn is_valid_plugin_id(value: &str) -> bool {
+pub(crate) fn is_valid_plugin_id(value: &str) -> bool {
     let parts: Vec<_> = value.split('.').collect();
     parts.len() >= 2
         && parts.iter().all(|part| {
@@ -769,7 +769,7 @@ fn is_valid_plugin_id(value: &str) -> bool {
         })
 }
 
-fn is_valid_semver(value: &str) -> bool {
+pub(crate) fn is_valid_semver(value: &str) -> bool {
     let without_build = value.split_once('+').map_or(value, |(core, build)| {
         if build.is_empty() || !valid_semver_identifiers(build, false) {
             return "";
@@ -807,7 +807,7 @@ fn valid_numeric_identifier(value: &str) -> bool {
         && (value == "0" || !value.starts_with('0'))
 }
 
-fn is_safe_relative_path(value: &str) -> bool {
+pub(crate) fn is_safe_relative_path(value: &str) -> bool {
     let normalized = value.replace('\\', "/");
     !value.is_empty()
         && !has_windows_drive_prefix(value)
@@ -832,7 +832,7 @@ fn has_windows_drive_prefix(value: &str) -> bool {
     bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
-fn is_valid_permission_target(target: &str) -> bool {
+pub(crate) fn is_valid_permission_target(target: &str) -> bool {
     let normalized = target.replace('\\', "/");
     let mut segments = normalized.split('/');
     matches!(

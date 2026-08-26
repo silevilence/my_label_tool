@@ -1,4 +1,4 @@
-import { useRef, type MutableRefObject } from "react";
+import { useRef, useState, type MutableRefObject } from "react";
 import { ExportPanel } from "../settings/ExportPanel";
 import { LabelSettings } from "../settings/LabelSettings";
 import {
@@ -14,6 +14,8 @@ import type { ProjectConfig } from "../../lib/importers";
 import type { ImageFile } from "../../lib/tauri-api";
 import { isUserTemplate } from "../../lib/app-utils";
 import { PRELABEL_ZH_CN } from "../../i18n/prelabel.zh-CN";
+import { PLUGIN_ZH_CN } from "../../i18n/plugin.zh-CN";
+import { PluginSettings } from "../settings/PluginSettings";
 
 interface AppSidebarProps {
   activeProjectConfig: ProjectConfig | null;
@@ -115,6 +117,7 @@ export function AppSidebar({
   updateStatus,
 }: AppSidebarProps) {
   const menuRef = useRef<HTMLDetailsElement | null>(null);
+  const [isPluginSettingsOpen, setIsPluginSettingsOpen] = useState(false);
   const selectedImageIndex = images.findIndex((image) => image.path === selectedPath);
   const currentImageNumber = selectedImageIndex >= 0 ? selectedImageIndex + 1 : 0;
   const annotatedCount = images.filter(
@@ -211,6 +214,16 @@ export function AppSidebar({
                 }}
               >
                 设置
+              </button>
+              <button
+                className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
+                type="button"
+                onClick={() => {
+                  closeMenu();
+                  setIsPluginSettingsOpen(true);
+                }}
+              >
+                {PLUGIN_ZH_CN.menuLabel}
               </button>
               <button
                 className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
@@ -418,6 +431,9 @@ export function AppSidebar({
           )}
         </div>
       </section>
+      {isPluginSettingsOpen && (
+        <PluginSettings onClose={() => setIsPluginSettingsOpen(false)} />
+      )}
     </aside>
   );
 }

@@ -18,6 +18,12 @@ import type {
   PtConversionResult,
 } from "../types/prelabel";
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
+import type {
+  PluginInstallPreview,
+  PluginPermissionGrant,
+  PluginRegistryEntry,
+  PluginRegistrySnapshot,
+} from "../types/plugin";
 
 export interface ImageFile {
   path: string;
@@ -41,6 +47,11 @@ export interface AnnotationExport {
 
 export async function selectImageFolder(): Promise<string | null> {
   const path = await open({ directory: true, multiple: false });
+  return typeof path === "string" ? path : null;
+}
+
+export async function selectPluginPackage(): Promise<string | null> {
+  const path = await open({ directory: false, multiple: false });
   return typeof path === "string" ? path : null;
 }
 
@@ -221,4 +232,38 @@ export function runPrelabelInference(
   imagePaths: string[],
 ): Promise<PrelabelImageInference[]> {
   return invoke<PrelabelImageInference[]>("run_prelabel_inference", { model, imagePaths });
+}
+
+export function installPlugin(path: string): Promise<PluginInstallPreview> {
+  return invoke<PluginInstallPreview>("install_plugin", { path });
+}
+
+export function authorizePlugin(
+  installToken: string,
+  grants: PluginPermissionGrant[] | null,
+): Promise<PluginRegistryEntry | null> {
+  return invoke<PluginRegistryEntry | null>("authorize_plugin", { installToken, grants });
+}
+
+export function uninstallPlugin(pluginId: string): Promise<void> {
+  return invoke("uninstall_plugin", { pluginId });
+}
+
+export function listPlugins(): Promise<PluginRegistrySnapshot> {
+  return invoke<PluginRegistrySnapshot>("list_plugins");
+}
+
+export function setPluginEnabled(
+  pluginId: string,
+  enabled: boolean,
+): Promise<PluginRegistryEntry> {
+  return invoke<PluginRegistryEntry>("set_plugin_enabled", { pluginId, enabled });
+}
+
+export function getPluginStatus(pluginId: string): Promise<PluginRegistryEntry> {
+  return invoke<PluginRegistryEntry>("get_plugin_status", { pluginId });
+}
+
+export function clearPluginFailures(pluginId: string): Promise<PluginRegistryEntry> {
+  return invoke<PluginRegistryEntry>("clear_plugin_failures", { pluginId });
 }
