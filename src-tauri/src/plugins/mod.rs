@@ -1,4 +1,5 @@
 pub mod config;
+pub mod developer_tools;
 pub mod manifest;
 pub mod permissions;
 pub(crate) mod process_environment;

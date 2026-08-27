@@ -132,14 +132,14 @@
   - [x] 插件未声明 `configMigration` 能力时，宿主发现版本落后直接进入 `pending-migration`，不发起调用
   - 验收：三条路径——迁移成功（版本与内容正确写回并随项目保存）、迁移失败（项目正常打开、入口置灰、重试成功）、跨多版本链式迁移（v1→v2→v3 逐级调用且参数正确）；无 `pluginConfigs` 的旧项目加载行为不变
 
-- [ ] **插件 SDK 与开发者工具**
-  - [ ] 目标：让第三方开发者能独立产出合规插件；文档 + 示例 + 校验工具 + conformance 环境
-  - [ ] `docs/plugins.md`：用户侧（安装、授权、安全模式、故障排查）+ 开发者侧（manifest 编写、协议实现要点、错误码、打包、调试——stderr 日志查看与打印式排查）
-  - [ ] 示例插件两个：`examples/plugins/label-preset-demo`（纯数据：manifest + labels.json）与 `examples/plugins/prelabel-demo`（Python：manifest + main.py，实现 hello/预打标/进度/取消，仅用标准库）
-  - [ ] 校验器 CLI：`src-tauri/src/bin/plugin-validator.rs`（cargo 内置 bin）——输入插件 zip 或目录，输出 manifest 校验结果与权限清单预览，退出码区分通过/失败；离线可用
-  - [ ] 打包脚本 `scripts/package-plugin.mjs`（Node）：把 manifest + 资源打成 zip（后缀可指定），默认白名单 `manifest.json` + `plugin/` 目录，多余顶层文件报错，体积超限报错
-  - [ ] conformance 测试环境：`src-tauri/tests/plugin_conformance.rs` 集成测试——用测试桩进程（同仓库 Rust bin）跑完协议全部用例（消息格式、错误码、握手、进度、取消、16MiB 上限），桩进程代码即「独立 exe 示例」参考实现
-  - [ ] `docs/plugin-manifest.schema.json` 与 `docs/plugin-protocol.md` 由前序任务产出，本任务校验其与示例/工具一致
+- [x] **插件 SDK 与开发者工具**
+  - [x] 目标：让第三方开发者能独立产出合规插件；文档 + 示例 + 校验工具 + conformance 环境
+  - [x] `docs/plugins.md`：用户侧（安装、授权、安全模式、故障排查）+ 开发者侧（manifest 编写、协议实现要点、错误码、打包、调试——stderr 日志查看与打印式排查）
+  - [x] 示例插件两个：`examples/plugins/label-preset-demo`（纯数据：manifest + labels.json）与 `examples/plugins/prelabel-demo`（Python：manifest + main.py，实现 hello/预打标/进度/取消，仅用标准库）
+  - [x] 校验器 CLI：`src-tauri/src/bin/plugin-validator.rs`（cargo 内置 bin）——输入插件 zip 或目录，输出 manifest 校验结果与权限清单预览，退出码区分通过/失败；离线可用
+  - [x] 打包脚本 `scripts/package-plugin.mjs`（Node）：把 manifest + 资源打成 zip（后缀可指定），默认白名单 `manifest.json` + `plugin/` 目录，多余顶层文件报错，体积超限报错
+  - [x] conformance 测试环境：`src-tauri/tests/plugin_conformance.rs` 集成测试——用测试桩进程（同仓库 Rust bin）跑完协议全部用例（消息格式、错误码、握手、进度、取消、16MiB 上限），桩进程代码即「独立 exe 示例」参考实现
+  - [x] `docs/plugin-manifest.schema.json` 与 `docs/plugin-protocol.md` 由前序任务产出，本任务校验其与示例/工具一致
   - 验收：按 `docs/plugins.md` 从零做出示例插件，校验器 CLI 通过、打包脚本产出 zip、本地 conformance 自测通过
 
 - [ ] **实现预置标签插件支持（数据型，扩展类型 label-preset）**

@@ -1,0 +1,20 @@
+{
+  "id": "dev.mylabeltool.labelpresetdemo.general",
+  "name": "示例目标检测标签",
+  "labels": [
+    {
+      "id": "dev.mylabeltool.labelpresetdemo.person",
+      "name": "行人",
+      "color": "#38bdf8",
+      "shortcut": "1",
+      "shapeType": "rect"
+    },
+    {
+      "id": "dev.mylabeltool.labelpresetdemo.vehicle",
+      "name": "车辆",
+      "color": "#f97316",
+      "shortcut": "2",
+      "shapeType": "rect"
+    }
+  ]
+}

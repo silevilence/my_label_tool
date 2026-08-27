@@ -26,9 +26,9 @@ use std::sync::{
     Mutex, OnceLock,
 };
 
-const MAX_ARCHIVE_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
-const MAX_ARCHIVE_FILE_BYTES: u64 = 50 * 1024 * 1024;
-const MAX_COMPRESSION_RATIO: u64 = 1_000;
+pub(crate) const MAX_ARCHIVE_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
+pub(crate) const MAX_ARCHIVE_FILE_BYTES: u64 = 50 * 1024 * 1024;
+pub(crate) const MAX_COMPRESSION_RATIO: u64 = 1_000;
 static INSTALL_TOKEN_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static REGISTRY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 

@@ -338,6 +338,42 @@ pub fn plugin_archive_extract_failed(error: impl std::fmt::Display) -> String {
     format!("无法解压插件包：{error}")
 }
 
+pub fn plugin_validator_source_missing(path: &std::path::Path) -> String {
+    format!("插件校验来源不存在：{}", path.display())
+}
+
+pub const PLUGIN_VALIDATOR_USAGE: &str =
+    "用法：plugin-validator <插件目录或 zip>；退出码 0=通过，1=校验失败，2=调用错误";
+pub const PLUGIN_VALIDATOR_DUPLICATE_ENTRY: &str = "插件包包含重复路径条目";
+
+pub fn plugin_validator_read_failed(
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> String {
+    format!("读取插件校验来源 {} 失败：{error}", path.display())
+}
+
+pub fn plugin_validator_archive_failed(
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> String {
+    format!("读取插件压缩包 {} 失败：{error}", path.display())
+}
+
+pub fn plugin_validator_manifest_json_failed(
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> String {
+    format!(
+        "解析插件压缩包 {} 中的 manifest.json 失败：{error}",
+        path.display()
+    )
+}
+
+pub fn plugin_validator_unsafe_directory_entry(path: &std::path::Path) -> String {
+    format!("插件目录包含符号链接或不安全条目：{}", path.display())
+}
+
 pub fn plugin_manifest_invalid(reasons: &str) -> String {
     format!("插件清单校验失败：{reasons}")
 }
