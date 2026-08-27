@@ -30,7 +30,8 @@
 1. 在插件管理中查看注册状态、最近错误和 stderr 日志。stdout 专用于 NDJSON，任何
    调试打印都必须写入 stderr。
 2. `PARSE_ERROR` 通常表示 stdout 混入普通文本或 JSON 不完整；
-   `PROTOCOL_ERROR` 表示信封/字段/16 MiB 行限制不合规；
+   `PROTOCOL_ERROR` 表示信封/字段/行限制不合规（v1 基线 16 MiB，exporter 进程
+   因 50 MiB 文件响应使用能力限定的 72 MiB 上限）；
    `API_VERSION_UNSUPPORTED` 表示目标 API 不受宿主支持。
 3. `PERMISSION_DENIED` 时核对 manifest 声明与安装时解析后的实际目录。不要尝试通过
    `..`、符号链接或网络路径绕过授权。
@@ -89,6 +90,11 @@ code-plugin/
   插件 ID 命名空间内，标签 ID/快捷键必须唯一；完整结构见
   [plugin-label-preset.schema.json](plugin-label-preset.schema.json)。安装时宿主会同时执行
   Schema 等价的严格结构校验与命名空间、唯一性语义校验；文件上限为 1 MiB。
+- `exporter` 通过可选 `exporterOptions.formats` 静态声明格式。插件只返回相对路径和
+  UTF-8/Base64 内容，宿主在完整校验后写入用户选择目录；插件不会收到输出目录。
+  请求/响应、50 MiB 单文件限制、进度与取消语义见
+  [plugin-exporter.schema.json](plugin-exporter.schema.json) 和
+  [plugin-protocol.md](plugin-protocol.md#导出格式插件)。
 - 完整约束见 [plugin-manifest.schema.json](plugin-manifest.schema.json)，版本与兼容策略
   见 [plugin-api-versioning.md](plugin-api-versioning.md)。
 
@@ -99,7 +105,7 @@ code-plugin/
 发送同 id 的 `progress`/`log` 事件，最终只发送一个成功或错误响应。收到
 `{"type":"control","action":"cancel"}` 后停止对应调用，并以 `CANCELLED` 响应结束。
 
-单行上限 16,777,216 字节。stdout 不得输出 banner、traceback 或调试文本；使用
+单行上限 75,497,472 字节。stdout 不得输出 banner、traceback 或调试文本；使用
 stderr 打印，例如 Python 的 `print("debug", file=sys.stderr, flush=True)`。完整信封、
 配置迁移、文件代理和十个标准错误码见 [plugin-protocol.md](plugin-protocol.md)。
 
@@ -129,6 +135,7 @@ manifest id/SemVer，并在分配缓冲区前按文件统计单文件 50 MiB、�
 node scripts/package-plugin.mjs examples/plugins/prelabel-demo
 node scripts/package-plugin.mjs examples/plugins/prelabel-demo --extension .mlt-plugin
 node scripts/package-plugin.mjs examples/plugins/prelabel-demo --output target/prelabel.zip --force
+node scripts/package-plugin.mjs examples/plugins/exporter-labelme-demo
 ```
 
 已启用的标签预置会出现在“加载预置模板”列表，并显示“插件：插件名”来源。加载动作
@@ -144,7 +151,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-plugin-sdk.ps
 ```
 
 测试会启动同仓库的独立 Rust 桩进程，覆盖四类消息、握手、全部错误码、进度、取消和
-16 MiB 边界。开发时可先直接运行入口，逐行粘贴 `hello` 请求；保持 stdout 纯净，把
-接收参数、分支和异常打印到 stderr。仓库提供两个起点：
+16 MiB 基线边界（并验证 exporter 的 72 MiB 能力限定边界）。开发时可先直接运行入口，逐行粘贴 `hello` 请求；保持 stdout 纯净，把
+接收参数、分支和异常打印到 stderr。仓库提供以下起点：
 [label-preset-demo](../examples/plugins/label-preset-demo) 与
-[prelabel-demo](../examples/plugins/prelabel-demo)。
+[prelabel-demo](../examples/plugins/prelabel-demo)，以及可直接导出 LabelMe JSON、演示进度
+与取消的 [exporter-labelme-demo](../examples/plugins/exporter-labelme-demo)。

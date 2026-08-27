@@ -1,7 +1,7 @@
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
-import type { TextExportFile } from "../types/export";
+import type { ExportData, TextExportFile } from "../types/export";
 import type { ShortcutMap } from "./defaults/shortcuts";
 import type {
   ModelValidationReport,
@@ -20,6 +20,10 @@ import type {
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
 import type {
   PluginInstallPreview,
+  PluginExportFormatSnapshot,
+  PluginExportResult,
+  PluginExportEvent,
+  PluginExportCancellationResult,
   PluginLabelPresetSnapshot,
   PluginConfig,
   PluginConfigMigrationReport,
@@ -41,6 +45,8 @@ export interface TextFileEntry {
 }
 
 export interface AnnotationExportImage extends ImageFile {
+  width: number;
+  height: number;
   annotations: AnnotationShape[];
 }
 
@@ -264,6 +270,42 @@ export function listPlugins(): Promise<PluginRegistrySnapshot> {
 
 export function loadPluginLabelPresets(): Promise<PluginLabelPresetSnapshot> {
   return invoke<PluginLabelPresetSnapshot>("load_plugin_label_presets");
+}
+
+export function loadPluginExportFormats(): Promise<PluginExportFormatSnapshot> {
+  return invoke<PluginExportFormatSnapshot>("load_plugin_export_formats");
+}
+
+export function runPluginExport(
+  pluginId: string,
+  formatId: string,
+  exportData: ExportData,
+  options: Record<string, unknown>,
+  outputBaseName: string,
+  outputDir: string,
+  exportId: string,
+  onEvent: (event: PluginExportEvent) => void,
+): Promise<PluginExportResult> {
+  const eventChannel = new Channel<PluginExportEvent>();
+  eventChannel.onmessage = onEvent;
+  return invoke<PluginExportResult>("run_plugin_export", {
+    request: {
+      pluginId,
+      formatId,
+      exportData,
+      options,
+      outputBaseName,
+      outputDir,
+      exportId,
+    },
+    onEvent: eventChannel,
+  });
+}
+
+export function cancelPluginExport(
+  exportId: string,
+): Promise<PluginExportCancellationResult> {
+  return invoke<PluginExportCancellationResult>("cancel_plugin_export", { exportId });
 }
 
 export function setPluginEnabled(

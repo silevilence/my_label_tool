@@ -1,3 +1,4 @@
+import Ajv2020 from "ajv/dist/2020";
 import { describe, expect, it } from "vitest";
 import manifestSchema from "../../docs/plugin-manifest.schema.json";
 import { PLUGIN_MANIFEST_FIELDS, parsePluginManifest, type PluginManifest } from "./plugin";
@@ -13,6 +14,10 @@ const validPrelabelManifest = {
   entry: { command: "plugin/main.exe" },
   capabilities: { annotationTypes: ["rect"], batch: true },
 };
+const validateManifestSchema = new Ajv2020({
+  allErrors: true,
+  strict: false,
+}).compile(manifestSchema);
 
 describe("parsePluginManifest", () => {
   it.each([null, [], "manifest"])("rejects non-object manifest roots", (input) => {
@@ -158,6 +163,16 @@ describe("parsePluginManifest", () => {
         exporter: { apiVersion: { min: 3 } },
         prelabel: { apiVersion: { min: 4 } },
       },
+      exporterOptions: {
+        formats: [
+          {
+            id: "labelme",
+            displayName: "LabelMe JSON",
+            extensions: ["json"],
+            multiFile: true,
+          },
+        ],
+      },
       permissions: ["fs.read:%PROJECT%/images", "fs.write:%APP_DATA%\\exports"],
       configVersion: 7,
     });
@@ -167,7 +182,39 @@ describe("parsePluginManifest", () => {
     expect(result.value.entry?.args).toEqual(["--stdio"]);
     expect(result.value.capabilities.exporter.apiVersion.min).toBe(3);
     expect(result.value.configVersion).toBe(7);
+    expect(result.value.exporterOptions?.formats[0].id).toBe("labelme");
     expect(result.value.timeoutMs).toBe(30_000);
+  });
+
+  it.each([
+    ["non-exporter declaration", { ...validPrelabelManifest, exporterOptions: { formats: [] } }],
+    [
+      "duplicate format id",
+      {
+        ...validPrelabelManifest,
+        extensionKind: "exporter",
+        exporterOptions: {
+          formats: [
+            { id: "json", displayName: "A", extensions: ["json"], multiFile: false },
+            { id: "json", displayName: "B", extensions: ["json"], multiFile: false },
+          ],
+        },
+      },
+    ],
+    [
+      "dotted extension",
+      {
+        ...validPrelabelManifest,
+        extensionKind: "exporter",
+        exporterOptions: {
+          formats: [
+            { id: "json", displayName: "JSON", extensions: ["tar.gz"], multiFile: false },
+          ],
+        },
+      },
+    ],
+  ])("rejects invalid exporter options: %s", (_name, input) => {
+    expect(parsePluginManifest(input).ok).toBe(false);
   });
 
   it("reports required and primitive type errors without throwing", () => {
@@ -320,6 +367,25 @@ describe("parsePluginManifest", () => {
     );
   });
 
+  it("keeps exporter options JSON Schema semantics aligned with the parser", () => {
+    const exporter = {
+      ...validPrelabelManifest,
+      extensionKind: "exporter",
+      exporterOptions: {
+        formats: [
+          { id: "labelme", displayName: "LabelMe JSON", extensions: ["json"], multiFile: true },
+        ],
+      },
+    };
+    expect(validateManifestSchema(exporter)).toBe(true);
+    expect(
+      validateManifestSchema({
+        ...validPrelabelManifest,
+        exporterOptions: exporter.exporterOptions,
+      }),
+    ).toBe(false);
+  });
+
   it("keeps critical JSON Schema constraints aligned with parser semantics", () => {
     const versionPattern = new RegExp(manifestSchema.properties.version.pattern);
     const forbiddenEntryPattern = new RegExp(
@@ -345,5 +411,6 @@ describe("parsePluginManifest", () => {
     expect(manifestSchema.$defs.apiVersion.properties.min.maximum).toBe(4_294_967_295);
     expect(manifestSchema.properties.timeoutMs.default).toBe(30_000);
     expect(manifestSchema.properties.timeoutMs.maximum).toBe(300_000);
+    expect(manifestSchema.properties.exporterOptions.properties.formats.minItems).toBe(1);
   });
 });

@@ -36,6 +36,7 @@ import {
   loadLabelConfigs,
   loadLabelTemplates,
   loadPluginLabelPresets,
+  loadPluginExportFormats,
   type ImageFile,
 } from "./lib/tauri-api";
 import {
@@ -49,7 +50,7 @@ import type { ProjectConfig } from "./lib/importers";
 import type { PrelabelClassMapping } from "./types/prelabel";
 import { PRELABEL_ZH_CN as prelabelText } from "./i18n/prelabel.zh-CN";
 import { PLUGIN_ZH_CN as pluginText } from "./i18n/plugin.zh-CN";
-import type { PluginLabelPreset } from "./types/plugin";
+import type { PluginExportFormatDescriptor, PluginLabelPreset } from "./types/plugin";
 import { updateProjectPrelabelMappings } from "./lib/prelabel-mapping";
 import "./App.css";
 
@@ -81,6 +82,7 @@ function App() {
   );
   const pluginTemplateIdsRef = useRef<ReadonlySet<string>>(new Set());
   const pluginPresetsRef = useRef<PluginLabelPreset[]>([]);
+  const [pluginExportFormats, setPluginExportFormats] = useState<PluginExportFormatDescriptor[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState(DEFAULT_LABEL_TEMPLATES[0].id);
   const [projectTemplateId, setProjectTemplateId] = useState("");
   const [activeProjectConfigPath, setActiveProjectConfigPath] = useState("");
@@ -138,7 +140,17 @@ function App() {
     [annotationsByImage],
   );
   const refreshPluginLabelPresets = useCallback(async () => {
-    const snapshot = await loadPluginLabelPresets();
+    const [snapshot, exportSnapshot] = await Promise.all([
+      loadPluginLabelPresets(),
+      loadPluginExportFormats(),
+    ]);
+    setPluginExportFormats(exportSnapshot.formats);
+    if (
+      selectedExportFormatId.startsWith("plugin:") &&
+      !exportSnapshot.formats.some((format) => format.selectionId === selectedExportFormatId)
+    ) {
+      setSelectedExportFormatId("json");
+    }
     const previousPresets = pluginPresetsRef.current;
     const selectedPresetImpact = getSelectedPluginPresetRefreshImpact(
       previousPresets,
@@ -164,12 +176,13 @@ function App() {
     }
     const messages = [
       snapshot.warning,
+      exportSnapshot.warning,
       merged.collisions.length > 0
         ? pluginText.labelPresetCollision(merged.collisions)
         : null,
     ].filter((message): message is string => Boolean(message));
     if (messages.length > 0) setError(messages.join("；"));
-  }, [selectedTemplateId, templates]);
+  }, [selectedExportFormatId, selectedTemplateId, templates]);
   const currentLabel = labelById.get(currentLabelId) ?? labels[0];
   const { imageLoadError, isImageLoading, loadedImage, selectedImage } = useImageLoader(
     images,
@@ -251,10 +264,12 @@ function App() {
     showMessage(message);
   };
   const {
+    cancelActivePluginExport,
     createProjectFromExternalYolo,
     exportSelectedFormat,
     importAnnotations,
     maybeLoadProjectConfig,
+    pluginExportProgress,
     retryPluginConfigMigrations,
     saveProjectExport,
   } = useProjectActions({
@@ -266,6 +281,8 @@ function App() {
     images,
     labels,
     selectedExportFormatId,
+    pluginExportFormats,
+    refreshPluginExtensions: refreshPluginLabelPresets,
     applyProjectTemplate,
     clearProjectTemplate,
     replaceAnnotations,
@@ -407,8 +424,13 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([loadLabelConfigs(), loadLabelTemplates(), loadPluginLabelPresets()])
-      .then(([savedLabels, savedTemplates, pluginSnapshot]) => {
+    Promise.all([
+      loadLabelConfigs(),
+      loadLabelTemplates(),
+      loadPluginLabelPresets(),
+      loadPluginExportFormats(),
+    ])
+      .then(([savedLabels, savedTemplates, pluginSnapshot, exportSnapshot]) => {
         const baseTemplates = [
           ...DEFAULT_LABEL_TEMPLATES,
           ...savedTemplates.filter(
@@ -428,9 +450,11 @@ function App() {
           pluginTemplateIdsRef.current = merged.pluginTemplateIds;
           setPluginTemplateIds(merged.pluginTemplateIds);
           setPluginTemplateSources(merged.sourceByTemplateId);
+          setPluginExportFormats(exportSnapshot.formats);
           setTemplates(merged.templates);
           const messages = [
             pluginSnapshot.warning,
+            exportSnapshot.warning,
             merged.collisions.length > 0
               ? pluginText.labelPresetCollision(merged.collisions)
               : null,
@@ -619,6 +643,8 @@ function App() {
       transientMessage={transientMessage}
       shortcuts={shortcuts}
       templates={templates}
+      pluginExportFormats={pluginExportFormats}
+      pluginExportProgress={pluginExportProgress}
       pluginTemplateIds={pluginTemplateIds}
       pluginTemplateSources={pluginTemplateSources}
       transformerRef={transformerRef}
@@ -627,6 +653,7 @@ function App() {
       updateStatus={updateStatus}
       usedLabelIds={usedLabelIds}
       cancelLabelChanges={cancelLabelChanges}
+      cancelPluginExport={() => void cancelActivePluginExport()}
       changeAnnotationLabel={changeAnnotationLabel}
       checkForUpdates={() => void checkForUpdates()}
       clearCurrentImageAnnotations={clearCurrentImageAnnotations}

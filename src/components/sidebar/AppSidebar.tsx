@@ -16,6 +16,8 @@ import { isUserTemplate } from "../../lib/app-utils";
 import { PRELABEL_ZH_CN } from "../../i18n/prelabel.zh-CN";
 import { PLUGIN_ZH_CN } from "../../i18n/plugin.zh-CN";
 import { PluginSettings } from "../settings/PluginSettings";
+import type { PluginExportFormatDescriptor } from "../../types/plugin";
+import type { PluginExportProgressState } from "../../hooks/useProjectActions";
 
 interface AppSidebarProps {
   activeProjectConfig: ProjectConfig | null;
@@ -39,8 +41,11 @@ interface AppSidebarProps {
   templates: LabelTemplate[];
   pluginTemplateIds: ReadonlySet<string>;
   pluginTemplateSources: ReadonlyMap<string, string>;
+  pluginExportFormats: PluginExportFormatDescriptor[];
+  pluginExportProgress: PluginExportProgressState | null;
   usedLabelIds: Set<string>;
   cancelLabelChanges: () => void;
+  cancelPluginExport: () => void;
   checkForUpdates: () => void;
   clearCurrentImageAnnotations: () => void;
   createProjectFromExternalYolo: () => void;
@@ -93,8 +98,11 @@ export function AppSidebar({
   templates,
   pluginTemplateIds,
   pluginTemplateSources,
+  pluginExportFormats,
+  pluginExportProgress,
   usedLabelIds,
   cancelLabelChanges,
+  cancelPluginExport,
   checkForUpdates,
   clearCurrentImageAnnotations,
   createProjectFromExternalYolo,
@@ -282,7 +290,10 @@ export function AppSidebar({
         disabled={images.length === 0}
         isSaving={isSaving}
         selectedFormatId={selectedExportFormatId}
+        pluginFormats={pluginExportFormats}
+        pluginExportProgress={pluginExportProgress}
         onChangeCustomMappingText={setCustomMappingText}
+        onCancelPluginExport={cancelPluginExport}
         onChangeFormat={setSelectedExportFormatId}
         onExport={exportSelectedFormat}
         onSaveProject={saveProjectExport}

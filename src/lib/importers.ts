@@ -6,7 +6,7 @@ import type {
   LabelConfig,
   LabelShapeType,
 } from "../types/annotation";
-import type { ExportFormatId } from "../types/export";
+import type { BuiltInExportFormatId } from "../types/export";
 import type { PrelabelClassMapping, PrelabelMappingsByModel } from "../types/prelabel";
 import {
   MAX_PLUGIN_CONTRACT_VERSION,
@@ -20,7 +20,7 @@ export const PROJECT_CONFIG_NAME = "my-label-tool.project.json";
 export const PROJECT_TEMPLATE_ID = "project-config";
 export const PROJECT_TEMPLATE_NAME = "项目临时配置";
 
-export type ImportFormatId = Exclude<ExportFormatId, "custom">;
+export type ImportFormatId = Exclude<BuiltInExportFormatId, "custom">;
 
 export interface ProjectConfig {
   schemaVersion: 1;
@@ -34,7 +34,7 @@ export interface ProjectConfig {
     name: string;
   };
   exportOptions: {
-    format: ExportFormatId;
+    format: BuiltInExportFormatId;
   };
   prelabelMappings?: PrelabelMappingsByModel;
   pluginConfigs?: PluginConfig[];
@@ -674,7 +674,7 @@ function isImportFormat(value: unknown): value is ImportFormatId {
   return value === "json" || value === "coco" || value === "voc" || value === "yolo";
 }
 
-function isExportFormat(value: unknown): value is ExportFormatId {
+function isExportFormat(value: unknown): value is BuiltInExportFormatId {
   return isImportFormat(value) || value === "custom";
 }
 

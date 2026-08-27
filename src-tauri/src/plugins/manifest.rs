@@ -1,3 +1,6 @@
+// Manifest parsing, normalization, shared path predicates, and their contract
+// tests stay in one authoritative module; splitting these coupled validators
+// would risk frontend/Rust/Schema drift at the public plugin boundary.
 use crate::i18n::zh_cn as text;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
@@ -19,6 +22,21 @@ pub struct PluginApiVersionTarget {
 pub struct PluginEntry {
     pub command: String,
     pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginExporterFormat {
+    pub id: String,
+    pub display_name: String,
+    pub extensions: Vec<String>,
+    pub multi_file: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginExporterOptions {
+    pub formats: Vec<PluginExporterFormat>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -177,6 +195,8 @@ pub struct PluginManifest {
     pub runtime: Option<PluginRuntime>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entry: Option<PluginEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exporter_options: Option<PluginExporterOptions>,
     pub capabilities: PluginCapabilities,
     pub permissions: Vec<PluginPermission>,
     pub config_version: u32,
@@ -231,6 +251,11 @@ pub fn parse_plugin_manifest(input: &Value) -> ManifestValidationResult {
     let extension_kind = parse_extension_kind(object.get("extensionKind"), &mut errors);
     let runtime = parse_runtime(object.get("runtime"), extension_kind.as_ref(), &mut errors);
     let entry = parse_entry(object.get("entry"), extension_kind.as_ref(), &mut errors);
+    let exporter_options = parse_exporter_options(
+        object.get("exporterOptions"),
+        extension_kind.as_ref(),
+        &mut errors,
+    );
     let capabilities = parse_capabilities(
         object.get("capabilities"),
         extension_kind.as_ref(),
@@ -268,6 +293,7 @@ pub fn parse_plugin_manifest(input: &Value) -> ManifestValidationResult {
             extension_kind: extension_kind.unwrap_or(PluginExtensionKind::LabelPreset),
             runtime,
             entry,
+            exporter_options,
             capabilities,
             permissions,
             config_version,
@@ -275,6 +301,127 @@ pub fn parse_plugin_manifest(input: &Value) -> ManifestValidationResult {
         }),
         errors,
     }
+}
+
+fn parse_exporter_options(
+    value: Option<&Value>,
+    extension_kind: Option<&PluginExtensionKind>,
+    errors: &mut Vec<ManifestValidationError>,
+) -> Option<PluginExporterOptions> {
+    let value = value?;
+    if extension_kind != Some(&PluginExtensionKind::Exporter) {
+        push_error(
+            errors,
+            "exporterOptions",
+            "FORBIDDEN",
+            text::PLUGIN_EXPORTER_OPTIONS_FORBIDDEN,
+        );
+        return None;
+    }
+    let Some(formats) = value.get("formats").and_then(Value::as_array) else {
+        push_error(
+            errors,
+            "exporterOptions.formats",
+            "INVALID_VALUE",
+            text::PLUGIN_EXPORTER_FORMATS_REQUIRED,
+        );
+        return None;
+    };
+    if formats.is_empty() {
+        push_error(
+            errors,
+            "exporterOptions.formats",
+            "INVALID_VALUE",
+            text::PLUGIN_EXPORTER_FORMATS_REQUIRED,
+        );
+        return None;
+    }
+    let mut result = Vec::new();
+    let mut seen = HashSet::new();
+    for (index, item) in formats.iter().enumerate() {
+        let field = format!("exporterOptions.formats[{index}]");
+        let Some(object) = item.as_object() else {
+            push_error(
+                errors,
+                &field,
+                "INVALID_TYPE",
+                text::PLUGIN_EXPORTER_FORMAT_INVALID,
+            );
+            continue;
+        };
+        let id = parse_required_string(object.get("id"), &format!("{field}.id"), errors);
+        let display_name = parse_required_string(
+            object.get("displayName"),
+            &format!("{field}.displayName"),
+            errors,
+        );
+        let extensions = parse_string_array(
+            object.get("extensions"),
+            &format!("{field}.extensions"),
+            errors,
+        );
+        let multi_file = match object.get("multiFile") {
+            Some(Value::Bool(value)) => Some(*value),
+            _ => {
+                push_error(
+                    errors,
+                    &format!("{field}.multiFile"),
+                    "INVALID_TYPE",
+                    &text::plugin_field_must_be_boolean(&format!("{field}.multiFile")),
+                );
+                None
+            }
+        };
+        if id
+            .as_ref()
+            .is_some_and(|id| !is_valid_export_format_id(id) || !seen.insert(id.clone()))
+        {
+            push_error(
+                errors,
+                &format!("{field}.id"),
+                "INVALID_FORMAT",
+                text::PLUGIN_EXPORTER_FORMAT_ID_INVALID,
+            );
+        }
+        let valid_extensions = !extensions.is_empty()
+            && extensions
+                .iter()
+                .all(|extension| is_valid_export_extension(extension))
+            && extensions.iter().collect::<HashSet<_>>().len() == extensions.len();
+        if !valid_extensions {
+            push_error(
+                errors,
+                &format!("{field}.extensions"),
+                "INVALID_FORMAT",
+                text::PLUGIN_EXPORTER_EXTENSIONS_INVALID,
+            );
+        }
+        if let (Some(id), Some(display_name), Some(multi_file)) = (id, display_name, multi_file) {
+            result.push(PluginExporterFormat {
+                id,
+                display_name,
+                extensions,
+                multi_file,
+            });
+        }
+    }
+    (!result.is_empty()).then_some(PluginExporterOptions { formats: result })
+}
+
+pub(crate) fn is_valid_export_format_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
+        })
+        && value.as_bytes()[0].is_ascii_alphanumeric()
+}
+
+pub(crate) fn is_valid_export_extension(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
+        })
+        && value.as_bytes()[0].is_ascii_alphanumeric()
 }
 
 fn parse_schema_version(

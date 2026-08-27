@@ -150,13 +150,13 @@
   - [x] 文案进 i18n
   - 验收：安装 → 加载模板 → 画布可用新标签 → 卸载插件 → 项目标注与导出不受影响；重启后插件模板列表恢复
 
-- [ ] **实现导出格式插件支持（代码型，扩展类型 exporter）**
-  - [ ] 目标：把导出格式扩展为外部进程插件；复用协议/运行时/权限层，宿主负责写盘
-  - [ ] manifest 扩展：`exporterOptions?: { formats: { id, displayName, extensions: string[], multiFile: boolean }[] }`（v1 固定走 manifest 声明，不做动态格式声明）
-  - [ ] 协议方法 `exporter.export`：params `{ formatId, exportData: AnnotationExport, options: Record<string, unknown>, outputBaseName }`（AnnotationExport 为现有内部导出结构；图片路径以相对项目路径传）；响应 `{ files: [{ relativePath, contentUtf8? | contentBase64? }] }`（单文件上限 50MB）；宿主校验 relativePath 安全（无绝对路径/`..`/空）后写盘到用户选择目录
-  - [ ] 导出面板：格式列表加入已启用插件格式（分组「插件格式」并标注插件名）；插件失败/超时/禁用/`pending-migration` 时入口置灰并显示原因；导出完成提示与现有导出一致
-  - [ ] 进度/取消：插件声明 `progress` 时进度事件驱动现有进度条；声明 `cancel` 时导出中可取消（control cancel + 宽限期杀进程，返回 `CANCELLED`）
-  - [ ] 内置 COCO/VOC/YOLO/custom 格式不变，插件格式只增不减
+- [x] **实现导出格式插件支持（代码型，扩展类型 exporter）**
+  - [x] 目标：把导出格式扩展为外部进程插件；复用协议/运行时/权限层，宿主负责写盘
+  - [x] manifest 扩展：`exporterOptions?: { formats: { id, displayName, extensions: string[], multiFile: boolean }[] }`（v1 固定走 manifest 声明，不做动态格式声明）
+  - [x] 协议方法 `exporter.export`：params `{ formatId, exportData: AnnotationExport, options: Record<string, unknown>, outputBaseName }`（AnnotationExport 为现有内部导出结构；图片路径以相对项目路径传）；响应 `{ files: [{ relativePath, contentUtf8? | contentBase64? }] }`（单文件上限 50MB）；宿主校验 relativePath 安全（无绝对路径/`..`/空）后写盘到用户选择目录
+  - [x] 导出面板：格式列表加入已启用插件格式（分组「插件格式」并标注插件名）；插件失败/超时/禁用/`pending-migration` 时入口置灰并显示原因；导出完成提示与现有导出一致
+  - [x] 进度/取消：插件声明 `progress` 时进度事件驱动现有进度条；声明 `cancel` 时导出中可取消（control cancel + 宽限期杀进程，返回 `CANCELLED`）
+  - [x] 内置 COCO/VOC/YOLO/custom 格式不变，插件格式只增不减
   - 验收：示例导出插件（LabelMe JSON，Python 实现）走通「选图目录 → 选格式 → 导出」完整流程且产物可被外部工具解析；插件返回 `../evil.txt` 等越权路径被宿主拒绝且不写盘；导出中取消无残留进程
 
 - [ ] **实现外部预打标程序插件支持（代码型，扩展类型 prelabel）**

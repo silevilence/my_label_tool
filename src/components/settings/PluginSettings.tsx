@@ -193,6 +193,7 @@ export function PluginSettings({
     try {
       const settings = await setPluginSafeMode(!safeMode);
       setSafeMode(settings.safeMode);
+      await onPluginsChanged();
     } catch (reason) {
       setError(formatError(reason));
     } finally {

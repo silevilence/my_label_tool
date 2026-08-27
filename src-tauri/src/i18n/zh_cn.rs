@@ -285,6 +285,29 @@ pub const PLUGIN_PROXY_IO_FAILED: &str = "插件文件代理读写失败";
 pub const PLUGIN_PROXY_BUDGET_EXCEEDED: &str = "单次插件调用的文件代理请求已超过数量或数据预算";
 pub const PLUGIN_PROXY_WORKER_UNAVAILABLE: &str = "插件文件代理工作线程暂时不可用";
 pub const PLUGIN_COMMAND_ARGUMENT_MUST_BE_STRING: &str = "命令参数必须是字符串";
+pub const PLUGIN_EXPORTER_OPTIONS_FORBIDDEN: &str = "只有 exporter 扩展可以声明 exporterOptions";
+pub const PLUGIN_EXPORTER_FORMATS_REQUIRED: &str = "exporterOptions.formats 必须是非空数组";
+pub const PLUGIN_EXPORTER_FORMAT_INVALID: &str = "导出格式声明必须是对象";
+pub const PLUGIN_EXPORTER_FORMAT_ID_INVALID: &str =
+    "导出格式 ID 必须唯一且只含小写字母、数字、点、下划线或连字符";
+pub const PLUGIN_EXPORTER_EXTENSIONS_INVALID: &str = "导出扩展名必须唯一、非空且不带点号";
+pub const PLUGIN_EXPORT_FORMAT_NOT_FOUND: &str = "插件未声明该导出格式";
+pub const PLUGIN_EXPORT_ARGUMENT_INVALID: &str = "插件导出参数或输出目录无效";
+pub const PLUGIN_EXPORT_RESULT_INVALID: &str = "插件导出结果结构无效";
+pub const PLUGIN_EXPORT_PATH_INVALID: &str = "插件返回了不安全或重复的相对路径";
+pub const PLUGIN_EXPORT_EXTENSION_INVALID: &str = "插件返回文件的扩展名不在 manifest 声明中";
+pub const PLUGIN_EXPORT_TOO_LARGE: &str = "插件导出文件超过大小或总量上限";
+pub const PLUGIN_EXPORT_ALREADY_RUNNING: &str = "同一导出任务 ID 已在运行";
+pub const PLUGIN_EXPORT_SUCCESS_PERSIST_CONTEXT: &str = "导出结果校验成功";
+pub const PLUGIN_EXPORT_STAGING_FAILED: &str = "无法创建安全的导出暂存目录";
+
+pub fn plugin_export_write_failed(error: impl std::fmt::Display) -> String {
+    format!("写入插件导出文件失败：{error}")
+}
+
+pub fn plugin_export_task_failed(error: impl std::fmt::Display) -> String {
+    format!("插件导出任务异常结束：{error}")
+}
 
 pub fn plugin_required_field(field: &str) -> String {
     format!("缺少{field}")
@@ -447,6 +470,7 @@ pub const PLUGIN_RUNTIME_AUTO_DISABLED: &str = "插件连续失败，已自动�
 pub const PLUGIN_RUNTIME_ENTRY_MISSING: &str = "插件缺少进程入口";
 pub const PLUGIN_RUNTIME_RESPONSE_INVALID: &str = "插件返回了不匹配的协议消息";
 pub const PLUGIN_RUNTIME_TIMEOUT: &str = "插件调用超时，进程树已终止";
+pub const PLUGIN_RUNTIME_CANCELLED: &str = "插件调用已取消，进程树已终止";
 pub const PLUGIN_RUNTIME_EXITED: &str = "插件进程在返回结果前退出";
 pub const PLUGIN_RUNTIME_STDIO_MISSING: &str = "无法建立插件进程标准输入输出管道";
 pub const PLUGIN_SETTINGS_LOCK_POISONED: &str = "插件运行设置暂时不可用";

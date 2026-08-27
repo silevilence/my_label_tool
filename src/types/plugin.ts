@@ -178,6 +178,7 @@ export const PLUGIN_MANIFEST_FIELDS = [
   "extensionKind",
   "runtime",
   "entry",
+  "exporterOptions",
   "capabilities",
   "permissions",
   "configVersion",
@@ -200,6 +201,17 @@ export interface PluginApiVersionTarget {
 export interface PluginEntry {
   command: string;
   args: string[];
+}
+
+export interface PluginExporterFormat {
+  id: string;
+  displayName: string;
+  extensions: string[];
+  multiFile: boolean;
+}
+
+export interface PluginExporterOptions {
+  formats: PluginExporterFormat[];
 }
 
 export interface PluginCapabilityVersion {
@@ -230,6 +242,7 @@ export interface PluginManifest {
   extensionKind: PluginExtensionKind;
   runtime?: PluginRuntime;
   entry?: PluginEntry;
+  exporterOptions?: PluginExporterOptions;
   capabilities: PluginCapabilities;
   permissions: PluginPermission[];
   configVersion: number;
@@ -249,6 +262,7 @@ export interface PluginRegistryEntry {
   version: string;
   extensionKind: PluginExtensionKind;
   entry: PluginEntry | null;
+  exporterOptions?: PluginExporterOptions;
   capabilities: PluginCapabilities;
   grants: PluginPermissionGrant[];
   state: PluginState;
@@ -274,6 +288,36 @@ export interface PluginLabelPreset {
 export interface PluginLabelPresetSnapshot {
   presets: PluginLabelPreset[];
   warning: string | null;
+}
+
+export interface PluginExportFormatDescriptor {
+  selectionId: `plugin:${string}:${string}`;
+  pluginId: string;
+  pluginName: string;
+  format: PluginExporterFormat;
+  enabled: boolean;
+  disabledReason: string | null;
+  supportsProgress: boolean;
+  supportsCancel: boolean;
+}
+
+export interface PluginExportFormatSnapshot {
+  formats: PluginExportFormatDescriptor[];
+  warning: string | null;
+}
+
+export interface PluginExportResult {
+  files: string[];
+}
+
+export interface PluginExportEvent {
+  event: "progress" | "log";
+  payload: { percent?: number; message?: string; [key: string]: unknown };
+}
+
+export interface PluginExportCancellationResult {
+  exportId: string;
+  found: boolean;
 }
 
 /** Project-scoped plugin config. The host persists `config` without interpreting it. */
@@ -351,6 +395,8 @@ const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 const EXTENSION_KINDS: PluginExtensionKind[] = ["label-preset", "exporter", "prelabel"];
 const ANNOTATION_TYPES: AnnotationShapeType[] = ["rect", "polygon", "point"];
+const EXPORT_FORMAT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+const EXPORT_EXTENSION_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 export function parsePluginManifest(input: unknown): PluginManifestParseResult {
   const errors: PluginManifestError[] = [];
@@ -372,6 +418,7 @@ export function parsePluginManifest(input: unknown): PluginManifestParseResult {
   const extensionKind = parseExtensionKind(input.extensionKind, errors);
   const runtime = parseRuntime(input.runtime, extensionKind, errors);
   const entry = parseEntry(input.entry, extensionKind, errors);
+  const exporterOptions = parseExporterOptions(input.exporterOptions, extensionKind, errors);
   const capabilities = parseCapabilities(input.capabilities, extensionKind, apiVersion, errors);
   const permissions = parsePermissions(input.permissions, errors);
   const configVersion = parseBoundedInteger(
@@ -402,12 +449,68 @@ export function parsePluginManifest(input: unknown): PluginManifestParseResult {
       extensionKind: extensionKind as PluginExtensionKind,
       ...(runtime ? { runtime } : {}),
       ...(entry ? { entry } : {}),
+      ...(exporterOptions ? { exporterOptions } : {}),
       capabilities,
       permissions,
       configVersion,
       timeoutMs,
     },
   };
+}
+
+function parseExporterOptions(
+  value: unknown,
+  extensionKind: PluginExtensionKind | undefined,
+  errors: PluginManifestError[],
+): PluginExporterOptions | undefined {
+  if (value === undefined) return undefined;
+  if (extensionKind !== "exporter") {
+    addError(errors, "exporterOptions", "FORBIDDEN", text.exporterOptionsForbidden);
+    return undefined;
+  }
+  if (!isRecord(value) || !Array.isArray(value.formats) || value.formats.length === 0) {
+    addError(errors, "exporterOptions.formats", "INVALID_VALUE", text.exporterFormatsRequired);
+    return undefined;
+  }
+  const seen = new Set<string>();
+  const formats = value.formats.flatMap((item, index): PluginExporterFormat[] => {
+    const field = `exporterOptions.formats[${index}]`;
+    if (!isRecord(item)) {
+      addError(errors, field, "INVALID_TYPE", text.exporterFormatInvalid);
+      return [];
+    }
+    const id = parseNonEmptyString(item.id, `${field}.id`, errors);
+    const displayName = parseNonEmptyString(item.displayName, `${field}.displayName`, errors);
+    const extensions = parseStringArray(item.extensions, `${field}.extensions`, [], errors);
+    const multiFile = parseRequiredBoolean(item.multiFile, `${field}.multiFile`, errors);
+    if (id && (!EXPORT_FORMAT_ID_PATTERN.test(id) || seen.has(id))) {
+      addError(errors, `${field}.id`, "INVALID_FORMAT", text.exporterFormatIdInvalid);
+    }
+    if (id) seen.add(id);
+    if (
+      extensions.length === 0 ||
+      new Set(extensions).size !== extensions.length ||
+      extensions.some((extension) => !EXPORT_EXTENSION_PATTERN.test(extension))
+    ) {
+      addError(errors, `${field}.extensions`, "INVALID_FORMAT", text.exporterExtensionsInvalid);
+    }
+    return id && displayName && multiFile !== undefined
+      ? [{ id, displayName, extensions, multiFile }]
+      : [];
+  });
+  return formats.length > 0 ? { formats } : undefined;
+}
+
+function parseRequiredBoolean(
+  value: unknown,
+  field: string,
+  errors: PluginManifestError[],
+): boolean | undefined {
+  if (typeof value !== "boolean") {
+    addError(errors, field, value === undefined ? "REQUIRED" : "INVALID_TYPE", text.fieldMustBeBoolean(field));
+    return undefined;
+  }
+  return value;
 }
 
 export function isValidPluginId(value: string): boolean {

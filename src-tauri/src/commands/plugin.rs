@@ -6,6 +6,11 @@ use crate::i18n::zh_cn as text;
 use crate::plugins::config::{
     migrate_plugin_configs as migrate_configs, PluginConfig, PluginConfigMigrationReport,
 };
+use crate::plugins::exporter::{
+    cancel_plugin_export as cancel_export, load_plugin_export_formats as load_export_formats,
+    run_plugin_export as run_export, PluginExportCancellationResult, PluginExportFormatSnapshot,
+    PluginExportRequest, PluginExportResult,
+};
 use crate::plugins::label_preset::{
     load_plugin_label_presets as load_presets, PluginLabelPresetSnapshot,
 };
@@ -20,6 +25,7 @@ use crate::plugins::runtime::{
     save_plugin_runtime_settings, shutdown_all_plugin_processes, stop_plugin_process,
     PluginRuntimeSettings,
 };
+use tauri::ipc::Channel;
 
 #[tauri::command]
 pub fn install_plugin(
@@ -73,6 +79,35 @@ pub fn load_plugin_label_presets(
     app: tauri::AppHandle,
 ) -> Result<PluginLabelPresetSnapshot, String> {
     Ok(load_presets(&plugin_app_data_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn load_plugin_export_formats(
+    app: tauri::AppHandle,
+) -> Result<PluginExportFormatSnapshot, String> {
+    Ok(load_export_formats(&plugin_app_data_dir(&app)?))
+}
+
+#[tauri::command]
+pub async fn run_plugin_export(
+    app: tauri::AppHandle,
+    request: PluginExportRequest,
+    on_event: Channel<serde_json::Value>,
+) -> Result<PluginExportResult, String> {
+    let app_data_dir = plugin_app_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        run_export(&app_data_dir, request, move |event| {
+            let _ = on_event.send(event);
+        })
+        .map_err(runtime_command_error)
+    })
+    .await
+    .map_err(text::plugin_export_task_failed)?
+}
+
+#[tauri::command]
+pub fn cancel_plugin_export(export_id: String) -> Result<PluginExportCancellationResult, String> {
+    Ok(cancel_export(&export_id))
 }
 
 #[tauri::command]

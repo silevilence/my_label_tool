@@ -40,6 +40,8 @@ import { isEditableTarget } from "../lib/app-utils";
 import type { PrelabelExecutionControls } from "../hooks/usePrelabelExecution";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
 import type { PrelabelClassMapping } from "../types/prelabel";
+import type { PluginExportFormatDescriptor } from "../types/plugin";
+import type { PluginExportProgressState } from "../hooks/useProjectActions";
 
 const ShortcutSettings = lazy(async () => {
   const settings = await import("./settings/ShortcutSettings");
@@ -109,12 +111,15 @@ interface AppLayoutProps {
   templates: LabelTemplate[];
   pluginTemplateIds: ReadonlySet<string>;
   pluginTemplateSources: ReadonlyMap<string, string>;
+  pluginExportFormats: PluginExportFormatDescriptor[];
+  pluginExportProgress: PluginExportProgressState | null;
   transformerRef: MutableRefObject<KonvaTransformer | null>;
   updateMessage: string;
   updateProgress: AppUpdateProgress | null;
   updateStatus: AppUpdateStatus;
   usedLabelIds: Set<string>;
   cancelLabelChanges: () => void;
+  cancelPluginExport: () => void;
   changeAnnotationLabel: (annotationId: string, labelId: string) => void;
   checkForUpdates: () => void;
   clearCurrentImageAnnotations: () => void;
@@ -233,12 +238,15 @@ export function AppLayout({
   templates,
   pluginTemplateIds,
   pluginTemplateSources,
+  pluginExportFormats,
+  pluginExportProgress,
   transformerRef,
   updateMessage,
   updateProgress,
   updateStatus,
   usedLabelIds,
   cancelLabelChanges,
+  cancelPluginExport,
   changeAnnotationLabel,
   checkForUpdates,
   clearCurrentImageAnnotations,
@@ -403,8 +411,11 @@ export function AppLayout({
         templates={templates}
         pluginTemplateIds={pluginTemplateIds}
         pluginTemplateSources={pluginTemplateSources}
+        pluginExportFormats={pluginExportFormats}
+        pluginExportProgress={pluginExportProgress}
         usedLabelIds={usedLabelIds}
         cancelLabelChanges={cancelLabelChanges}
+        cancelPluginExport={cancelPluginExport}
         checkForUpdates={checkForUpdates}
         clearCurrentImageAnnotations={clearCurrentImageAnnotations}
         createProjectFromExternalYolo={createProjectFromExternalYolo}

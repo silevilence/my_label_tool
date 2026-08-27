@@ -11,7 +11,15 @@ fn normalizes_valid_code_plugin_manifest() {
         "apiVersion": { "min": 1 },
         "extensionKind": "exporter",
         "runtime": "process",
-        "entry": { "command": "plugin/main.exe" }
+        "entry": { "command": "plugin/main.exe" },
+        "exporterOptions": {
+            "formats": [{
+                "id": "labelme",
+                "displayName": "LabelMe JSON",
+                "extensions": ["json"],
+                "multiFile": true
+            }]
+        }
     }));
 
     assert!(result.ok);
@@ -21,6 +29,48 @@ fn normalizes_valid_code_plugin_manifest() {
     assert_eq!(manifest.config_version, 0);
     assert_eq!(manifest.timeout_ms, DEFAULT_PLUGIN_TIMEOUT_MS);
     assert_eq!(manifest.capabilities.exporter.api_version.min, 1);
+    assert_eq!(
+        manifest.exporter_options.expect("exporter options").formats[0].id,
+        "labelme"
+    );
+}
+
+#[test]
+fn rejects_invalid_or_misplaced_exporter_options() {
+    let cases = [
+        json!({
+            "extensionKind": "prelabel",
+            "exporterOptions": { "formats": [] }
+        }),
+        json!({
+            "exporterOptions": { "formats": [
+                { "id": "json", "displayName": "A", "extensions": ["json"], "multiFile": false },
+                { "id": "json", "displayName": "B", "extensions": ["json"], "multiFile": false }
+            ] }
+        }),
+        json!({
+            "exporterOptions": { "formats": [
+                { "id": "json", "displayName": "JSON", "extensions": ["tar.gz"], "multiFile": false }
+            ] }
+        }),
+    ];
+    for overrides in cases {
+        let mut input = json!({
+            "schemaVersion": 1,
+            "id": "dev.acme.exporter",
+            "name": "导出器",
+            "version": "1.0.0",
+            "apiVersion": { "min": 1 },
+            "extensionKind": "exporter",
+            "runtime": "process",
+            "entry": { "command": "plugin/main.exe" }
+        });
+        input
+            .as_object_mut()
+            .expect("manifest")
+            .extend(overrides.as_object().expect("overrides").clone());
+        assert!(!parse_plugin_manifest(&input).ok);
+    }
 }
 
 #[test]

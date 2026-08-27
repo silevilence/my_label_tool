@@ -635,7 +635,7 @@ fn ensure_opened_path_allowed(
 }
 
 #[cfg(windows)]
-fn opened_file_path(file: &fs::File) -> std::io::Result<PathBuf> {
+pub(crate) fn opened_file_path(file: &fs::File) -> std::io::Result<PathBuf> {
     use std::{ffi::OsString, os::windows::ffi::OsStringExt, os::windows::io::AsRawHandle};
     use windows::Win32::{
         Foundation::HANDLE,
@@ -667,7 +667,7 @@ fn opened_file_path(file: &fs::File) -> std::io::Result<PathBuf> {
 }
 
 #[cfg(unix)]
-fn opened_file_path(file: &fs::File) -> std::io::Result<PathBuf> {
+pub(crate) fn opened_file_path(file: &fs::File) -> std::io::Result<PathBuf> {
     use std::os::fd::AsRawFd;
 
     let descriptor = file.as_raw_fd();
@@ -836,7 +836,7 @@ fn normalize_absolute(path: &Path) -> Result<PathBuf, PermissionError> {
     Ok(normalized)
 }
 
-fn normalize_for_comparison(path: &Path) -> Result<PathBuf, PermissionError> {
+pub(crate) fn normalize_for_comparison(path: &Path) -> Result<PathBuf, PermissionError> {
     let normalized = normalize_absolute(path)?;
     #[cfg(windows)]
     {

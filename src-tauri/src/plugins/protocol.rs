@@ -9,6 +9,9 @@ use super::versioning::{
 };
 
 pub const MAX_NDJSON_LINE_BYTES: usize = 16 * 1024 * 1024;
+// Exporter processes have a capability-scoped transport allowance so one
+// 50 MiB file still fits after Base64 encoding without weakening the v1 baseline.
+pub const MAX_EXPORTER_NDJSON_LINE_BYTES: usize = 72 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProtocolErrorCode {
@@ -161,18 +164,37 @@ pub enum PluginMessage {
 }
 
 pub fn encode_message(message: &PluginMessage) -> Result<String, ProtocolError> {
+    encode_message_with_limit(message, MAX_NDJSON_LINE_BYTES)
+}
+
+pub fn encode_message_with_limit(
+    message: &PluginMessage,
+    max_line_bytes: usize,
+) -> Result<String, ProtocolError> {
     validate_message(message)?;
-    serde_json::to_string(&message_value(message)).map_err(|error| {
+    let encoded = serde_json::to_string(&message_value(message)).map_err(|error| {
         ProtocolError::new(
             ProtocolErrorCode::InternalError,
             text::plugin_protocol_serialize_failed(error),
         )
-    })
+    })?;
+    if encoded.len() > max_line_bytes {
+        Err(line_too_long(max_line_bytes))
+    } else {
+        Ok(encoded)
+    }
 }
 
 pub fn decode_message(line: &[u8]) -> Result<PluginMessage, ProtocolError> {
-    if line.len() > MAX_NDJSON_LINE_BYTES {
-        return Err(line_too_long());
+    decode_message_with_limit(line, MAX_NDJSON_LINE_BYTES)
+}
+
+fn decode_message_with_limit(
+    line: &[u8],
+    max_line_bytes: usize,
+) -> Result<PluginMessage, ProtocolError> {
+    if line.len() > max_line_bytes {
+        return Err(line_too_long(max_line_bytes));
     }
     let value = serde_json::from_slice::<Value>(line).map_err(|error| {
         ProtocolError::new(
@@ -462,20 +484,35 @@ fn protocol_field_error(field: &str) -> ProtocolError {
     )
 }
 
-fn line_too_long() -> ProtocolError {
+fn line_too_long(max_line_bytes: usize) -> ProtocolError {
     ProtocolError::new(
         ProtocolErrorCode::ProtocolError,
-        text::plugin_protocol_line_too_long(MAX_NDJSON_LINE_BYTES),
+        text::plugin_protocol_line_too_long(max_line_bytes),
     )
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NdjsonDecoder {
     line: Vec<u8>,
     discarding_oversized_line: bool,
+    max_line_bytes: usize,
+}
+
+impl Default for NdjsonDecoder {
+    fn default() -> Self {
+        Self::with_max_line_bytes(MAX_NDJSON_LINE_BYTES)
+    }
 }
 
 impl NdjsonDecoder {
+    pub fn with_max_line_bytes(max_line_bytes: usize) -> Self {
+        Self {
+            line: Vec::new(),
+            discarding_oversized_line: false,
+            max_line_bytes,
+        }
+    }
+
     pub fn push(&mut self, chunk: &[u8]) -> Vec<Result<PluginMessage, ProtocolError>> {
         let mut messages = Vec::new();
         for byte in chunk {
@@ -489,20 +526,20 @@ impl NdjsonDecoder {
                 messages.push(self.decode_buffered_line());
                 continue;
             }
-            if self.line.len() == MAX_NDJSON_LINE_BYTES {
+            if self.line.len() == self.max_line_bytes {
                 if *byte == b'\r' {
                     self.line.push(*byte);
                     continue;
                 }
                 self.line.clear();
                 self.discarding_oversized_line = true;
-                messages.push(Err(line_too_long()));
+                messages.push(Err(line_too_long(self.max_line_bytes)));
                 continue;
             }
-            if self.line.len() > MAX_NDJSON_LINE_BYTES {
+            if self.line.len() > self.max_line_bytes {
                 self.line.clear();
                 self.discarding_oversized_line = true;
-                messages.push(Err(line_too_long()));
+                messages.push(Err(line_too_long(self.max_line_bytes)));
                 continue;
             }
             self.line.push(*byte);
@@ -519,9 +556,9 @@ impl NdjsonDecoder {
         if self.line.is_empty() {
             return Vec::new();
         }
-        if self.line.len() > MAX_NDJSON_LINE_BYTES {
+        if self.line.len() > self.max_line_bytes {
             self.line.clear();
-            return vec![Err(line_too_long())];
+            return vec![Err(line_too_long(self.max_line_bytes))];
         }
         vec![self.decode_buffered_line()]
     }
@@ -530,7 +567,7 @@ impl NdjsonDecoder {
         if self.line.last() == Some(&b'\r') {
             self.line.pop();
         }
-        let decoded = decode_message(&self.line);
+        let decoded = decode_message_with_limit(&self.line, self.max_line_bytes);
         self.line.clear();
         decoded
     }

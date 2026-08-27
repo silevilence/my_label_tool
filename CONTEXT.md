@@ -35,6 +35,12 @@ _Avoid_: 插件名、slug
 使用插件 ID 命名空间；加载后进入项目标签快照，插件更新、停用或卸载不回写已加载项目。
 _Avoid_: 标签包、在线模板
 
+**插件导出格式 (Plugin Export Format)**:
+`exporter` 代码型插件在 manifest `exporterOptions.formats` 中静态声明的格式。插件通过
+`exporter.export` 返回相对路径与文件内容，宿主先校验全部文件再写入用户选择目录；
+插件不接触输出目录。
+_Avoid_: 外部导出器、动态格式
+
 **宿主 API 版本 (Host API Version)**:
 宿主暴露给插件的能力接口版本号，独立递增，与主程序版本号互不绑定（主程序发版不得顺手同步 bump）。分两层：整体版本（覆盖 `hello`/`fs`/`config.migrate` 等基础能力）与业务能力版本（`exporter`/`prelabel` 各自独立）。同一版本号内宿主承诺增量兼容；破坏性变更必须开新版本号，旧版本实现按弃用期保留后移除，宿主按插件声明的目标版本分派对应实现（见 ADR 0007）。
 _Avoid_: 接口版本、API 兼容区间

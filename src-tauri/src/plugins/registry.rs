@@ -3,8 +3,9 @@
 // private test seams are not split across partially authoritative modules.
 use super::label_preset::validate_label_preset_package;
 use super::manifest::{
-    is_safe_relative_path, is_valid_permission_target, is_valid_plugin_id, is_valid_semver,
-    parse_plugin_manifest, PluginCapabilities, PluginEntry, PluginExtensionKind, PluginManifest,
+    is_safe_relative_path, is_valid_export_extension, is_valid_export_format_id,
+    is_valid_permission_target, is_valid_plugin_id, is_valid_semver, parse_plugin_manifest,
+    PluginCapabilities, PluginEntry, PluginExporterOptions, PluginExtensionKind, PluginManifest,
     DEFAULT_PLUGIN_TIMEOUT_MS, MAX_PLUGIN_TIMEOUT_MS,
 };
 use super::permissions::{
@@ -69,6 +70,8 @@ pub struct PluginRegistryEntry {
     pub version: String,
     pub extension_kind: PluginExtensionKind,
     pub entry: Option<PluginEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exporter_options: Option<PluginExporterOptions>,
     pub capabilities: PluginCapabilities,
     pub grants: Vec<PluginPermissionGrant>,
     pub state: PluginState,
@@ -638,6 +641,7 @@ fn authorize_plugin_install_inner(
         version: manifest.version.clone(),
         extension_kind: manifest.extension_kind.clone(),
         entry: manifest.entry.clone(),
+        exporter_options: manifest.exporter_options.clone(),
         capabilities: manifest.capabilities.clone(),
         grants: persisted_grants,
         state,
@@ -768,10 +772,36 @@ fn registry_entries_are_valid(plugins: &[PluginRegistryEntry]) -> bool {
                         Some(_)
                     )
             )
+            && registry_exporter_options_are_valid(plugin)
             && plugin.capabilities.exporter.api_version.min >= 1
             && plugin.capabilities.prelabel.api_version.min >= 1
             && (1..=MAX_PLUGIN_TIMEOUT_MS).contains(&plugin.timeout_ms)
             && registry_grants_are_valid(&plugin.grants)
+    })
+}
+
+fn registry_exporter_options_are_valid(plugin: &PluginRegistryEntry) -> bool {
+    let Some(options) = &plugin.exporter_options else {
+        return true;
+    };
+    if plugin.extension_kind != PluginExtensionKind::Exporter || options.formats.is_empty() {
+        return false;
+    }
+    let mut ids = HashSet::new();
+    options.formats.iter().all(|format| {
+        is_valid_export_format_id(&format.id)
+            && ids.insert(&format.id)
+            && !format.display_name.trim().is_empty()
+            && !format.extensions.is_empty()
+            && format.extensions.iter().all(|extension| {
+                is_valid_export_extension(extension)
+                    && format
+                        .extensions
+                        .iter()
+                        .filter(|candidate| *candidate == extension)
+                        .count()
+                        == 1
+            })
     })
 }
 

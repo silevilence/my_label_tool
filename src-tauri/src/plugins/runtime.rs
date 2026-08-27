@@ -9,7 +9,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError},
         Arc, Condvar, Mutex, OnceLock,
     },
@@ -26,8 +26,9 @@ use super::{
     },
     process_environment::{OFFLINE_ENVIRONMENT_OVERRIDES, PROXY_ENVIRONMENT_VARIABLES},
     protocol::{
-        encode_message, host_hello_request, negotiate_hello_response, NdjsonDecoder,
-        NegotiatedSession, PluginMessage, ResponseOutcome, PLUGIN_PROTOCOL_VERSION,
+        encode_message_with_limit, host_hello_request, negotiate_hello_response, ControlAction,
+        EventKind, NdjsonDecoder, NegotiatedSession, PluginMessage, ResponseOutcome,
+        MAX_EXPORTER_NDJSON_LINE_BYTES, MAX_NDJSON_LINE_BYTES, PLUGIN_PROTOCOL_VERSION,
     },
     registry::{
         get_registered_plugin, record_plugin_runtime_failure, record_plugin_runtime_success,
@@ -48,7 +49,7 @@ use std::process::{Child, Command, Stdio};
 const SETTINGS_FILE: &str = "plugin-settings.json";
 const STDERR_LOG_LINES: usize = 500;
 const STDERR_LINE_BYTES: usize = 64 * 1024;
-const RUNTIME_MESSAGE_QUEUE_CAPACITY: usize = 8;
+const RUNTIME_MESSAGE_QUEUE_CAPACITY: usize = 2;
 const MAX_PROXY_REQUESTS_PER_CALL: usize = 8;
 const MAX_PROXY_BYTES_PER_CALL: u64 = MAX_PROXY_FILE_BYTES * MAX_PROXY_REQUESTS_PER_CALL as u64;
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -137,6 +138,46 @@ pub struct PluginCallError {
     counts_as_failure: bool,
 }
 
+impl PluginCallError {
+    pub(crate) fn external(code: &str, message: &str) -> Self {
+        call_error(code, message)
+    }
+}
+
+#[derive(Clone)]
+pub struct PluginCallHooks {
+    is_cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+    on_event: Arc<dyn Fn(Value) + Send + Sync>,
+    cancel_grace: Duration,
+    defer_success_recording: bool,
+}
+
+impl PluginCallHooks {
+    pub fn new(
+        cancelled: Arc<AtomicBool>,
+        on_event: impl Fn(Value) + Send + Sync + 'static,
+    ) -> Self {
+        Self::new_with_cancel_check(move || cancelled.load(Ordering::Acquire), on_event)
+    }
+
+    pub(crate) fn new_with_cancel_check(
+        is_cancelled: impl Fn() -> bool + Send + Sync + 'static,
+        on_event: impl Fn(Value) + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            is_cancelled: Arc::new(is_cancelled),
+            on_event: Arc::new(on_event),
+            cancel_grace: Duration::from_secs(2),
+            defer_success_recording: false,
+        }
+    }
+
+    pub fn with_deferred_success_recording(mut self) -> Self {
+        self.defer_success_recording = true;
+        self
+    }
+}
+
 /// Invokes a code-plugin capability. This is the only process-runtime entry
 /// point; callers on application start/project open/save paths must never call
 /// it because it may start a process and wait up to the manifest timeout.
@@ -146,7 +187,17 @@ pub fn invoke_plugin(
     method: &str,
     params: Value,
 ) -> Result<Value, PluginCallError> {
-    invoke_plugin_with_state(app_data_dir, plugin_id, method, params, false)
+    invoke_plugin_with_state(app_data_dir, plugin_id, method, params, false, None)
+}
+
+pub fn invoke_plugin_with_hooks(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    method: &str,
+    params: Value,
+    hooks: &PluginCallHooks,
+) -> Result<Value, PluginCallError> {
+    invoke_plugin_with_state(app_data_dir, plugin_id, method, params, false, Some(hooks))
 }
 
 /// Invokes only `config.migrate`, including while the registry entry is in the
@@ -157,7 +208,14 @@ pub fn invoke_plugin_config_migration(
     plugin_id: &str,
     params: Value,
 ) -> Result<Value, PluginCallError> {
-    invoke_plugin_with_state(app_data_dir, plugin_id, "config.migrate", params, true)
+    invoke_plugin_with_state(
+        app_data_dir,
+        plugin_id,
+        "config.migrate",
+        params,
+        true,
+        None,
+    )
 }
 
 fn invoke_plugin_with_state(
@@ -166,6 +224,7 @@ fn invoke_plugin_with_state(
     method: &str,
     params: Value,
     allow_pending_migration: bool,
+    hooks: Option<&PluginCallHooks>,
 ) -> Result<Value, PluginCallError> {
     let control = runtime_manager()
         .lock()
@@ -195,17 +254,21 @@ fn invoke_plugin_with_state(
         method,
         params,
         timeout,
+        hooks,
     );
     match result {
         Ok(value) => {
-            if entry.failure_count > 0 {
+            if entry.failure_count > 0 && hooks.is_none_or(|hooks| !hooks.defer_success_recording) {
                 record_plugin_runtime_success(app_data_dir, plugin_id)
                     .map_err(registry_call_error)?;
             }
             Ok(value)
         }
         Err(error) => {
-            if error.counts_as_failure {
+            if error.code == "CANCELLED" {
+                drop(session_guard);
+                remove_matching_session(plugin_id, &session);
+            } else if error.counts_as_failure {
                 let persisted =
                     record_plugin_runtime_failure(app_data_dir, plugin_id, &error.message);
                 drop(session_guard);
@@ -495,6 +558,7 @@ impl PluginRuntimeManager {
                 method,
                 params,
                 timeout,
+                None,
             );
         if result.as_ref().is_err_and(|error| error.counts_as_failure) {
             if let Some(removed) = self.remove(&entry.id) {
@@ -552,6 +616,20 @@ struct PluginSession {
     messages: Receiver<Result<PluginMessage, PluginCallError>>,
     negotiated: Option<NegotiatedSession>,
     permissions: FileProxyPolicy,
+    max_line_bytes: usize,
+}
+
+#[derive(Clone, Copy)]
+struct CallExecution<'a> {
+    deadline: Instant,
+    hooks: Option<&'a PluginCallHooks>,
+}
+
+#[derive(Clone, Copy)]
+struct ActiveCallHooks<'a> {
+    hooks: &'a PluginCallHooks,
+    progress: bool,
+    cancel: bool,
 }
 
 #[derive(Debug, Default)]
@@ -610,8 +688,13 @@ impl PluginSession {
             RuntimeProcess::spawn(&executable, &declared.args, &package_root, &plugin_dir)
                 .map_err(|message| runtime_call_error("RUNTIME_UNAVAILABLE", &message))?;
         let process = Arc::new(Mutex::new(process));
+        let max_line_bytes = if entry.extension_kind == PluginExtensionKind::Exporter {
+            MAX_EXPORTER_NDJSON_LINE_BYTES
+        } else {
+            MAX_NDJSON_LINE_BYTES
+        };
         let (sender, receiver) = mpsc::sync_channel(RUNTIME_MESSAGE_QUEUE_CAPACITY);
-        thread::spawn(move || read_stdout(stdout, sender));
+        thread::spawn(move || read_stdout(stdout, sender, max_line_bytes));
         let stderr_lines = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_LOG_LINES)));
         let reader_lines = Arc::clone(&stderr_lines);
         thread::spawn(move || read_stderr(stderr, reader_lines));
@@ -622,6 +705,7 @@ impl PluginSession {
                 messages: receiver,
                 negotiated: None,
                 permissions,
+                max_line_bytes,
             },
             process,
             stderr_lines,
@@ -648,6 +732,7 @@ impl PluginSession {
         method: &str,
         params: Value,
         timeout: Duration,
+        hooks: Option<&PluginCallHooks>,
     ) -> Result<Value, PluginCallError> {
         let deadline = Instant::now() + timeout;
         let watchdog = CallWatchdog::start(Arc::clone(&self.process), timeout);
@@ -657,8 +742,8 @@ impl PluginSession {
             declared_capabilities,
             method,
             params,
-            deadline,
             &mut proxy_budget,
+            CallExecution { deadline, hooks },
         );
         if watchdog.finish() {
             Err(runtime_call_error("TIMEOUT", text::PLUGIN_RUNTIME_TIMEOUT))
@@ -673,14 +758,32 @@ impl PluginSession {
         declared_capabilities: &PluginCapabilities,
         method: &str,
         params: Value,
-        deadline: Instant,
         proxy_budget: &mut ProxyCallBudget,
+        execution: CallExecution<'_>,
     ) -> Result<Value, PluginCallError> {
         if self.negotiated.is_none() {
-            self.handshake_before(deadline, proxy_budget)?;
+            self.handshake_before(execution.deadline, proxy_budget)?;
         }
         self.ensure_capability(extension_kind, declared_capabilities, method)?;
-        self.call(method, params, deadline, proxy_budget)
+        let active_hooks = execution.hooks.map(|hooks| {
+            let negotiated = &self
+                .negotiated
+                .as_ref()
+                .expect("handshake completed before capability dispatch")
+                .capabilities;
+            ActiveCallHooks {
+                hooks,
+                progress: declared_capabilities.progress && negotiated.progress,
+                cancel: declared_capabilities.cancel && negotiated.cancel,
+            }
+        });
+        self.call(
+            method,
+            params,
+            execution.deadline,
+            proxy_budget,
+            active_hooks,
+        )
     }
 
     fn ensure_capability(
@@ -722,6 +825,7 @@ impl PluginSession {
         params: Value,
         deadline: Instant,
         proxy_budget: &mut ProxyCallBudget,
+        hooks: Option<ActiveCallHooks<'_>>,
     ) -> Result<Value, PluginCallError> {
         let id = next_request_id("call");
         self.send(&PluginMessage::Request {
@@ -730,7 +834,7 @@ impl PluginSession {
             method: method.to_string(),
             params,
         })?;
-        match self.receive_response(&id, deadline, proxy_budget)? {
+        match self.receive_response_with_hooks(&id, deadline, proxy_budget, hooks)? {
             PluginMessage::Response {
                 outcome: ResponseOutcome::Result(value),
                 ..
@@ -747,7 +851,8 @@ impl PluginSession {
     }
 
     fn send(&mut self, message: &PluginMessage) -> Result<(), PluginCallError> {
-        let encoded = encode_message(message).map_err(protocol_call_error)?;
+        let encoded =
+            encode_message_with_limit(message, self.max_line_bytes).map_err(protocol_call_error)?;
         self.stdin
             .write_all(encoded.as_bytes())
             .and_then(|_| self.stdin.write_all(b"\n"))
@@ -763,10 +868,41 @@ impl PluginSession {
         deadline: Instant,
         proxy_budget: &mut ProxyCallBudget,
     ) -> Result<PluginMessage, PluginCallError> {
+        self.receive_response_with_hooks(expected_id, deadline, proxy_budget, None)
+    }
+
+    fn receive_response_with_hooks(
+        &mut self,
+        expected_id: &str,
+        deadline: Instant,
+        proxy_budget: &mut ProxyCallBudget,
+        hooks: Option<ActiveCallHooks<'_>>,
+    ) -> Result<PluginMessage, PluginCallError> {
+        let mut effective_deadline = deadline;
+        let mut cancel_sent = false;
         loop {
-            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            if !cancel_sent && hooks.is_some_and(|hooks| (hooks.hooks.is_cancelled)()) {
+                let hooks = hooks.expect("hooks checked above");
+                if !hooks.cancel {
+                    self.terminate();
+                    return Err(call_error("CANCELLED", text::PLUGIN_RUNTIME_CANCELLED));
+                }
+                self.send(&PluginMessage::Control {
+                    v: PLUGIN_PROTOCOL_VERSION,
+                    id: Some(expected_id.to_string()),
+                    action: ControlAction::Cancel,
+                })?;
+                cancel_sent = true;
+                effective_deadline =
+                    effective_deadline.min(Instant::now() + hooks.hooks.cancel_grace);
+            }
+            let Some(remaining) = effective_deadline.checked_duration_since(Instant::now()) else {
                 self.terminate();
-                return Err(runtime_call_error("TIMEOUT", text::PLUGIN_RUNTIME_TIMEOUT));
+                return if cancel_sent {
+                    Err(call_error("CANCELLED", text::PLUGIN_RUNTIME_CANCELLED))
+                } else {
+                    Err(runtime_call_error("TIMEOUT", text::PLUGIN_RUNTIME_TIMEOUT))
+                };
             };
             match self
                 .messages
@@ -776,9 +912,26 @@ impl PluginSession {
                     PluginMessage::Response { ref id, .. }
                         if id.as_deref() == Some(expected_id) =>
                     {
+                        if cancel_sent {
+                            self.terminate();
+                            return Err(call_error("CANCELLED", text::PLUGIN_RUNTIME_CANCELLED));
+                        }
                         return Ok(message);
                     }
-                    PluginMessage::Event { .. } => {}
+                    PluginMessage::Event { event, payload, .. } => {
+                        if let Some(hooks) = hooks
+                            .filter(|hooks| !matches!(event, EventKind::Progress) || hooks.progress)
+                        {
+                            let event_name = match event {
+                                EventKind::Progress => "progress",
+                                EventKind::Log => "log",
+                            };
+                            (hooks.hooks.on_event)(serde_json::json!({
+                                "event": event_name,
+                                "payload": payload,
+                            }));
+                        }
+                    }
                     PluginMessage::Request {
                         id: Some(id),
                         method,
@@ -787,7 +940,7 @@ impl PluginSession {
                     } => {
                         let outcome = if proxy_budget.reserve(&method, &params) {
                             let Some(proxy_timeout) =
-                                deadline.checked_duration_since(Instant::now())
+                                effective_deadline.checked_duration_since(Instant::now())
                             else {
                                 self.terminate();
                                 return Err(runtime_call_error(
@@ -929,8 +1082,9 @@ type SessionParts = (
 fn read_stdout(
     mut stdout: Box<dyn Read + Send>,
     sender: mpsc::SyncSender<Result<PluginMessage, PluginCallError>>,
+    max_line_bytes: usize,
 ) {
-    let mut decoder = NdjsonDecoder::default();
+    let mut decoder = NdjsonDecoder::with_max_line_bytes(max_line_bytes);
     let mut buffer = [0_u8; 8192];
     loop {
         match stdout.read(&mut buffer) {
@@ -1380,6 +1534,56 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn progress_hook_can_cancel_and_removes_the_plugin_process() {
+        let _runtime_test_guard = runtime_test_guard();
+        let root = test_directory("cancel-export");
+        let process_id_path = root.join("process-id.txt");
+        let escaped_path = process_id_path.to_string_lossy().replace('\'', "''");
+        let script = format!(
+            "$hello = [Console]::In.ReadLine() | ConvertFrom-Json; $helloResponse = @{{ v = 1; id = $hello.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ exporter = $true; progress = $true; cancel = $true }} }} }}; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $call = [Console]::In.ReadLine() | ConvertFrom-Json; [System.IO.File]::WriteAllText('{escaped_path}', [string]$PID); $event = @{{ v = 1; id = $call.id; type = 'event'; event = 'progress'; payload = @{{ percent = 25; message = 'working' }} }}; [Console]::Out.WriteLine(($event | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $control = [Console]::In.ReadLine() | ConvertFrom-Json; $response = @{{ v = 1; id = $call.id; type = 'response'; error = @{{ code = 'CANCELLED'; message = 'cancelled' }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); Start-Sleep -Seconds 30"
+        );
+        let mut entry = test_entry("dev.test.cancelexport", script, 10_000);
+        entry.capabilities.progress = true;
+        entry.capabilities.cancel = true;
+        create_package(&root, &entry.id);
+        write_registry(&root, std::slice::from_ref(&entry));
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let callback_cancelled = Arc::clone(&cancelled);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let callback_events = Arc::clone(&events);
+        let hooks = PluginCallHooks::new(cancelled, move |event| {
+            callback_events.lock().expect("events").push(event);
+            callback_cancelled.store(true, Ordering::Release);
+        });
+        let error =
+            invoke_plugin_with_hooks(&root, &entry.id, "exporter.export", Value::Null, &hooks)
+                .expect_err("cancelled export must fail");
+        assert_eq!(error.code, "CANCELLED");
+        assert_eq!(events.lock().expect("events")[0]["event"], "progress");
+        assert!(!runtime_manager()
+            .lock()
+            .expect("runtime manager")
+            .sessions
+            .contains_key(&entry.id));
+
+        let process_id = fs::read_to_string(&process_id_path)
+            .expect("process id")
+            .parse::<u32>()
+            .expect("numeric process id");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while process_exists(process_id) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            !process_exists(process_id),
+            "cancel left the plugin process alive"
+        );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn timeout_covers_a_blocked_stdin_write_after_hello() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("blocked-stdin");
@@ -1619,6 +1823,7 @@ mod tests {
                 "exporter.export",
                 Value::Null,
                 Duration::from_secs(30),
+                None,
             )
         });
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -1874,7 +2079,8 @@ mod tests {
             line: b"{\"v\":1,\"id\":null,\"type\":\"control\",\"action\":\"heartbeat\"}\n",
         };
         let (sender, receiver) = mpsc::sync_channel(RUNTIME_MESSAGE_QUEUE_CAPACITY);
-        let worker = thread::spawn(move || read_stdout(Box::new(reader), sender));
+        let worker =
+            thread::spawn(move || read_stdout(Box::new(reader), sender, MAX_NDJSON_LINE_BYTES));
         let deadline = Instant::now() + Duration::from_secs(2);
         while reads.load(Ordering::Acquire) < RUNTIME_MESSAGE_QUEUE_CAPACITY + 1
             && Instant::now() < deadline
@@ -1975,6 +2181,7 @@ mod tests {
                     script,
                 ],
             }),
+            exporter_options: None,
             capabilities: PluginCapabilities {
                 annotation_types: Vec::new(),
                 batch: false,

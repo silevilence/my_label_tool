@@ -1,5 +1,6 @@
 pub mod config;
 pub mod developer_tools;
+pub mod exporter;
 pub mod label_preset;
 pub mod manifest;
 pub mod permissions;

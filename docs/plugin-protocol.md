@@ -7,11 +7,13 @@
 ## 传输与行限制
 
 - 每行恰好一个 JSON 对象，以 `\n` 分隔；输入也接受 `\r\n`。
-- 单行上限为 16 MiB（16,777,216 字节，不含 `\n` 或 `\r\n` 行尾）。
+- v1 基线单行上限为 16 MiB（16,777,216 字节，不含 `\n` 或 `\r\n` 行尾）。
+- `exporter` 代码插件进程使用能力限定的 72 MiB 上限（75,497,472 字节），仅用于
+  容纳 50 MiB Base64 导出文件及 JSON 信封；其他插件类型仍执行 16 MiB 基线。
 - 非法 JSON 返回 `PARSE_ERROR`。
 - 非对象信封、缺失或不支持的 `v`、未知 `type`、非法消息形状返回
   `PROTOCOL_ERROR`。
-- 超长行返回一次 `PROTOCOL_ERROR`，宿主丢弃该行直至下一个换行符，然后继续解析
+- 收发两端都拒绝超长行并返回一次 `PROTOCOL_ERROR`；接收端丢弃该行直至下一个换行符，然后继续解析
   后续消息，不终止会话。
 
 ## 公共信封
@@ -130,6 +132,37 @@ Windows 下文件代理拒绝远程卷，避免网络文件系统 I/O 绕过调�
 
 配置迁移属于宿主 API v1 的增量方法，NDJSON 信封和协议版本仍为 v1。迁移进程沿用
 运行时的断网环境和权限模型，不开放网络代理。
+
+## 导出格式插件
+
+`exporter` 插件在 manifest 的可选 `exporterOptions.formats` 中静态声明格式；v1 不接受
+运行时动态增删格式。每项包含稳定的插件内 `id`、`displayName`、不带点号的
+`extensions` 和 `multiFile`。宿主调用 `exporter.export`：
+
+```json
+{"v":1,"id":"export-1","type":"request","method":"exporter.export","params":{"formatId":"labelme","exportData":{"labels":[],"images":[]},"options":{},"outputBaseName":"annotations"}}
+```
+
+`exportData` 是宿主现有 `AnnotationExport` 结构，包含标签快照与图片数组；图片 `path`
+始终转换为项目相对路径，插件不会收到用户选择的输出目录。响应只返回待写文件：
+
+```json
+{"v":1,"id":"export-1","type":"response","result":{"files":[{"relativePath":"image-1.json","contentUtf8":"{}"}]}}
+```
+
+每个文件必须且只能包含 `contentUtf8` 或 `contentBase64`。宿主先完整校验响应，再统一
+写盘：`relativePath` 必须非空、非绝对路径且不能包含 `.`/`..` 路径段，扩展名必须在
+manifest 声明中；路径按大小写不敏感去重，并拒绝 Windows ADS、设备保留名及
+reparse point。单文件和单次总计上限均为 50 MiB、最多 10,000 个文件；
+`multiFile: false` 时必须恰好返回一个文件。任一文件
+非法时本次响应不写入任何文件。
+
+插件和 manifest/hello 同时声明 `progress` 后，插件可发送已有的进度事件驱动宿主
+进度条；同时声明 `cancel` 后，宿主发送 `control.cancel`。取消后宿主最多等待 2 秒，
+随后终止进程树并以 `CANCELLED` 结束。响应返回后仍先写入宿主暂存目录；发布前取消
+会删除暂存目录且不写目标文件，进入不可取消的短发布阶段后取消接口返回未找到。
+机器可读的参数与响应
+结构见 [`plugin-exporter.schema.json`](plugin-exporter.schema.json)。
 
 ## 标准错误码
 
