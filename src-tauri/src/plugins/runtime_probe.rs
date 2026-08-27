@@ -174,8 +174,8 @@ mod tests {
         let _isolation = crate::process_control::windows_isolation_test_guard();
         let root = test_directory("waiting");
         fs::create_dir_all(&root).expect("create fixture directory");
-        let (executable, arguments) = waiting_command();
-        probe_plugin_process_available(Path::new(executable), &arguments, &root)
+        let (executable, arguments) = waiting_command(&root);
+        probe_plugin_process_available(Path::new(&executable), &arguments, &root)
             .expect("startup probe");
         fs::remove_dir_all(root).expect("remove fixture directory");
     }
@@ -186,11 +186,15 @@ mod tests {
         let _isolation = crate::process_control::windows_isolation_test_guard();
         let root = test_directory("early-exit-child");
         fs::create_dir_all(&root).expect("create fixture directory");
+        #[cfg(not(windows))]
         let process_id_path = root.join("child.pid");
+        #[cfg(windows)]
+        let (executable, arguments) = early_exit_command(&root);
+        #[cfg(not(windows))]
         let (executable, arguments) = early_exit_command(&process_id_path);
 
         let error = probe_plugin_process_with_window(
-            Path::new(executable),
+            Path::new(&executable),
             &arguments,
             &root,
             Duration::from_secs(10),
@@ -228,26 +232,18 @@ mod tests {
     }
 
     #[cfg(windows)]
-    fn waiting_command() -> (&'static str, Vec<String>) {
+    fn waiting_command(root: &Path) -> (std::path::PathBuf, Vec<String>) {
         (
-            "powershell",
-            vec![
-                "-NoProfile".to_string(),
-                "-Command".to_string(),
-                "$input | Out-Null".to_string(),
-            ],
+            crate::process_control::install_plugin_test_stub(root),
+            vec!["--fixture".to_string(), "wait".to_string()],
         )
     }
 
     #[cfg(windows)]
-    fn early_exit_command(_: &Path) -> (&'static str, Vec<String>) {
+    fn early_exit_command(root: &Path) -> (std::path::PathBuf, Vec<String>) {
         (
-            "powershell",
-            vec![
-                "-NoProfile".to_string(),
-                "-Command".to_string(),
-                "$child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; exit $child.Id".to_string(),
-            ],
+            crate::process_control::install_plugin_test_stub(root),
+            vec!["--early-exit-child".to_string()],
         )
     }
 
@@ -268,7 +264,7 @@ mod tests {
     }
 
     #[cfg(not(windows))]
-    fn waiting_command() -> (&'static str, Vec<String>) {
+    fn waiting_command(_: &Path) -> (&'static str, Vec<String>) {
         ("sh", vec!["-c".to_string(), "cat >/dev/null".to_string()])
     }
 

@@ -262,8 +262,16 @@ impl FileProxyPolicy {
     pub fn from_grants(grants: &[PluginPermissionGrant]) -> Result<Self, PermissionError> {
         let policy = PermissionPolicy::from_grants(grants)?;
         Ok(Self {
-            read_roots: policy.read_roots,
-            write_roots: policy.write_roots,
+            read_roots: policy
+                .read_roots
+                .iter()
+                .map(|root| canonicalize_for_comparison(root))
+                .collect::<Result<Vec<_>, _>>()?,
+            write_roots: policy
+                .write_roots
+                .iter()
+                .map(|root| canonicalize_for_comparison(root))
+                .collect::<Result<Vec<_>, _>>()?,
         })
     }
 
@@ -290,7 +298,7 @@ impl FileProxyPolicy {
                 text::PLUGIN_PERMISSION_ACCESS_DENIED,
             )
         })?;
-        let comparable = normalize_for_comparison(&lexical).map_err(|_| {
+        let comparable = canonicalize_for_comparison(&lexical).map_err(|_| {
             permission_error(
                 PermissionErrorKind::InvalidGrant,
                 text::PLUGIN_PERMISSION_ACCESS_DENIED,
@@ -662,7 +670,7 @@ fn ensure_opened_path_allowed(
     access: FileAccess,
     path: &Path,
 ) -> Result<(), ProtocolError> {
-    let comparable = normalize_for_comparison(path).map_err(|_| {
+    let comparable = canonicalize_for_comparison(path).map_err(|_| {
         permission_denied(PermissionError {
             kind: PermissionErrorKind::InvalidGrant,
             message: text::PLUGIN_PERMISSION_ACCESS_DENIED.to_string(),
@@ -679,6 +687,19 @@ fn ensure_opened_path_allowed(
             kind: PermissionErrorKind::InvalidGrant,
             message: text::PLUGIN_PERMISSION_ACCESS_DENIED.to_string(),
         }))
+    }
+}
+
+fn canonicalize_for_comparison(path: &Path) -> Result<PathBuf, PermissionError> {
+    match fs::canonicalize(path) {
+        Ok(canonical) => normalize_for_comparison(&canonical),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            normalize_for_comparison(path)
+        }
+        Err(_) => Err(permission_error(
+            PermissionErrorKind::InvalidGrant,
+            text::PLUGIN_PERMISSION_ACCESS_DENIED,
+        )),
     }
 }
 
@@ -1110,6 +1131,31 @@ mod tests {
                 &policy,
                 "fs.read",
                 &json!({ "path": read_root.join("Input.txt") }),
+            ),
+            ResponseOutcome::Result(json!({ "contentUtf8": "hello" }))
+        );
+
+        fs::remove_dir_all(base).expect("remove fixture");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn file_proxy_accepts_a_request_through_the_granted_junction_alias() {
+        let base = test_root("file-proxy-junction-alias");
+        let physical = base.join("physical");
+        let alias = base.join("alias");
+        fs::create_dir_all(physical.join("images")).expect("create physical root");
+        fs::write(physical.join("images/input.txt"), "hello").expect("write fixture");
+        std::os::windows::fs::symlink_dir(&physical, &alias).expect("create directory alias");
+        let granted = fs::canonicalize(alias.join("images")).expect("canonical grant root");
+        let policy =
+            FileProxyPolicy::from_grants(&[grant("fs.read", &granted)]).expect("permission policy");
+
+        assert_eq!(
+            handle_file_proxy_request(
+                &policy,
+                "fs.read",
+                &json!({ "path": alias.join("images/input.txt") }),
             ),
             ResponseOutcome::Result(json!({ "contentUtf8": "hello" }))
         );

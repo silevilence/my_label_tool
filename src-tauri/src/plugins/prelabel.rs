@@ -715,10 +715,11 @@ mod tests {
         let root = test_directory("host-flow");
         let project = root.join("project");
         let plugin_id = "dev.test.prelabelhost";
-        fs::create_dir_all(root.join("plugins").join(plugin_id)).expect("plugin package");
+        let package = root.join("plugins").join(plugin_id);
+        fs::create_dir_all(&package).expect("plugin package");
+        crate::process_control::install_plugin_test_stub(&package);
         fs::create_dir_all(project.join("images")).expect("project images");
         fs::write(project.join("images/a.bin"), b"image-bytes").expect("image fixture");
-        let script = r#"$hello = [Console]::In.ReadLine() | ConvertFrom-Json; $helloResponse = @{ v = 1; id = $hello.id; type = 'response'; result = @{ protocolVersion = 1; capabilities = @{ prelabel = $true; batch = $true } } }; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); $call = [Console]::In.ReadLine() | ConvertFrom-Json; $proxy = @{ v = 1; id = 'read-image'; type = 'request'; method = 'fs.read'; params = @{ path = $call.params.imagePaths[0]; encoding = 'base64' } }; [Console]::Out.WriteLine(($proxy | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); $read = [Console]::In.ReadLine() | ConvertFrom-Json; if (-not $read.result.contentBase64) { exit 7 }; $shape = @{ imagePath = $call.params.imagePaths[0]; id = 'plugin-one'; type = 'rect'; labelId = $call.params.classMappings[0].labelId; points = @(1, 2, 3, 4); attributes = @{ confidence = 0.9 }; frameIndex = 0 }; $response = @{ v = 1; id = $call.id; type = 'response'; result = @{ shapes = @($shape) } }; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 10)); [Console]::Out.Flush(); Start-Sleep -Seconds 30"#;
         let capability = PluginCapabilityVersion {
             api_version: PluginApiVersionTarget { min: 1 },
         };
@@ -728,13 +729,8 @@ mod tests {
             version: "1.0.0".to_string(),
             extension_kind: PluginExtensionKind::Prelabel,
             entry: Some(PluginEntry {
-                command: "powershell.exe".to_string(),
-                args: vec![
-                    "-NoProfile".to_string(),
-                    "-NonInteractive".to_string(),
-                    "-Command".to_string(),
-                    script.to_string(),
-                ],
+                command: crate::process_control::PLUGIN_TEST_STUB_FILENAME.to_string(),
+                args: vec!["--fixture".to_string(), "prelabel-host".to_string()],
             }),
             exporter_options: None,
             prelabel_options: Some(PluginPrelabelOptions {

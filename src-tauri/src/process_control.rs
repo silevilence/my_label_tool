@@ -11,6 +11,26 @@ pub(crate) fn windows_isolation_test_guard() -> std::sync::MutexGuard<'static, (
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+#[cfg(all(windows, test))]
+pub(crate) const PLUGIN_TEST_STUB_FILENAME: &str = "plugin-runtime-test-stub.exe";
+
+#[cfg(all(windows, test))]
+pub(crate) fn install_plugin_test_stub(package_root: &std::path::Path) -> std::path::PathBuf {
+    let current = std::env::current_exe().expect("current Rust test executable");
+    let debug_directory = current
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("Cargo debug directory");
+    let source = debug_directory.join("plugin-conformance-stub.exe");
+    assert!(
+        source.is_file(),
+        "missing native plugin test stub: {source:?}"
+    );
+    let destination = package_root.join(PLUGIN_TEST_STUB_FILENAME);
+    std::fs::copy(&source, &destination).expect("copy native plugin test stub into package");
+    destination
+}
+
 #[cfg(windows)]
 mod app_container;
 #[cfg(windows)]

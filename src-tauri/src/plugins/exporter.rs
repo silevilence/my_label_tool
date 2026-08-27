@@ -917,9 +917,10 @@ mod tests {
         let root = test_directory("host-flow");
         let output = root.join("output");
         let plugin_id = "dev.test.labelmeflow";
-        fs::create_dir_all(root.join("plugins").join(plugin_id)).expect("plugin package");
+        let package = root.join("plugins").join(plugin_id);
+        fs::create_dir_all(&package).expect("plugin package");
+        crate::process_control::install_plugin_test_stub(&package);
         fs::create_dir_all(&output).expect("output directory");
-        let script = r#"while (($line = [Console]::In.ReadLine()) -ne $null) { $msg = $line | ConvertFrom-Json; if ($msg.method -eq 'hello') { $response = @{ v = 1; id = $msg.id; type = 'response'; result = @{ protocolVersion = 1; capabilities = @{ exporter = $true } } } } else { $content = '{"version":"5.5.0","flags":{},"shapes":[],"imagePath":"images/a.jpg","imageData":null,"imageHeight":480,"imageWidth":640}'; $response = @{ v = 1; id = $msg.id; type = 'response'; result = @{ files = @(@{ relativePath = 'a.json'; contentUtf8 = $content }) } } }; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush() }"#;
         let capability = PluginCapabilityVersion {
             api_version: PluginApiVersionTarget { min: 1 },
         };
@@ -929,13 +930,8 @@ mod tests {
             version: "1.0.0".to_string(),
             extension_kind: PluginExtensionKind::Exporter,
             entry: Some(PluginEntry {
-                command: "powershell.exe".to_string(),
-                args: vec![
-                    "-NoProfile".to_string(),
-                    "-NonInteractive".to_string(),
-                    "-Command".to_string(),
-                    script.to_string(),
-                ],
+                command: crate::process_control::PLUGIN_TEST_STUB_FILENAME.to_string(),
+                args: vec!["--fixture".to_string(), "exporter-host".to_string()],
             }),
             exporter_options: Some(PluginExporterOptions {
                 formats: vec![format(true)],

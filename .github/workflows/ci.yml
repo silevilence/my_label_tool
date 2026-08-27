@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  checks:
-    name: Type, lint, coverage, and Rust checks
+  frontend:
+    name: Type, lint, and coverage
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -28,9 +28,6 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
         run: npm ci
@@ -44,8 +41,50 @@ jobs:
       - name: Frontend coverage
         run: npm run test:coverage
 
+  rust-clippy:
+    name: Rust clippy
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ github.job }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ github.job }}-
+
       - name: Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+  rust-tests:
+    name: Rust tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ github.job }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ github.job }}-
 
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
