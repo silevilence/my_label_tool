@@ -350,6 +350,7 @@ mod tests {
 
     #[test]
     fn appcontainer_denies_direct_file_escape_and_unauthorized_network() {
+        let _isolation = super::super::windows_isolation_test_guard();
         let root = std::env::temp_dir().join(format!(
             "my-label-tool-appcontainer-{}-{}",
             std::process::id(),
@@ -427,6 +428,7 @@ mod tests {
 
     #[test]
     fn appcontainer_runs_system_python_without_host_secrets() {
+        let _isolation = super::super::windows_isolation_test_guard();
         static ENVIRONMENT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _environment = ENVIRONMENT_LOCK.lock().expect("lock environment");
         let root = std::env::temp_dir().join(format!(

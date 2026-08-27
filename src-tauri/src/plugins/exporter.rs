@@ -906,6 +906,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn host_runtime_writes_a_labelme_document_from_an_exporter_plugin() {
+        let _isolation = crate::process_control::windows_isolation_test_guard();
         use crate::plugins::manifest::{
             PluginApiVersionTarget, PluginCapabilities, PluginCapabilityVersion, PluginEntry,
             PluginExporterOptions,

@@ -38,6 +38,12 @@ pub(crate) struct AppContainerLaunch {
 
 static LAUNCH_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone, Copy)]
+enum TreeAccessPolicy {
+    RejectReparsePoints,
+    SkipReparsePoints,
+}
+
 impl AppContainerLaunch {
     pub(crate) fn prepare(
         identity: &str,
@@ -60,9 +66,9 @@ impl AppContainerLaunch {
             capabilities: Vec::new(),
         };
         let result: Result<(), String> = (|| {
-            launch.grant_tree_access(package_root)?;
+            launch.grant_tree_access(package_root, TreeAccessPolicy::RejectReparsePoints)?;
             if let Some(runtime_root) = runtime_root {
-                launch.grant_tree_access(runtime_root)?;
+                launch.grant_tree_access(runtime_root, TreeAccessPolicy::SkipReparsePoints)?;
             }
             let mut capability_storage = Vec::new();
             if allow_network {
@@ -95,8 +101,9 @@ impl AppContainerLaunch {
         }
     }
 
-    fn grant_tree_access(&mut self, root: &Path) -> Result<(), String> {
-        if !root.is_dir() {
+    fn grant_tree_access(&mut self, root: &Path, policy: TreeAccessPolicy) -> Result<(), String> {
+        let root_metadata = fs::symlink_metadata(root).map_err(text::plugin_sandbox_acl_failed)?;
+        if !root_metadata.is_dir() || metadata_is_reparse(&root_metadata) {
             return Err(text::PLUGIN_SANDBOX_PACKAGE_MISSING.to_string());
         }
         self.grant_access(root, true)?;
@@ -104,13 +111,19 @@ impl AppContainerLaunch {
         while let Some(directory) = pending.pop() {
             for entry in fs::read_dir(&directory).map_err(text::plugin_sandbox_acl_failed)? {
                 let entry = entry.map_err(text::plugin_sandbox_acl_failed)?;
-                let file_type = entry.file_type().map_err(text::plugin_sandbox_acl_failed)?;
-                if file_type.is_symlink() {
-                    return Err(text::PLUGIN_SANDBOX_SYMLINK_REJECTED.to_string());
+                let metadata =
+                    fs::symlink_metadata(entry.path()).map_err(text::plugin_sandbox_acl_failed)?;
+                if metadata_is_reparse(&metadata) {
+                    match policy {
+                        TreeAccessPolicy::RejectReparsePoints => {
+                            return Err(text::PLUGIN_SANDBOX_SYMLINK_REJECTED.to_string());
+                        }
+                        TreeAccessPolicy::SkipReparsePoints => continue,
+                    }
                 }
                 let path = entry.path();
-                self.grant_access(&path, file_type.is_dir())?;
-                if file_type.is_dir() {
+                self.grant_access(&path, metadata.is_dir())?;
+                if metadata.is_dir() {
                     pending.push(path);
                 }
             }
@@ -129,6 +142,14 @@ impl AppContainerLaunch {
         self.granted_paths.push(path.to_path_buf());
         Ok(())
     }
+}
+
+fn metadata_is_reparse(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    metadata.file_type().is_symlink()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 
 impl Drop for AppContainerLaunch {
@@ -271,6 +292,7 @@ fn update_path_access(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn profile_name_is_stable_valid_and_bounded() {
@@ -284,5 +306,31 @@ mod tests {
         assert!(first
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || "-_. ".contains(character)));
+    }
+
+    #[test]
+    fn trusted_runtime_tree_tolerates_an_internal_file_symlink() {
+        let _isolation = super::super::windows_isolation_test_guard();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "my-label-tool-runtime-link-{}-{nonce}",
+            std::process::id()
+        ));
+        let package = root.join("plugin");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&package).expect("create plugin package");
+        fs::create_dir_all(&runtime).expect("create runtime root");
+        fs::write(runtime.join("python.exe"), b"fixture").expect("write runtime fixture");
+        std::os::windows::fs::symlink_file(runtime.join("python.exe"), runtime.join("python3.exe"))
+            .expect("create runtime symlink");
+
+        let launch =
+            AppContainerLaunch::prepare("dev.test.runtime-link", &package, Some(&runtime), false)
+                .expect("trusted runtime symlinks must not invalidate the plugin package");
+        drop(launch);
+        fs::remove_dir_all(root).expect("remove fixture");
     }
 }

@@ -170,6 +170,8 @@ mod tests {
 
     #[test]
     fn declared_waiting_process_is_reaped() {
+        #[cfg(windows)]
+        let _isolation = crate::process_control::windows_isolation_test_guard();
         let root = test_directory("waiting");
         fs::create_dir_all(&root).expect("create fixture directory");
         let (executable, arguments) = waiting_command();
@@ -180,6 +182,8 @@ mod tests {
 
     #[test]
     fn early_exit_parent_cannot_leave_a_background_child() {
+        #[cfg(windows)]
+        let _isolation = crate::process_control::windows_isolation_test_guard();
         let root = test_directory("early-exit-child");
         fs::create_dir_all(&root).expect("create fixture directory");
         let process_id_path = root.join("child.pid");
@@ -192,9 +196,6 @@ mod tests {
             Duration::from_secs(10),
         )
         .expect_err("early exit must fail the startup probe");
-        #[cfg(not(windows))]
-        assert!(error.contains("退出码：7"), "unexpected error: {error}");
-
         #[cfg(windows)]
         let process_id = error
             .rsplit_once('：')
@@ -202,6 +203,13 @@ mod tests {
             .1
             .parse::<u32>()
             .expect("child PID exit code");
+        #[cfg(windows)]
+        assert!(
+            process_id > 4,
+            "startup probe did not report a safe child PID: {process_id}"
+        );
+        #[cfg(not(windows))]
+        assert!(error.contains("退出码：7"), "unexpected error: {error}");
         #[cfg(not(windows))]
         let process_id = fs::read_to_string(&process_id_path)
             .expect("background child PID")

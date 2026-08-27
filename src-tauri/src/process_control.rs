@@ -2,6 +2,15 @@ use std::process::{Command, Stdio};
 
 use crate::i18n::zh_cn as text;
 
+#[cfg(all(windows, test))]
+pub(crate) fn windows_isolation_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    static TEST_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    TEST_LOCK
+        .get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[cfg(windows)]
 mod app_container;
 #[cfg(windows)]

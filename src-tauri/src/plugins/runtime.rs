@@ -1388,7 +1388,7 @@ mod tests {
         registry::{clear_registered_plugin_failures, get_registered_plugin},
     };
     use std::sync::atomic::AtomicUsize;
-    use std::sync::{MutexGuard, OnceLock};
+    use std::sync::MutexGuard;
     use std::time::SystemTime;
 
     #[test]
@@ -2224,11 +2224,7 @@ mod tests {
 
     #[cfg(windows)]
     fn runtime_test_guard() -> MutexGuard<'static, ()> {
-        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        TEST_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::process_control::windows_isolation_test_guard()
     }
 
     fn powershell_plugin(call_body: &str) -> String {

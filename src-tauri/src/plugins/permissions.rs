@@ -231,7 +231,13 @@ impl PermissionPolicy {
         access: FileAccess,
         path: &Path,
     ) -> Result<PathBuf, PermissionError> {
-        let normalized = normalize_for_comparison(path).map_err(|_| {
+        let lexical = normalize_absolute(path).map_err(|_| {
+            permission_error(
+                PermissionErrorKind::InvalidGrant,
+                text::PLUGIN_PERMISSION_ACCESS_DENIED,
+            )
+        })?;
+        let comparable = normalize_for_comparison(&lexical).map_err(|_| {
             permission_error(
                 PermissionErrorKind::InvalidGrant,
                 text::PLUGIN_PERMISSION_ACCESS_DENIED,
@@ -241,8 +247,8 @@ impl PermissionPolicy {
             FileAccess::Read => &self.read_roots,
             FileAccess::Write => &self.write_roots,
         };
-        if roots.iter().any(|root| normalized.starts_with(root)) {
-            Ok(normalized)
+        if roots.iter().any(|root| comparable.starts_with(root)) {
+            Ok(lexical)
         } else {
             Err(permission_error(
                 PermissionErrorKind::InvalidGrant,
@@ -278,14 +284,20 @@ impl FileProxyPolicy {
                 text::PLUGIN_PERMISSION_ACCESS_DENIED,
             ));
         };
-        let normalized = normalize_for_comparison(&candidate).map_err(|_| {
+        let lexical = normalize_absolute(&candidate).map_err(|_| {
             permission_error(
                 PermissionErrorKind::InvalidGrant,
                 text::PLUGIN_PERMISSION_ACCESS_DENIED,
             )
         })?;
-        if roots.iter().any(|root| normalized.starts_with(root)) {
-            Ok(normalized)
+        let comparable = normalize_for_comparison(&lexical).map_err(|_| {
+            permission_error(
+                PermissionErrorKind::InvalidGrant,
+                text::PLUGIN_PERMISSION_ACCESS_DENIED,
+            )
+        })?;
+        if roots.iter().any(|root| comparable.starts_with(root)) {
+            Ok(lexical)
         } else {
             Err(permission_error(
                 PermissionErrorKind::InvalidGrant,
@@ -876,14 +888,28 @@ pub(crate) fn normalize_for_comparison(path: &Path) -> Result<PathBuf, Permissio
     let normalized = normalize_absolute(path)?;
     #[cfg(windows)]
     {
+        use std::{
+            ffi::OsString,
+            os::windows::ffi::{OsStrExt, OsStringExt},
+        };
+
         let value = normalized.to_string_lossy();
-        if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
-            return Ok(PathBuf::from(format!(r"\\{rest}")));
+        let comparable = if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+            PathBuf::from(format!(r"\\{rest}"))
+        } else if let Some(rest) = value.strip_prefix(r"\\?\") {
+            PathBuf::from(rest)
+        } else {
+            normalized
+        };
+        let mut wide = comparable.as_os_str().encode_wide().collect::<Vec<_>>();
+        for code_unit in &mut wide {
+            if (*code_unit >= u16::from(b'A')) && (*code_unit <= u16::from(b'Z')) {
+                *code_unit += u16::from(b'a' - b'A');
+            }
         }
-        if let Some(rest) = value.strip_prefix(r"\\?\") {
-            return Ok(PathBuf::from(rest));
-        }
+        Ok(PathBuf::from(OsString::from_wide(&wide)))
     }
+    #[cfg(not(windows))]
     Ok(normalized)
 }
 
@@ -1065,6 +1091,29 @@ mod tests {
                 ..
             })
         ));
+        fs::remove_dir_all(base).expect("remove fixture");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn file_proxy_compares_windows_paths_without_case_sensitivity() {
+        let base = test_root("file-proxy-path-case");
+        let read_root = base.join("MixedCase");
+        fs::create_dir_all(&read_root).expect("create read root");
+        fs::write(read_root.join("Input.txt"), "hello").expect("write fixture");
+        let upper_case_root = PathBuf::from(read_root.to_string_lossy().to_uppercase());
+        let policy = FileProxyPolicy::from_grants(&[grant("fs.read", &upper_case_root)])
+            .expect("permission policy");
+
+        assert_eq!(
+            handle_file_proxy_request(
+                &policy,
+                "fs.read",
+                &json!({ "path": read_root.join("Input.txt") }),
+            ),
+            ResponseOutcome::Result(json!({ "contentUtf8": "hello" }))
+        );
+
         fs::remove_dir_all(base).expect("remove fixture");
     }
 

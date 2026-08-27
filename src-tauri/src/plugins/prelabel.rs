@@ -704,6 +704,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn host_runtime_reads_project_image_and_validates_plugin_shapes() {
+        let _isolation = crate::process_control::windows_isolation_test_guard();
         use crate::plugins::manifest::{
             PluginApiVersionTarget, PluginCapabilities, PluginCapabilityVersion, PluginEntry,
             PluginPrelabelOptions,
