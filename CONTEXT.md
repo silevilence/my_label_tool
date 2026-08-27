@@ -58,7 +58,7 @@ _Avoid_: 兼容范围、最低版本
 _Avoid_: 特性、功能列表
 
 **权限授予 (Permission Grant)**:
-宿主授予插件的资源访问权。v1 权限面为 `fs.read` / `fs.write`（安装授权时把目录占位符解析为绝对路径后落盘）与 `network`，默认全部拒绝；v1 不提供网络代理。
+宿主授予插件的资源访问权。v1 权限面为 `fs.read` / `fs.write`（安装授权时把目录占位符解析为绝对路径后落盘）与 `network`，默认全部拒绝；v1 不提供网络代理。Windows 代码型插件由 AppContainer 强制限制为插件包、声明使用的系统解释器运行目录只读/执行与协议 stdio，其他包外文件必须经宿主代理，宿主环境按白名单重建，v1 不授予网络 capability。
 _Avoid_: 权限、access
 
 **授权 (Authorization)**:

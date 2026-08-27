@@ -569,6 +569,33 @@ pub fn process_resume_failed(error: impl std::fmt::Display) -> String {
     format!("插件进程加入隔离作业后无法恢复运行：{error}")
 }
 
+pub const PLUGIN_SANDBOX_PACKAGE_MISSING: &str = "插件隔离目录不存在";
+pub const PLUGIN_SANDBOX_SYMLINK_REJECTED: &str = "插件包包含隔离边界不允许的符号链接";
+
+pub fn plugin_sandbox_profile_failed(error: impl std::fmt::Display) -> String {
+    format!("无法创建插件 AppContainer 隔离配置：{error}")
+}
+
+pub fn plugin_sandbox_profile_delete_failed(error: impl std::fmt::Display) -> String {
+    format!("无法删除插件 AppContainer 隔离配置：{error}")
+}
+
+pub fn plugin_sandbox_capability_failed(error: impl std::fmt::Display) -> String {
+    format!("无法创建插件隔离能力：{error}")
+}
+
+pub fn plugin_sandbox_acl_failed(error: impl std::fmt::Display) -> String {
+    format!("无法授权插件包进入隔离容器：{error}")
+}
+
+pub fn plugin_sandbox_launch_failed(error: impl std::fmt::Display) -> String {
+    format!("无法应用插件 AppContainer 隔离：{error}")
+}
+
+pub fn plugin_python_resolution_failed(error: impl std::fmt::Display) -> String {
+    format!("无法解析插件所需的 Python 3 解释器：{error}")
+}
+
 pub fn process_argument_contains_nul() -> String {
     "插件入口命令、参数、环境或工作目录包含非法空字符".to_string()
 }

@@ -39,10 +39,10 @@ use super::{
 #[cfg(unix)]
 use super::process_environment::apply_offline_environment;
 
-#[cfg(windows)]
-use crate::process_control::PipedJobProcess;
 #[cfg(unix)]
 use crate::process_control::{configure_process_group, terminate_process_tree};
+#[cfg(windows)]
+use crate::process_control::{PipedJobProcess, PluginSandbox};
 #[cfg(unix)]
 use std::process::{Child, Command, Stdio};
 
@@ -1211,6 +1211,11 @@ impl RuntimeProcess {
             executable,
             arguments,
             working_directory,
+            PluginSandbox {
+                identity: plugin_dir,
+                package_root: working_directory,
+                allow_network: false,
+            },
             &[
                 ("MY_LABEL_TOOL_PLUGIN_DIR", plugin_dir),
                 OFFLINE_ENVIRONMENT_OVERRIDES[0],
@@ -1495,7 +1500,7 @@ mod tests {
             let error = manager
                 .invoke(&root, &entry, "exporter.export", Value::Null, timeout)
                 .expect_err("broken plugin must fail");
-            assert_eq!(error.code, expected);
+            assert_eq!(error.code, expected, "{}", error.message);
             assert!(!manager.sessions.contains_key(&entry.id));
             fs::remove_dir_all(root).expect("remove fixture");
         }
@@ -1527,11 +1532,7 @@ mod tests {
     fn timeout_terminates_the_parent_and_descendant_processes() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("timeout-tree");
-        let process_ids = root.join("process-ids.txt");
-        let escaped_path = process_ids.to_string_lossy().replace('\'', "''");
-        let body = format!(
-            "$child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; [System.IO.File]::WriteAllText('{escaped_path}', \"$PID`n$($child.Id)\"); Start-Sleep -Seconds 30"
-        );
+        let body = "$child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; [Console]::Error.WriteLine(\"$PID`n$($child.Id)\"); Start-Sleep -Seconds 30";
         let entry = test_entry("dev.test.timeouttree", powershell_plugin(&body), 1_000);
         create_package(&root, &entry.id);
         let mut manager = PluginRuntimeManager::default();
@@ -1545,9 +1546,11 @@ mod tests {
             )
             .expect_err("timeout must fail");
         assert_eq!(error.code, "TIMEOUT");
-        let ids = fs::read_to_string(&process_ids)
+        let ids = manager
+            .diagnostics
+            .get(&entry.id)
             .expect("plugin and child process IDs")
-            .lines()
+            .iter()
             .map(|value| value.parse::<u32>().expect("numeric process ID"))
             .collect::<Vec<_>>();
         assert_eq!(ids.len(), 2);
@@ -1581,10 +1584,8 @@ mod tests {
             ),
         ] {
             let root = test_directory(&format!("cancel-{suffix}"));
-            let process_id_path = root.join("process-id.txt");
-            let escaped_path = process_id_path.to_string_lossy().replace('\'', "''");
             let script = format!(
-            "$hello = [Console]::In.ReadLine() | ConvertFrom-Json; $helloResponse = @{{ v = 1; id = $hello.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ {capability} = $true; progress = $true; cancel = $true }} }} }}; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $call = [Console]::In.ReadLine() | ConvertFrom-Json; [System.IO.File]::WriteAllText('{escaped_path}', [string]$PID); $event = @{{ v = 1; id = $call.id; type = 'event'; event = 'progress'; payload = @{{ percent = 25; message = 'working' }} }}; [Console]::Out.WriteLine(($event | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $control = [Console]::In.ReadLine() | ConvertFrom-Json; $response = @{{ v = 1; id = $call.id; type = 'response'; error = @{{ code = 'CANCELLED'; message = 'cancelled' }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); Start-Sleep -Seconds 30"
+            "$hello = [Console]::In.ReadLine() | ConvertFrom-Json; $helloResponse = @{{ v = 1; id = $hello.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ {capability} = $true; progress = $true; cancel = $true }} }} }}; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $call = [Console]::In.ReadLine() | ConvertFrom-Json; [Console]::Error.WriteLine([string]$PID); $event = @{{ v = 1; id = $call.id; type = 'event'; event = 'progress'; payload = @{{ percent = 25; message = 'working' }} }}; [Console]::Out.WriteLine(($event | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $control = [Console]::In.ReadLine() | ConvertFrom-Json; $response = @{{ v = 1; id = $call.id; type = 'response'; error = @{{ code = 'CANCELLED'; message = 'cancelled' }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); Start-Sleep -Seconds 30"
         );
             let mut entry = test_entry(&format!("dev.test.cancel{suffix}"), script, 10_000);
             entry.extension_kind = extension_kind;
@@ -1615,8 +1616,10 @@ mod tests {
                 .sessions
                 .contains_key(&entry.id));
 
-            let process_id = fs::read_to_string(&process_id_path)
-                .expect("process id")
+            let process_id = plugin_runtime_logs(&entry.id)
+                .into_iter()
+                .find(|line| line.chars().all(|character| character.is_ascii_digit()))
+                .expect("process id diagnostic")
                 .parse::<u32>()
                 .expect("numeric process id");
             let deadline = Instant::now() + Duration::from_secs(5);
@@ -1636,11 +1639,7 @@ mod tests {
     fn cancellation_aware_prelabel_can_return_partial_result_before_termination() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("cancel-partial-prelabel");
-        let process_id_path = root.join("process-id.txt");
-        let escaped_path = process_id_path.to_string_lossy().replace('\'', "''");
-        let script = format!(
-            "$hello = [Console]::In.ReadLine() | ConvertFrom-Json; $helloResponse = @{{ v = 1; id = $hello.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ prelabel = $true; batch = $true; progress = $true; cancel = $true }} }} }}; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); $call = [Console]::In.ReadLine() | ConvertFrom-Json; [System.IO.File]::WriteAllText('{escaped_path}', [string]$PID); $event = @{{ v = 1; id = $call.id; type = 'event'; event = 'progress'; payload = @{{ percent = 50 }} }}; [Console]::Out.WriteLine(($event | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); $null = [Console]::In.ReadLine(); $shape = @{{ imagePath = $call.params.imagePaths[0]; id = 'partial'; type = 'rect'; labelId = 'vehicle'; points = @(1,2,3,4) }}; $response = @{{ v = 1; id = $call.id; type = 'response'; result = @{{ shapes = @($shape); cancelled = $true; completedImagePaths = @($call.params.imagePaths[0]) }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 10)); [Console]::Out.Flush(); Start-Sleep -Seconds 30"
-        );
+        let script = "$hello = [Console]::In.ReadLine() | ConvertFrom-Json; $helloResponse = @{ v = 1; id = $hello.id; type = 'response'; result = @{ protocolVersion = 1; capabilities = @{ prelabel = $true; batch = $true; progress = $true; cancel = $true } } }; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); $call = [Console]::In.ReadLine() | ConvertFrom-Json; [Console]::Error.WriteLine([string]$PID); $event = @{ v = 1; id = $call.id; type = 'event'; event = 'progress'; payload = @{ percent = 50 } }; [Console]::Out.WriteLine(($event | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); $null = [Console]::In.ReadLine(); $shape = @{ imagePath = $call.params.imagePaths[0]; id = 'partial'; type = 'rect'; labelId = 'vehicle'; points = @(1,2,3,4) }; $response = @{ v = 1; id = $call.id; type = 'response'; result = @{ shapes = @($shape); cancelled = $true; completedImagePaths = @($call.params.imagePaths[0]) } }; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 10)); [Console]::Out.Flush(); Start-Sleep -Seconds 30".to_string();
         let mut entry = test_entry("dev.test.cancelpartial", script, 10_000);
         entry.extension_kind = PluginExtensionKind::Prelabel;
         entry.capabilities.annotation_types =
@@ -1668,8 +1667,10 @@ mod tests {
         assert_eq!(result["cancelled"], true);
         assert_eq!(result["completedImagePaths"][0], "images/a.jpg");
 
-        let process_id = fs::read_to_string(&process_id_path)
-            .expect("process id")
+        let process_id = plugin_runtime_logs(&entry.id)
+            .into_iter()
+            .find(|line| line.chars().all(|character| character.is_ascii_digit()))
+            .expect("process id diagnostic")
             .parse::<u32>()
             .expect("numeric process id");
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -1688,11 +1689,7 @@ mod tests {
     fn timeout_covers_a_blocked_stdin_write_after_hello() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("blocked-stdin");
-        let marker = root.join("hello-complete.txt");
-        let escaped = marker.to_string_lossy().replace('\'', "''");
-        let script = format!(
-            "$line = [Console]::In.ReadLine(); $msg = $line | ConvertFrom-Json; $response = @{{ v = 1; id = $msg.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ exporter = $true }} }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush(); [System.IO.File]::WriteAllText('{escaped}', 'ready'); Start-Sleep -Seconds 30"
-        );
+        let script = "$line = [Console]::In.ReadLine(); $msg = $line | ConvertFrom-Json; $response = @{ v = 1; id = $msg.id; type = 'response'; result = @{ protocolVersion = 1; capabilities = @{ exporter = $true } } }; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush(); [Console]::Error.WriteLine('hello-ready'); Start-Sleep -Seconds 30".to_string();
         let entry = test_entry("dev.test.blockedstdin", script, 1_500);
         create_package(&root, &entry.id);
         let mut manager = PluginRuntimeManager::default();
@@ -1707,7 +1704,13 @@ mod tests {
             )
             .expect_err("blocked stdin write must time out");
         assert_eq!(error.code, "TIMEOUT");
-        assert!(marker.is_file(), "hello must complete before stdin blocks");
+        assert!(
+            manager
+                .diagnostics
+                .get(&entry.id)
+                .is_some_and(|lines| lines.iter().any(|line| line == "hello-ready")),
+            "hello must complete before stdin blocks"
+        );
         assert!(started.elapsed() < Duration::from_secs(4));
         fs::remove_dir_all(root).expect("remove fixture");
     }
@@ -1904,13 +1907,9 @@ mod tests {
     fn out_of_band_termination_interrupts_a_long_call_without_waiting_for_timeout() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("out-of-band-stop");
-        let marker = root.join("started.txt");
-        let escaped = marker.to_string_lossy().replace('\'', "''");
         let entry = test_entry(
             "dev.test.outofband",
-            powershell_plugin(&format!(
-                "[System.IO.File]::WriteAllText('{escaped}', 'started'); Start-Sleep -Seconds 30"
-            )),
+            powershell_plugin("[Console]::Error.WriteLine('started'); Start-Sleep -Seconds 30"),
             30_000,
         );
         create_package(&root, &entry.id);
@@ -1928,10 +1927,13 @@ mod tests {
             )
         });
         let deadline = Instant::now() + Duration::from_secs(5);
-        while !marker.is_file() && Instant::now() < deadline {
+        while !session.logs().iter().any(|line| line == "started") && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(25));
         }
-        assert!(marker.is_file(), "plugin call did not start");
+        assert!(
+            session.logs().iter().any(|line| line == "started"),
+            "plugin call did not start"
+        );
         let started = Instant::now();
         session.terminate().expect("terminate session");
         assert!(started.elapsed() < Duration::from_secs(1));

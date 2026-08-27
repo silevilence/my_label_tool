@@ -169,11 +169,11 @@
   - [x] 图片访问：插件经权限模型读图（`fs.read:<%PROJECT%>` 授权），宿主不传图片字节
   - 验收：示例预打标插件（Python，实现 hello/run/进度/取消）跑通单图与批量；批量中取消后已完成图片标注保留且进程无残留；非法坐标/未知 labelId 返回 `INVALID_ARGUMENT` 且不产生脏数据；与内置 ONNX 管线切换无状态串扰
 
-- [ ] **插件系统整体验收与文档**
-  - [ ] 端到端验收清单（全部通过才算完成）：坏插件隔离（启动即崩/死循环/垃圾输出）、权限拒绝（越权读、未授权网络）、超时与取消（30s 超时、control 取消）、自动禁用（3 次后 + 手动恢复）、安全模式（代码型全禁、数据型保留）、迁移失败降级（项目正常打开、重试成功）、卸载清理（目录/注册表清理、项目不受影响）、更新流程（保留授权与配置、configVersion 变化触发迁移）
-  - [ ] 手动验证清单：启用/禁用插件后导出面板与预打标入口状态正确；重启后注册表、授权、插件配置完整恢复；安全模式开关即时生效
-  - [ ] 文档核对：`docs/plugins.md`、`docs/plugin-protocol.md`、`docs/plugin-manifest.schema.json` 与实现一致；CONTEXT.md 术语与 ADR 无冲突
-  - [ ] 自动化：`npm run typecheck`、`npm run lint`、`npm run test:coverage`（插件纯逻辑保持 90% 行覆盖）、`cargo clippy`、`cargo test`（含 conformance 与权限单测）全部通过
+- [x] **插件系统整体验收与文档**
+  - [x] 端到端验收清单（全部通过才算完成）：坏插件隔离（启动即崩/死循环/垃圾输出）、权限拒绝（越权读、未授权网络）、超时与取消（30s 超时、control 取消）、自动禁用（3 次后 + 手动恢复）、安全模式（代码型全禁、数据型保留）、迁移失败降级（项目正常打开、重试成功）、卸载清理（目录/注册表清理、项目不受影响）、更新流程（保留授权与配置、configVersion 变化触发迁移）
+  - [x] 手动验证清单：启用/禁用插件后导出面板与预打标入口状态正确；重启后注册表、授权、插件配置完整恢复；安全模式开关即时生效
+  - [x] 文档核对：`docs/plugins.md`、`docs/plugin-protocol.md`、`docs/plugin-manifest.schema.json` 与实现一致；CONTEXT.md 术语与 ADR 无冲突
+  - [x] 自动化：`npm run typecheck`、`npm run lint`、`npm run test:coverage`（插件纯逻辑保持 90% 行覆盖）、`cargo clippy`、`cargo test`（含 conformance 与权限单测）全部通过
   - 验收：坏插件/权限/超时/取消/自动禁用/安全模式/迁移/卸载八类场景各有一份可复现的记录（截图或日志）
 
 ## ✅ 已完成 (Completed)

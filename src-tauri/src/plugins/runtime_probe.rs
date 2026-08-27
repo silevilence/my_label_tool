@@ -10,10 +10,10 @@ use crate::plugins::process_environment::apply_offline_environment;
 use crate::plugins::process_environment::{
     OFFLINE_ENVIRONMENT_OVERRIDES, PROXY_ENVIRONMENT_VARIABLES,
 };
-#[cfg(windows)]
-use crate::process_control::SuspendedJobProcess;
 #[cfg(unix)]
 use crate::process_control::{configure_process_group, terminate_process_tree};
+#[cfg(windows)]
+use crate::process_control::{PluginSandbox, SuspendedJobProcess};
 #[cfg(unix)]
 use std::process::{Child, Command, Stdio};
 
@@ -37,10 +37,17 @@ fn probe_plugin_process_with_window(
     startup_window: Duration,
 ) -> Result<(), String> {
     #[cfg(windows)]
+    let sandbox_identity = working_directory.to_string_lossy().into_owned();
+    #[cfg(windows)]
     let mut process = SuspendedJobProcess::spawn(
         executable,
         arguments,
         working_directory,
+        PluginSandbox {
+            identity: &sandbox_identity,
+            package_root: working_directory,
+            allow_network: false,
+        },
         &OFFLINE_ENVIRONMENT_OVERRIDES,
         &PROXY_ENVIRONMENT_VARIABLES,
     )?;
@@ -53,18 +60,18 @@ fn probe_plugin_process_with_window(
         match probe_status(&mut process) {
             Ok(ProbeStatus::Exited(exit_code)) => {
                 let _ = process.terminate_tree();
-                return Err(text::plugin_runtime_exited(exit_code));
+                break Err(text::plugin_runtime_exited(exit_code));
             }
             Ok(ProbeStatus::Running) if started.elapsed() < startup_window => {
                 thread::sleep(POLL_INTERVAL);
             }
             Ok(ProbeStatus::Running) => {
                 let _ = process.terminate_tree();
-                return Ok(());
+                break Ok(());
             }
             Err(error) => {
                 let _ = process.terminate_tree();
-                return Err(error);
+                break Err(error);
             }
         }
     }
@@ -163,10 +170,12 @@ mod tests {
 
     #[test]
     fn declared_waiting_process_is_reaped() {
-        let root = std::env::temp_dir();
+        let root = test_directory("waiting");
+        fs::create_dir_all(&root).expect("create fixture directory");
         let (executable, arguments) = waiting_command();
         probe_plugin_process_available(Path::new(executable), &arguments, &root)
             .expect("startup probe");
+        fs::remove_dir_all(root).expect("remove fixture directory");
     }
 
     #[test]
@@ -183,8 +192,17 @@ mod tests {
             Duration::from_secs(10),
         )
         .expect_err("early exit must fail the startup probe");
+        #[cfg(not(windows))]
         assert!(error.contains("退出码：7"), "unexpected error: {error}");
 
+        #[cfg(windows)]
+        let process_id = error
+            .rsplit_once('：')
+            .expect("exit code delimiter")
+            .1
+            .parse::<u32>()
+            .expect("child PID exit code");
+        #[cfg(not(windows))]
         let process_id = fs::read_to_string(&process_id_path)
             .expect("background child PID")
             .trim()
@@ -214,16 +232,13 @@ mod tests {
     }
 
     #[cfg(windows)]
-    fn early_exit_command(process_id_path: &Path) -> (&'static str, Vec<String>) {
-        let process_id_path = process_id_path.to_string_lossy().replace('\'', "''");
+    fn early_exit_command(_: &Path) -> (&'static str, Vec<String>) {
         (
             "powershell",
             vec![
                 "-NoProfile".to_string(),
                 "-Command".to_string(),
-                format!(
-                    "$child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; Set-Content -LiteralPath '{process_id_path}' -Value $child.Id; exit 7"
-                ),
+                "$child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; exit $child.Id".to_string(),
             ],
         )
     }
