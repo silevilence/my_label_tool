@@ -20,6 +20,7 @@ import type {
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
 import type {
   PluginInstallPreview,
+  PluginLabelPresetSnapshot,
   PluginConfig,
   PluginConfigMigrationReport,
   PluginPermissionGrant,
@@ -259,6 +260,10 @@ export function uninstallPlugin(pluginId: string): Promise<void> {
 
 export function listPlugins(): Promise<PluginRegistrySnapshot> {
   return invoke<PluginRegistrySnapshot>("list_plugins");
+}
+
+export function loadPluginLabelPresets(): Promise<PluginLabelPresetSnapshot> {
+  return invoke<PluginLabelPresetSnapshot>("load_plugin_label_presets");
 }
 
 export function setPluginEnabled(

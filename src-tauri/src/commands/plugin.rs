@@ -6,6 +6,9 @@ use crate::i18n::zh_cn as text;
 use crate::plugins::config::{
     migrate_plugin_configs as migrate_configs, PluginConfig, PluginConfigMigrationReport,
 };
+use crate::plugins::label_preset::{
+    load_plugin_label_presets as load_presets, PluginLabelPresetSnapshot,
+};
 use crate::plugins::registry::{
     authorize_plugin_install_for_project, clear_registered_plugin_failures, get_registered_plugin,
     load_plugin_registry, pending_plugin_install_id, prepare_plugin_install_for_project,
@@ -63,6 +66,13 @@ pub fn uninstall_plugin(app: tauri::AppHandle, plugin_id: String) -> Result<(), 
 #[tauri::command]
 pub fn list_plugins(app: tauri::AppHandle) -> Result<PluginRegistrySnapshot, String> {
     Ok(load_plugin_registry(&plugin_app_data_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn load_plugin_label_presets(
+    app: tauri::AppHandle,
+) -> Result<PluginLabelPresetSnapshot, String> {
+    Ok(load_presets(&plugin_app_data_dir(&app)?))
 }
 
 #[tauri::command]

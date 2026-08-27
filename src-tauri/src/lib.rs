@@ -46,6 +46,7 @@ pub fn run() {
             commands::authorize_plugin,
             commands::uninstall_plugin,
             commands::list_plugins,
+            commands::load_plugin_label_presets,
             commands::set_plugin_enabled,
             commands::get_plugin_status,
             commands::clear_plugin_failures,

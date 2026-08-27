@@ -107,6 +107,8 @@ interface AppLayoutProps {
   transientMessage: string;
   shortcuts: ShortcutMap;
   templates: LabelTemplate[];
+  pluginTemplateIds: ReadonlySet<string>;
+  pluginTemplateSources: ReadonlyMap<string, string>;
   transformerRef: MutableRefObject<KonvaTransformer | null>;
   updateMessage: string;
   updateProgress: AppUpdateProgress | null;
@@ -142,6 +144,7 @@ interface AppLayoutProps {
   openFolder: () => void;
   redo: () => void;
   retryPluginConfigMigrations: () => Promise<void>;
+  refreshPluginLabelPresets: () => Promise<void>;
   resetZoom: () => void;
   saveProjectExport: () => void;
   savePrelabelMappings: (
@@ -228,6 +231,8 @@ export function AppLayout({
   transientMessage,
   shortcuts,
   templates,
+  pluginTemplateIds,
+  pluginTemplateSources,
   transformerRef,
   updateMessage,
   updateProgress,
@@ -259,6 +264,7 @@ export function AppLayout({
   openFolder,
   redo,
   retryPluginConfigMigrations,
+  refreshPluginLabelPresets,
   resetZoom,
   saveProjectExport,
   savePrelabelMappings,
@@ -395,6 +401,8 @@ export function AppLayout({
         selectedPath={selectedPath}
         selectedTemplateId={selectedTemplateId}
         templates={templates}
+        pluginTemplateIds={pluginTemplateIds}
+        pluginTemplateSources={pluginTemplateSources}
         usedLabelIds={usedLabelIds}
         cancelLabelChanges={cancelLabelChanges}
         checkForUpdates={checkForUpdates}
@@ -407,6 +415,7 @@ export function AppLayout({
         openFolder={openFolder}
         redo={redo}
         retryPluginConfigMigrations={retryPluginConfigMigrations}
+        refreshPluginLabelPresets={refreshPluginLabelPresets}
         saveProjectExport={saveProjectExport}
         saveTemplate={saveTemplate}
         saveTemplateAndUpdateAnnotations={saveTemplateAndUpdateAnnotations}

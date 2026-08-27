@@ -24,6 +24,7 @@ import type {
 interface PluginSettingsProps {
   projectDir: string | null;
   onRetryConfigMigration: () => Promise<void>;
+  onPluginsChanged: () => Promise<void>;
   onClose: () => void;
 }
 
@@ -50,6 +51,7 @@ const EXTENSION_LABELS: Record<PluginExtensionKind, string> = {
 export function PluginSettings({
   projectDir,
   onRetryConfigMigration,
+  onPluginsChanged,
   onClose,
 }: PluginSettingsProps) {
   const [plugins, setPlugins] = useState<PluginRegistryEntry[]>([]);
@@ -120,6 +122,7 @@ export function PluginSettings({
       setPreview(null);
       setConfirmedPermissions(new Set());
       await refresh();
+      await onPluginsChanged();
     } catch (reason) {
       setError(formatError(reason));
       setPreview(null);
@@ -158,6 +161,7 @@ export function PluginSettings({
     try {
       await operation();
       await refresh();
+      await onPluginsChanged();
     } catch (reason) {
       setError(formatError(reason));
     } finally {

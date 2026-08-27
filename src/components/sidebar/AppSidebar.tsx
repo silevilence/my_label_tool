@@ -37,6 +37,8 @@ interface AppSidebarProps {
   selectedPath: string;
   selectedTemplateId: string;
   templates: LabelTemplate[];
+  pluginTemplateIds: ReadonlySet<string>;
+  pluginTemplateSources: ReadonlyMap<string, string>;
   usedLabelIds: Set<string>;
   cancelLabelChanges: () => void;
   checkForUpdates: () => void;
@@ -49,6 +51,7 @@ interface AppSidebarProps {
   openFolder: () => void;
   redo: () => void;
   retryPluginConfigMigrations: () => Promise<void>;
+  refreshPluginLabelPresets: () => Promise<void>;
   saveProjectExport: () => void;
   saveTemplate: () => void;
   saveTemplateAndUpdateAnnotations: () => void;
@@ -88,6 +91,8 @@ export function AppSidebar({
   selectedPath,
   selectedTemplateId,
   templates,
+  pluginTemplateIds,
+  pluginTemplateSources,
   usedLabelIds,
   cancelLabelChanges,
   checkForUpdates,
@@ -100,6 +105,7 @@ export function AppSidebar({
   openFolder,
   redo,
   retryPluginConfigMigrations,
+  refreshPluginLabelPresets,
   saveProjectExport,
   saveTemplate,
   saveTemplateAndUpdateAnnotations,
@@ -295,15 +301,19 @@ export function AppSidebar({
       <div className="scrollbar-dark min-h-0 max-h-[45vh] overflow-y-auto">
         <LabelSettings
           canSaveTemplate={
-            isUserTemplate(selectedTemplateId) || selectedTemplateId === projectTemplateId
+            (isUserTemplate(selectedTemplateId) && !pluginTemplateIds.has(selectedTemplateId)) ||
+            selectedTemplateId === projectTemplateId
           }
           canDeleteTemplate={
-            isUserTemplate(selectedTemplateId) && selectedTemplateId !== projectTemplateId
+            isUserTemplate(selectedTemplateId) &&
+            selectedTemplateId !== projectTemplateId &&
+            !pluginTemplateIds.has(selectedTemplateId)
           }
           isDirty={isLabelDirty}
           labels={labels}
           selectedTemplateId={selectedTemplateId}
           templates={templates}
+          pluginTemplateSources={pluginTemplateSources}
           usedLabelIds={usedLabelIds}
           onCancelChanges={cancelLabelChanges}
           onChangeLabels={updateLabels}
@@ -437,6 +447,7 @@ export function AppSidebar({
         <PluginSettings
           projectDir={folderPath || null}
           onRetryConfigMigration={retryPluginConfigMigrations}
+          onPluginsChanged={refreshPluginLabelPresets}
           onClose={() => setIsPluginSettingsOpen(false)}
         />
       )}

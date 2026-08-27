@@ -1,3 +1,7 @@
+use super::label_preset::{
+    parse_label_preset, read_label_preset_file, LABEL_PRESET_FILE_NAME, MAX_LABEL_PRESET_BYTES,
+};
+use super::manifest::PluginExtensionKind;
 use super::manifest::{parse_plugin_manifest, PluginManifest};
 use super::registry::{MAX_ARCHIVE_FILE_BYTES, MAX_ARCHIVE_TOTAL_BYTES, MAX_COMPRESSION_RATIO};
 use crate::i18n::zh_cn as text;
@@ -68,11 +72,17 @@ fn validate_directory(root: &Path) -> Result<PluginValidationReport, String> {
         serde_json::Value::Null
     };
     let entry_exists = |relative: &str| root.join(relative).is_file();
+    let label_preset_path = root.join(LABEL_PRESET_FILE_NAME);
+    let label_preset_bytes = match fs::symlink_metadata(&label_preset_path) {
+        Ok(_) => Some(read_label_preset_file(&label_preset_path)),
+        Err(_) => None,
+    };
     Ok(build_report(
         "directory",
         manifest_value,
         issues,
         entry_exists,
+        label_preset_bytes,
     ))
 }
 
@@ -83,6 +93,7 @@ fn validate_archive(path: &Path) -> Result<PluginValidationReport, String> {
         .map_err(|error| text::plugin_validator_archive_failed(path, error))?;
     let mut issues = Vec::new();
     let mut manifest_value = None;
+    let mut label_preset_bytes = None;
     let mut package_files = HashSet::new();
     let mut total = 0_u64;
     for index in 0..archive.len() {
@@ -156,6 +167,20 @@ fn validate_archive(path: &Path) -> Result<PluginValidationReport, String> {
                     }
                 });
             }
+        } else if relative == Path::new(LABEL_PRESET_FILE_NAME) {
+            let mut bytes = Vec::new();
+            let read_result = entry
+                .by_ref()
+                .take(MAX_LABEL_PRESET_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|error| text::plugin_validator_archive_failed(path, error));
+            if label_preset_bytes.is_none() {
+                label_preset_bytes = Some(match read_result {
+                    Ok(_) if bytes.len() as u64 <= MAX_LABEL_PRESET_BYTES => Ok(bytes),
+                    Ok(_) => Err(text::PLUGIN_LABEL_PRESET_TOO_LARGE.to_string()),
+                    Err(error) => Err(error),
+                });
+            }
         }
     }
     let manifest_value = manifest_value.unwrap_or_else(|| {
@@ -172,6 +197,7 @@ fn validate_archive(path: &Path) -> Result<PluginValidationReport, String> {
         manifest_value,
         issues,
         entry_exists,
+        label_preset_bytes,
     ))
 }
 
@@ -180,6 +206,7 @@ fn build_report(
     manifest_value: serde_json::Value,
     mut issues: Vec<PluginValidationIssue>,
     entry_exists: impl Fn(&str) -> bool,
+    label_preset_bytes: Option<Result<Vec<u8>, String>>,
 ) -> PluginValidationReport {
     let parsed = parse_plugin_manifest(&manifest_value);
     issues.extend(
@@ -193,6 +220,32 @@ fn build_report(
             }),
     );
     let manifest = parsed.value;
+    if let Some(label_manifest) = manifest
+        .as_ref()
+        .filter(|manifest| manifest.extension_kind == PluginExtensionKind::LabelPreset)
+    {
+        match label_preset_bytes {
+            Some(Ok(bytes)) => {
+                if let Err(message) = parse_label_preset(&bytes, &label_manifest.id) {
+                    issues.push(issue(
+                        LABEL_PRESET_FILE_NAME,
+                        "INVALID_LABEL_PRESET",
+                        &message,
+                    ));
+                }
+            }
+            Some(Err(message)) => issues.push(issue(
+                LABEL_PRESET_FILE_NAME,
+                "INVALID_LABEL_PRESET",
+                &message,
+            )),
+            None => issues.push(issue(
+                LABEL_PRESET_FILE_NAME,
+                "MISSING_LABEL_PRESET",
+                text::PLUGIN_LABEL_PRESET_MISSING,
+            )),
+        }
+    }
     if let Some(entry) = manifest
         .as_ref()
         .and_then(|manifest| manifest.entry.as_ref())
@@ -345,6 +398,41 @@ mod tests {
     }
 
     #[test]
+    fn label_preset_validator_requires_and_parses_root_data_file() {
+        let root = temp_dir("label-preset");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("manifest.json"),
+            serde_json::to_vec(&label_manifest()).unwrap(),
+        )
+        .unwrap();
+        let missing = validate_plugin_source(&root).unwrap();
+        assert!(missing
+            .issues
+            .iter()
+            .any(|issue| issue.code == "MISSING_LABEL_PRESET"));
+
+        fs::write(root.join("labels.json"), b"{}").unwrap();
+        let invalid = validate_plugin_source(&root).unwrap();
+        assert!(invalid
+            .issues
+            .iter()
+            .any(|issue| issue.code == "INVALID_LABEL_PRESET"));
+
+        fs::write(
+            root.join("labels.json"),
+            vec![b' '; (MAX_LABEL_PRESET_BYTES + 1) as usize],
+        )
+        .unwrap();
+        let oversized = validate_plugin_source(&root).unwrap();
+        assert!(oversized.issues.iter().any(|issue| {
+            issue.code == "INVALID_LABEL_PRESET"
+                && issue.message == text::PLUGIN_LABEL_PRESET_TOO_LARGE
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn repository_examples_match_the_manifest_contract() {
         let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -363,6 +451,11 @@ mod tests {
             schema["properties"]["extensionKind"]["enum"],
             json!(["label-preset", "exporter", "prelabel"])
         );
+        let preset_schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../docs/plugin-label-preset.schema.json"
+        ))
+        .expect("label preset schema");
+        assert_eq!(preset_schema["properties"]["labels"]["minItems"], 1);
     }
 
     fn manifest() -> serde_json::Value {
@@ -380,6 +473,19 @@ mod tests {
                 "prelabel": { "apiVersion": { "min": 1 } }
             },
             "permissions": ["fs.read:%PROJECT%/images"]
+        })
+    }
+
+    fn label_manifest() -> serde_json::Value {
+        json!({
+            "schemaVersion": 1,
+            "id": "dev.example.labels",
+            "name": "示例标签",
+            "version": "1.0.0",
+            "apiVersion": { "min": 1 },
+            "extensionKind": "label-preset",
+            "capabilities": {},
+            "permissions": []
         })
     }
 

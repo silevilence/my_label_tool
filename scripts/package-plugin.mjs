@@ -8,7 +8,8 @@ import { PLUGIN_TOOL_ZH_CN as text } from "./i18n/plugin-tools.zh-CN.mjs";
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
-const ALLOWED_ROOT_ENTRIES = new Set(["manifest.json", "plugin"]);
+const MAX_LABEL_PRESET_BYTES = 1024 * 1024;
+const ALLOWED_ROOT_ENTRIES = new Set(["manifest.json", "labels.json", "plugin"]);
 const PLUGIN_ID_PATTERN = /^[a-z0-9]+(\.[a-z0-9]+){1,}$/;
 const SEMVER_PATTERN =
   /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -38,6 +39,10 @@ async function main() {
   if (pluginEntry && !pluginEntry.isDirectory()) {
     throw new Error(text.pluginMustBeDirectory);
   }
+  const labelsEntry = rootEntries.find((entry) => entry.name === "labels.json");
+  if (labelsEntry && !labelsEntry.isFile()) {
+    throw new Error(text.labelsMustBeFile);
+  }
 
   const budget = { total: 0 };
   const manifestBytes = await readBoundedFile(
@@ -63,8 +68,29 @@ async function main() {
   if (!SEMVER_PATTERN.test(manifest.version)) {
     throw new Error(text.manifestVersionInvalid);
   }
+  const isLabelPreset = manifest.extensionKind === "label-preset";
+  if (isLabelPreset && !labelsEntry) {
+    throw new Error(text.labelsMissing);
+  }
+  if (isLabelPreset && pluginEntry) {
+    throw new Error(text.labelPresetPluginDirectoryForbidden);
+  }
+  if (!isLabelPreset && labelsEntry) {
+    throw new Error(text.labelsOnlyForPreset);
+  }
 
   const files = [{ archivePath: "manifest.json", bytes: manifestBytes }];
+  if (labelsEntry) {
+    files.push({
+      archivePath: "labels.json",
+      bytes: await readBoundedFile(
+        path.join(source, "labels.json"),
+        "labels.json",
+        budget,
+        MAX_LABEL_PRESET_BYTES,
+      ),
+    });
+  }
   if (pluginEntry) {
     await collectFiles(source, path.join(source, "plugin"), files, budget);
   }
@@ -139,15 +165,19 @@ async function collectFiles(root, directory, files, budget) {
   }
 }
 
-async function readBoundedFile(absolute, archivePath, budget) {
+async function readBoundedFile(absolute, archivePath, budget, maxBytes = MAX_FILE_BYTES) {
   const file = await open(absolute, "r");
   try {
     const fileInfo = await file.stat();
     if (!fileInfo.isFile()) {
       throw new Error(text.unsupportedEntry(archivePath));
     }
-    if (fileInfo.size > MAX_FILE_BYTES) {
-      throw new Error(text.fileTooLarge(archivePath));
+    if (fileInfo.size > maxBytes) {
+      throw new Error(
+        maxBytes === MAX_LABEL_PRESET_BYTES
+          ? text.labelPresetTooLarge
+          : text.fileTooLarge(archivePath),
+      );
     }
     if (budget.total + fileInfo.size > MAX_TOTAL_BYTES) {
       throw new Error(text.packageTooLarge);

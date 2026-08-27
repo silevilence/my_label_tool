@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DEFAULT_LABEL_COLORS } from "../../lib/defaults/labels";
 import { PROJECT_TEMPLATE_ID } from "../../lib/importers";
 import { confirmAction } from "../../lib/tauri-api";
+import { PLUGIN_ZH_CN as pluginText } from "../../i18n/plugin.zh-CN";
 import {
   LABEL_SHAPE_TYPES,
   LABEL_SHAPE_TYPE_LABELS,
@@ -12,6 +13,7 @@ import {
 interface LabelSettingsProps {
   labels: LabelConfig[];
   templates: LabelTemplate[];
+  pluginTemplateSources: ReadonlyMap<string, string>;
   selectedTemplateId: string;
   isDirty: boolean;
   canSaveTemplate: boolean;
@@ -30,6 +32,7 @@ interface LabelSettingsProps {
 export function LabelSettings({
   labels,
   templates,
+  pluginTemplateSources,
   selectedTemplateId,
   isDirty,
   canSaveTemplate,
@@ -118,7 +121,12 @@ export function LabelSettings({
         >
           {templates.map((template) => (
             <option key={template.id} value={template.id}>
-              {template.name}
+              {pluginTemplateSources.has(template.id)
+                ? pluginText.labelPresetSource(
+                    pluginTemplateSources.get(template.id) ?? "",
+                    template.name,
+                  )
+                : template.name}
             </option>
           ))}
         </select>

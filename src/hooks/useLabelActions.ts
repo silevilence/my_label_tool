@@ -19,6 +19,7 @@ interface UseLabelActionsParams {
   isLabelDirty: boolean;
   labels: LabelConfig[];
   projectTemplateId: string;
+  readOnlyTemplateIds: ReadonlySet<string>;
   savedLabels: LabelConfig[];
   selectedPath: string;
   selectedShapeId: string | null;
@@ -52,6 +53,7 @@ export function useLabelActions({
   isLabelDirty,
   labels,
   projectTemplateId,
+  readOnlyTemplateIds,
   savedLabels,
   selectedPath,
   selectedShapeId,
@@ -146,7 +148,7 @@ export function useLabelActions({
       return;
     }
 
-    if (!isUserTemplate(selectedTemplateId)) {
+    if (!isUserTemplate(selectedTemplateId) || readOnlyTemplateIds.has(selectedTemplateId)) {
       saveTemplateAs();
       return;
     }
@@ -196,7 +198,11 @@ export function useLabelActions({
   }
 
   async function deleteTemplate() {
-    if (!isUserTemplate(selectedTemplateId) || selectedTemplateId === projectTemplateId) {
+    if (
+      !isUserTemplate(selectedTemplateId) ||
+      selectedTemplateId === projectTemplateId ||
+      readOnlyTemplateIds.has(selectedTemplateId)
+    ) {
       return;
     }
 
@@ -305,6 +311,8 @@ export function useLabelActions({
     saveLabelTemplates(
       nextTemplates.filter(
         (template) => isUserTemplate(template.id) && template.id !== projectTemplateId,
+      ).filter(
+        (template) => !readOnlyTemplateIds.has(template.id),
       ),
     ).catch(reportError);
   }

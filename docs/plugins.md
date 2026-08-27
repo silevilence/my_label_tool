@@ -41,14 +41,19 @@
 ### 最小目录结构
 
 ```text
-my-plugin/
+label-preset-plugin/
+├── manifest.json
+└── labels.json
+
+code-plugin/
 ├── manifest.json
 └── plugin/
-    └── main.py、可执行文件或数据资源
+    └── main.py、可执行文件或运行资源
 ```
 
-打包脚本只接受根目录 `manifest.json` 与可选 `plugin/`，可以避免把源码缓存、密钥或
-构建产物误装入插件包。入口路径与资源路径均相对包根目录。
+打包脚本按扩展类型限制根目录：`label-preset` 只接受 `manifest.json` 与必需的
+`labels.json`；代码型插件只接受 `manifest.json` 与可选 `plugin/`。这样可以避免把
+源码缓存、密钥或构建产物误装入插件包。入口路径与资源路径均相对包根目录。
 
 ### 编写 manifest
 
@@ -80,6 +85,10 @@ my-plugin/
 - 只声明实际实现并在 `hello` 中再次确认的能力；宿主以握手结果为准。
 - `label-preset` 是纯数据扩展，不得声明 `runtime`/`entry`；代码型 exporter/prelabel
   必须声明 `runtime: "process"` 与入口。
+- `label-preset` 的包根 `labels.json` 复用 `LabelTemplate` 结构。模板与标签 ID 必须在
+  插件 ID 命名空间内，标签 ID/快捷键必须唯一；完整结构见
+  [plugin-label-preset.schema.json](plugin-label-preset.schema.json)。安装时宿主会同时执行
+  Schema 等价的严格结构校验与命名空间、唯一性语义校验；文件上限为 1 MiB。
 - 完整约束见 [plugin-manifest.schema.json](plugin-manifest.schema.json)，版本与兼容策略
   见 [plugin-api-versioning.md](plugin-api-versioning.md)。
 
@@ -121,6 +130,11 @@ node scripts/package-plugin.mjs examples/plugins/prelabel-demo
 node scripts/package-plugin.mjs examples/plugins/prelabel-demo --extension .mlt-plugin
 node scripts/package-plugin.mjs examples/plugins/prelabel-demo --output target/prelabel.zip --force
 ```
+
+已启用的标签预置会出现在“加载预置模板”列表，并显示“插件：插件名”来源。加载动作
+复用现有模板语义；加载后的标签成为项目快照，因此插件更新、停用或卸载只改变后续
+可选列表，不会改写当前项目的标签、既有标注或导出结果。应用重启后会从注册表恢复
+已启用的预置列表。插件模板为只读，修改后需另存为用户模板。
 
 ### Conformance 自测与打印式调试
 

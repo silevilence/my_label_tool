@@ -1,6 +1,7 @@
 // The registry keeps archive publication and durable state transitions in one
 // transactional module; it exceeds 1000 lines so rollback invariants and their
 // private test seams are not split across partially authoritative modules.
+use super::label_preset::validate_label_preset_package;
 use super::manifest::{
     is_safe_relative_path, is_valid_permission_target, is_valid_plugin_id, is_valid_semver,
     parse_plugin_manifest, PluginCapabilities, PluginEntry, PluginExtensionKind, PluginManifest,
@@ -237,6 +238,7 @@ fn prepare_plugin_install_inner(
     reject_code_plugin_in_safe_mode(app_data_dir, &manifest)?;
     negotiate_manifest(&manifest)?;
     validate_runtime(&manifest, pending_root, probe, false)?;
+    validate_label_preset_package(&manifest, pending_root)?;
     let permissions = resolve_permission_grants_for_install(
         &manifest.permissions,
         &permission_roots(app_data_dir, project_dir),
@@ -601,6 +603,7 @@ fn authorize_plugin_install_inner(
         });
     }
     validate_runtime(&manifest, pending_root, probe, true)?;
+    validate_label_preset_package(&manifest, pending_root)?;
     verify_bound_install_token(pending_root, install_token)?;
 
     let _registry_guard = registry_lock().lock().map_err(|_| registry_lock_error())?;

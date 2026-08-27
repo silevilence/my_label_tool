@@ -31,17 +31,18 @@ pub struct AnnotationShape {
     pub frame_index: Option<u32>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelConfig {
     pub id: String,
     pub name: String,
     pub color: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub shortcut: Option<String>,
     pub shape_type: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelTemplate {
     pub id: String,

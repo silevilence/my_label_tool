@@ -33,6 +33,7 @@
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.6.0",
     "@vitest/coverage-v8": "^4.1.10",
+    "ajv": "^8.17.1",
     "autoprefixer": "^10.5.2",
     "eslint": "^10.7.0",
     "jsdom": "^29.1.1",

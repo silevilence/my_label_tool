@@ -322,6 +322,19 @@ pub fn plugin_api_version_unsupported(scope: &str, required: u32, supported: &[u
 pub const PLUGIN_UNVERIFIED_AUTHOR_WARNING: &str =
     "未验证作者：代码型插件可能运行任意代码，请仅安装可信来源的插件";
 pub const PLUGIN_ARCHIVE_MISSING_MANIFEST: &str = "插件包根目录缺少 manifest.json";
+pub const PLUGIN_LABEL_PRESET_MISSING: &str = "预置标签插件包根目录缺少 labels.json";
+pub const PLUGIN_LABEL_PRESET_EXTRA_ENTRY: &str =
+    "预置标签插件只能包含包根 manifest.json 与 labels.json";
+pub const PLUGIN_LABEL_PRESET_TOO_LARGE: &str = "labels.json 超过 1 MiB 安全上限";
+pub const PLUGIN_LABEL_PRESET_ID_INVALID: &str = "模板 ID 必须使用插件 ID 命名空间";
+pub const PLUGIN_LABEL_PRESET_NAME_REQUIRED: &str = "模板名称不能为空";
+pub const PLUGIN_LABEL_PRESET_LABEL_COUNT_INVALID: &str = "预置标签数量必须为 1 到 1000 个";
+pub const PLUGIN_LABEL_PRESET_LABEL_ID_INVALID: &str = "标签 ID 必须唯一且使用插件 ID 命名空间";
+pub const PLUGIN_LABEL_PRESET_LABEL_NAME_REQUIRED: &str = "标签名称不能为空";
+pub const PLUGIN_LABEL_PRESET_COLOR_INVALID: &str = "标签颜色必须为 #RRGGBB 格式";
+pub const PLUGIN_LABEL_PRESET_SHAPE_INVALID: &str =
+    "标签图形类型必须为 any、rect、polygon 或 point";
+pub const PLUGIN_LABEL_PRESET_SHORTCUT_INVALID: &str = "标签快捷键必须是唯一的小写字母或数字";
 pub const PLUGIN_ARCHIVE_UNSAFE_ENTRY: &str = "插件包包含不安全的路径或符号链接条目";
 pub const PLUGIN_ARCHIVE_TOO_LARGE: &str = "插件包解压体积超过安全上限";
 pub const PLUGIN_ARCHIVE_RATIO_TOO_HIGH: &str = "插件包压缩比异常，已拒绝解压";
@@ -336,6 +349,18 @@ pub fn plugin_archive_read_failed(error: impl std::fmt::Display) -> String {
 
 pub fn plugin_archive_extract_failed(error: impl std::fmt::Display) -> String {
     format!("无法解压插件包：{error}")
+}
+
+pub fn plugin_label_preset_read_failed(error: impl std::fmt::Display) -> String {
+    format!("无法读取 labels.json：{error}")
+}
+
+pub fn plugin_label_preset_json_failed(error: impl std::fmt::Display) -> String {
+    format!("labels.json 结构无效：{error}")
+}
+
+pub fn plugin_label_preset_load_warning(plugin_name: &str, error: &str) -> String {
+    format!("插件「{plugin_name}」的预置标签不可用：{error}")
 }
 
 pub fn plugin_validator_source_missing(path: &std::path::Path) -> String {

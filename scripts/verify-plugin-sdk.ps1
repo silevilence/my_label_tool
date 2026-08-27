@@ -40,7 +40,7 @@ try {
 
     $oversized = Join-Path $temporary "oversized-source"
     Copy-Item -Recurse (Join-Path $repository "examples/plugins/label-preset-demo") $oversized
-    $oversizedFile = [System.IO.File]::Create((Join-Path $oversized "plugin/oversized.bin"))
+    $oversizedFile = [System.IO.File]::Create((Join-Path $oversized "labels.json"))
     try {
         $oversizedFile.SetLength((50 * 1024 * 1024) + 1)
     }

@@ -74,6 +74,9 @@ export const PLUGIN_ZH_CN = {
   extensionLabelPreset: "标签预设",
   extensionExporter: "导出器",
   extensionPrelabel: "预打标",
+  labelPresetSource: (pluginName: string, templateName: string) =>
+    `插件：${pluginName} · ${templateName}`,
+  labelPresetCollision: (ids: string[]) => `以下插件模板 ID 与现有模板冲突，已跳过：${ids.join("、")}`,
   failureCount: (count: number) => `连续失败 ${count} 次`,
   installedAt: (value: string) => `安装于 ${value}`,
   safeMode: "安全模式（禁止安装和运行代码型插件）",

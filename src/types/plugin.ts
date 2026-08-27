@@ -1,4 +1,4 @@
-import type { AnnotationShapeType } from "./annotation";
+import type { AnnotationShapeType, LabelTemplate } from "./annotation";
 import { PLUGIN_ZH_CN as text } from "../i18n/plugin.zh-CN";
 
 /** Manifest structure version. Independent from host API and protocol versions. */
@@ -262,6 +262,17 @@ export interface PluginRegistryEntry {
 
 export interface PluginRegistrySnapshot {
   plugins: PluginRegistryEntry[];
+  warning: string | null;
+}
+
+export interface PluginLabelPreset {
+  pluginId: string;
+  pluginName: string;
+  template: LabelTemplate;
+}
+
+export interface PluginLabelPresetSnapshot {
+  presets: PluginLabelPreset[];
   warning: string | null;
 }
 

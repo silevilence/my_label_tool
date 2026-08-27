@@ -48,3 +48,4 @@ prelabel 可分别通过 `capabilities.<name>.apiVersion.min` 声明目标版本
 | 2026-08-26 | 增量 | manifest schema v1 | 新增可选 `timeoutMs`，缺省 30000、上限 300000；保持 schema v1 |
 | 2026-08-26 | 增量 | 宿主 API v1 | 新增 `fs.read` / `fs.write` 权限代理；协议消息形状与协议 v1 不变 |
 | 2026-08-27 | 增量 | 宿主 API v1 | 新增 `config.migrate` 逐级配置迁移方法；整体/能力/协议/schema 版本均保持 1 |
+| 2026-08-27 | 落地 | 数据契约 v1 | 落地 `label-preset` 包根 `labels.json` 契约；既有扩展类型语义未变，整体/能力/协议/manifest schema 版本均保持 1 |
