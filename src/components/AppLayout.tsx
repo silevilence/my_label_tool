@@ -141,6 +141,7 @@ interface AppLayoutProps {
   openContextMenu: (event: KonvaEventObject<MouseEvent>, annotationId?: string) => void;
   openFolder: () => void;
   redo: () => void;
+  retryPluginConfigMigrations: () => Promise<void>;
   resetZoom: () => void;
   saveProjectExport: () => void;
   savePrelabelMappings: (
@@ -257,6 +258,7 @@ export function AppLayout({
   openContextMenu,
   openFolder,
   redo,
+  retryPluginConfigMigrations,
   resetZoom,
   saveProjectExport,
   savePrelabelMappings,
@@ -404,6 +406,7 @@ export function AppLayout({
         newTemplate={newTemplate}
         openFolder={openFolder}
         redo={redo}
+        retryPluginConfigMigrations={retryPluginConfigMigrations}
         saveProjectExport={saveProjectExport}
         saveTemplate={saveTemplate}
         saveTemplateAndUpdateAnnotations={saveTemplateAndUpdateAnnotations}

@@ -204,6 +204,7 @@ function App() {
     exportSelectedFormat,
     importAnnotations,
     maybeLoadProjectConfig,
+    retryPluginConfigMigrations,
     saveProjectExport,
   } = useProjectActions({
     activeProjectConfig,
@@ -585,6 +586,7 @@ function App() {
       openContextMenu={openContextMenu}
       openFolder={openFolder}
       redo={redo}
+      retryPluginConfigMigrations={retryPluginConfigMigrations}
       resetZoom={resetZoom}
       saveProjectExport={saveWithFeedback}
       savePrelabelMappings={savePrelabelMappings}

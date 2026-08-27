@@ -919,6 +919,34 @@ pub fn record_plugin_runtime_failure(
     })
 }
 
+pub fn mark_plugin_pending_migration(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    message: &str,
+) -> Result<PluginRegistryEntry, PluginRegistryError> {
+    update_registry_entry(app_data_dir, plugin_id, |entry| {
+        entry.state = PluginState::PendingMigration;
+        entry.last_error = Some(message.to_string());
+        entry.updated_at = timestamp();
+        Ok(())
+    })
+}
+
+pub fn complete_plugin_config_migration(
+    app_data_dir: &Path,
+    plugin_id: &str,
+) -> Result<PluginRegistryEntry, PluginRegistryError> {
+    update_registry_entry(app_data_dir, plugin_id, |entry| {
+        if entry.state == PluginState::PendingMigration {
+            entry.state = PluginState::Enabled;
+        }
+        entry.failure_count = 0;
+        entry.last_error = None;
+        entry.updated_at = timestamp();
+        Ok(())
+    })
+}
+
 pub fn get_registered_plugin(
     app_data_dir: &Path,
     plugin_id: &str,

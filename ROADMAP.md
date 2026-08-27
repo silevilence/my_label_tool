@@ -123,13 +123,13 @@
   - [x] 授权弹窗：安装时逐项列出权限（含占位符解析后的实际路径预览），用户逐项勾选确认；禁止授予 manifest 未声明的权限
   - 验收：权限判定纯函数单测（未授权路径、授权目录内/外、`..` 穿越、占位符解析、重复声明）；集成验证——插件越权读项目外文件返回 `PERMISSION_DENIED`，协议响应不包含未授权文件内容
 
-- [ ] **插件配置存储与迁移**
-  - [ ] 目标：项目文件保存插件状态，版本落后时经协议迁移；`src-tauri/src/plugins/config.rs`（迁移编排）+ `src/types/plugin.ts` 扩展 ProjectConfig 类型
-  - [ ] `ProjectConfig` 新增可选字段 `pluginConfigs?: { pluginId, configVersion, config: unknown }[]`——`config` 对宿主不透明，宿主不解释内容；旧项目配置加载不受影响（可选字段 + 加载时过滤未知插件 id）
-  - [ ] 保存/加载：项目保存时把内存中的插件配置写入 ProjectConfig；打开项目按插件 id 匹配注册表，已卸载插件的配置保留在项目文件中但不可用（不删除，防重装丢失）
-  - [ ] 迁移流程：打开项目发现某插件 `configVersion` < 插件当前声明 → 调用 `config.migrate`（params `{ fromVersion, toVersion, config }`）→ 插件返回新配置 → 写回内存（不自动写盘，随下次项目保存落盘）；链式迁移逐级调用直到目标版本
-  - [ ] 迁移失败：超时/崩溃/返回非法结构 → 配置标记「待迁移」（`pending-migration`）、该插件能力降级（导出/预打标入口置灰显示「配置待迁移」）、项目照常打开；用户可重试
-  - [ ] 插件未声明 `configMigration` 能力时，宿主发现版本落后直接进入 `pending-migration`，不发起调用
+- [x] **插件配置存储与迁移**
+  - [x] 目标：项目文件保存插件状态，版本落后时经协议迁移；`src-tauri/src/plugins/config.rs`（迁移编排）+ `src/types/plugin.ts` 扩展 ProjectConfig 类型
+  - [x] `ProjectConfig` 新增可选字段 `pluginConfigs?: { pluginId, configVersion, config: unknown }[]`——`config` 对宿主不透明，宿主不解释内容；旧项目配置加载不受影响（可选字段 + 加载时过滤未知插件 id）
+  - [x] 保存/加载：项目保存时把内存中的插件配置写入 ProjectConfig；打开项目按插件 id 匹配注册表，已卸载插件的配置保留在项目文件中但不可用（不删除，防重装丢失）
+  - [x] 迁移流程：打开项目发现某插件 `configVersion` < 插件当前声明 → 调用 `config.migrate`（params `{ fromVersion, toVersion, config }`）→ 插件返回新配置 → 写回内存（不自动写盘，随下次项目保存落盘）；链式迁移逐级调用直到目标版本
+  - [x] 迁移失败：超时/崩溃/返回非法结构 → 配置标记「待迁移」（`pending-migration`）、该插件能力降级（导出/预打标入口置灰显示「配置待迁移」）、项目照常打开；用户可重试
+  - [x] 插件未声明 `configMigration` 能力时，宿主发现版本落后直接进入 `pending-migration`，不发起调用
   - 验收：三条路径——迁移成功（版本与内容正确写回并随项目保存）、迁移失败（项目正常打开、入口置灰、重试成功）、跨多版本链式迁移（v1→v2→v3 逐级调用且参数正确）；无 `pluginConfigs` 的旧项目加载行为不变
 
 - [ ] **插件 SDK 与开发者工具**

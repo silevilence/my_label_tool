@@ -146,12 +146,33 @@ pub fn invoke_plugin(
     method: &str,
     params: Value,
 ) -> Result<Value, PluginCallError> {
+    invoke_plugin_with_state(app_data_dir, plugin_id, method, params, false)
+}
+
+/// Invokes only `config.migrate`, including while the registry entry is in the
+/// pending-migration state. Safe mode and explicit/automatic disablement still
+/// prevent process startup.
+pub fn invoke_plugin_config_migration(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    params: Value,
+) -> Result<Value, PluginCallError> {
+    invoke_plugin_with_state(app_data_dir, plugin_id, "config.migrate", params, true)
+}
+
+fn invoke_plugin_with_state(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    method: &str,
+    params: Value,
+    allow_pending_migration: bool,
+) -> Result<Value, PluginCallError> {
     let control = runtime_manager()
         .lock()
         .map_err(|_| internal_call_error(text::PLUGIN_RUNTIME_LOCK_POISONED))?
         .control_token(plugin_id);
     let entry = get_registered_plugin(app_data_dir, plugin_id).map_err(registry_call_error)?;
-    ensure_invocable(app_data_dir, &entry)?;
+    ensure_invocable(app_data_dir, &entry, allow_pending_migration)?;
     let timeout = Duration::from_millis(u64::from(entry.timeout_ms));
     let session = runtime_manager()
         .lock()
@@ -328,6 +349,7 @@ fn maintenance_coordinator() -> &'static PluginMaintenanceCoordinator {
 fn ensure_invocable(
     app_data_dir: &Path,
     entry: &PluginRegistryEntry,
+    allow_pending_migration: bool,
 ) -> Result<(), PluginCallError> {
     if entry.extension_kind == PluginExtensionKind::LabelPreset || entry.entry.is_none() {
         return Err(call_error(
@@ -348,6 +370,7 @@ fn ensure_invocable(
             "PLUGIN_AUTO_DISABLED",
             text::PLUGIN_RUNTIME_AUTO_DISABLED,
         )),
+        PluginState::PendingMigration if allow_pending_migration => Ok(()),
         PluginState::PendingMigration => Err(call_error(
             "CONFIG_MIGRATION_REQUIRED",
             text::PLUGIN_CONFIG_MIGRATION_REQUIRED,
@@ -1822,6 +1845,23 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert!(lines[0].len() < STDERR_LINE_BYTES + 100);
         assert!(lines[0].ends_with(text::PLUGIN_RUNTIME_STDERR_TRUNCATED));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn pending_migration_allows_only_the_config_migration_entry_point() {
+        let _runtime_test_guard = runtime_test_guard();
+        let root = test_directory("pending-migration-gate");
+        let mut entry = test_entry("dev.test.pendingmigration", String::new(), 2_000);
+        entry.state = PluginState::PendingMigration;
+
+        let normal = ensure_invocable(&root, &entry, false)
+            .expect_err("normal capability calls must remain disabled");
+        assert_eq!(normal.code, "CONFIG_MIGRATION_REQUIRED");
+        ensure_invocable(&root, &entry, true)
+            .expect("the dedicated config migration path must be retryable");
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

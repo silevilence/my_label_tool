@@ -53,6 +53,13 @@ export const PLUGIN_ZH_CN = {
   disable: "停用",
   uninstall: "卸载",
   clearFailures: "清除失败并启用",
+  retryMigration: "重试配置迁移",
+  pluginConfigEntryMustBeObject: (field: string) => `${field} 必须是对象`,
+  pluginConfigIdInvalid: (field: string) => `${field}.pluginId 无效`,
+  pluginConfigVersionInvalid: (field: string) => `${field}.configVersion 无效`,
+  pluginConfigMissingValue: (field: string) => `${field} 缺少 config`,
+  pluginConfigDuplicateId: (pluginId: string) =>
+    `pluginConfigs 包含重复 pluginId：${pluginId}`,
   viewLog: "查看诊断",
   hideLog: "收起诊断",
   noLog: "没有可显示的失败诊断。",

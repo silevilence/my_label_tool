@@ -591,6 +591,25 @@ fn enable_disable_status_and_failure_clear_round_trip() {
 }
 
 #[test]
+fn pending_migration_state_can_be_persisted_and_completed() {
+    let root = installed_registry("migration-state");
+
+    let pending = mark_plugin_pending_migration(&root, "dev.acme.labels", "migration failed")
+        .expect("mark pending");
+    assert_eq!(pending.state, PluginState::PendingMigration);
+    assert_eq!(pending.last_error.as_deref(), Some("migration failed"));
+    assert!(set_registered_plugin_enabled(&root, "dev.acme.labels", true).is_err());
+
+    let completed =
+        complete_plugin_config_migration(&root, "dev.acme.labels").expect("complete migration");
+    assert_eq!(completed.state, PluginState::Enabled);
+    assert_eq!(completed.failure_count, 0);
+    assert_eq!(completed.last_error, None);
+    assert_eq!(load_plugin_registry(&root).plugins, vec![completed]);
+    cleanup(root);
+}
+
+#[test]
 fn five_install_failures_are_actionable_repeatable_and_clean() {
     let root = temp_dir("failures");
     let corrupt = root.join("corrupt.zip");

@@ -51,7 +51,8 @@ pub fn run() {
             commands::clear_plugin_failures,
             commands::get_plugin_runtime_settings,
             commands::set_plugin_safe_mode,
-            commands::get_plugin_runtime_logs
+            commands::get_plugin_runtime_logs,
+            commands::migrate_plugin_configs
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

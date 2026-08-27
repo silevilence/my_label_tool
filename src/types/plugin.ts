@@ -61,6 +61,7 @@ export interface PluginFsWriteResult {
 }
 
 export type PluginHostMethod = "fs.read" | "fs.write";
+export type PluginCapabilityMethod = "config.migrate" | "exporter.export" | "prelabel.run";
 
 export type PluginHostRequest =
   | (PluginProtocolEnvelope & {
@@ -264,6 +265,37 @@ export interface PluginRegistrySnapshot {
   warning: string | null;
 }
 
+/** Project-scoped plugin config. The host persists `config` without interpreting it. */
+export interface PluginConfig {
+  pluginId: string;
+  configVersion: number;
+  config: unknown;
+}
+
+export interface PluginConfigMigrationParams {
+  fromVersion: number;
+  toVersion: number;
+  config: unknown;
+}
+
+export interface PluginConfigMigrationResult {
+  configVersion: number;
+  config: unknown;
+}
+
+export interface PluginConfigMigrationIssue {
+  pluginId: string;
+  code: string;
+  message: string;
+}
+
+export interface PluginConfigMigrationReport {
+  configs: PluginConfig[];
+  pendingPluginIds: string[];
+  unavailablePluginIds: string[];
+  issues: PluginConfigMigrationIssue[];
+}
+
 export interface PluginRuntimeSettings {
   safeMode: boolean;
 }
@@ -365,6 +397,10 @@ export function parsePluginManifest(input: unknown): PluginManifestParseResult {
       timeoutMs,
     },
   };
+}
+
+export function isValidPluginId(value: string): boolean {
+  return PLUGIN_ID_PATTERN.test(value);
 }
 
 function parseSchemaVersion(value: unknown, errors: PluginManifestError[]): number | undefined {

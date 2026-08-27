@@ -23,6 +23,7 @@ import type {
 
 interface PluginSettingsProps {
   projectDir: string | null;
+  onRetryConfigMigration: () => Promise<void>;
   onClose: () => void;
 }
 
@@ -46,7 +47,11 @@ const EXTENSION_LABELS: Record<PluginExtensionKind, string> = {
   prelabel: text.extensionPrelabel,
 };
 
-export function PluginSettings({ projectDir, onClose }: PluginSettingsProps) {
+export function PluginSettings({
+  projectDir,
+  onRetryConfigMigration,
+  onClose,
+}: PluginSettingsProps) {
   const [plugins, setPlugins] = useState<PluginRegistryEntry[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +146,10 @@ export function PluginSettings({ projectDir, onClose }: PluginSettingsProps) {
     await runPluginOperation(plugin.id, async () => {
       await clearPluginFailures(plugin.id);
     });
+  }
+
+  async function retryMigration(plugin: PluginRegistryEntry) {
+    await runPluginOperation(plugin.id, onRetryConfigMigration);
   }
 
   async function runPluginOperation(pluginId: string, operation: () => Promise<void>) {
@@ -304,6 +313,21 @@ export function PluginSettings({ projectDir, onClose }: PluginSettingsProps) {
                         onClick={() => void resetFailures(plugin)}
                       >
                         {text.clearFailures}
+                      </button>
+                    </div>
+                  )}
+                  {plugin.state === "pending-migration" && (
+                    <div className="mt-3 flex flex-wrap items-center gap-3 rounded border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-200">
+                      {plugin.lastError && (
+                        <span className="min-w-0 flex-1 break-words">{plugin.lastError}</span>
+                      )}
+                      <button
+                        className="rounded border border-amber-400/60 px-2 py-1 text-xs hover:bg-amber-500/20 disabled:opacity-50"
+                        disabled={isBusy}
+                        type="button"
+                        onClick={() => void retryMigration(plugin)}
+                      >
+                        {text.retryMigration}
                       </button>
                     </div>
                   )}

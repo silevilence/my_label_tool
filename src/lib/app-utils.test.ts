@@ -153,11 +153,19 @@ describe("app utils", () => {
       labels: [],
       template: { id: "project-config", name: "项目临时配置" },
       exportOptions: { format: "json" },
+      pluginConfigs: [
+        { pluginId: "dev.acme.exporter", configVersion: 2, config: { saved: true } },
+      ],
     });
 
     expect(invoke).toHaveBeenCalledWith("export_annotations_json", {
       outputPath: "project.json",
-      data: expect.objectContaining({ schemaVersion: 1 }),
+      data: expect.objectContaining({
+        schemaVersion: 1,
+        pluginConfigs: [
+          { pluginId: "dev.acme.exporter", configVersion: 2, config: { saved: true } },
+        ],
+      }),
     });
     expect(newAnnotationId()).toMatch(/^[0-9a-f-]{36}$/);
   });

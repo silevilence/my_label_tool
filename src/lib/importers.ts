@@ -8,7 +8,13 @@ import type {
 } from "../types/annotation";
 import type { ExportFormatId } from "../types/export";
 import type { PrelabelClassMapping, PrelabelMappingsByModel } from "../types/prelabel";
+import {
+  MAX_PLUGIN_CONTRACT_VERSION,
+  isValidPluginId,
+  type PluginConfig,
+} from "../types/plugin";
 import { PRELABEL_ZH_CN as prelabelText } from "../i18n/prelabel.zh-CN";
+import { PLUGIN_ZH_CN as pluginText } from "../i18n/plugin.zh-CN";
 
 export const PROJECT_CONFIG_NAME = "my-label-tool.project.json";
 export const PROJECT_TEMPLATE_ID = "project-config";
@@ -31,6 +37,7 @@ export interface ProjectConfig {
     format: ExportFormatId;
   };
   prelabelMappings?: PrelabelMappingsByModel;
+  pluginConfigs?: PluginConfig[];
 }
 
 export function projectConfigTemplate(): ProjectConfig["template"] {
@@ -93,6 +100,7 @@ export function parseProjectConfig(text: string): ProjectConfig {
   }
 
   const prelabelMappings = parsePrelabelMappings(value.prelabelMappings);
+  const pluginConfigs = parsePluginConfigs(value.pluginConfigs);
   return {
     schemaVersion,
     format,
@@ -103,7 +111,48 @@ export function parseProjectConfig(text: string): ProjectConfig {
     template: parseTemplate(value.template),
     exportOptions: parseExportOptions(value.exportOptions),
     ...(prelabelMappings ? { prelabelMappings } : {}),
+    ...(pluginConfigs ? { pluginConfigs } : {}),
   };
+}
+
+function parsePluginConfigs(value: unknown): PluginConfig[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const configs = asArray(value, "pluginConfigs").map((entry, index) => {
+    const field = `pluginConfigs[${index}]`;
+    if (!isRecord(entry)) {
+      throw new Error(pluginText.pluginConfigEntryMustBeObject(field));
+    }
+    if (typeof entry.pluginId !== "string" || !isValidPluginId(entry.pluginId)) {
+      throw new Error(pluginText.pluginConfigIdInvalid(field));
+    }
+    if (
+      !Number.isSafeInteger(entry.configVersion) ||
+      Number(entry.configVersion) < 0 ||
+      Number(entry.configVersion) > MAX_PLUGIN_CONTRACT_VERSION
+    ) {
+      throw new Error(pluginText.pluginConfigVersionInvalid(field));
+    }
+    if (!("config" in entry)) {
+      throw new Error(pluginText.pluginConfigMissingValue(field));
+    }
+    return {
+      pluginId: entry.pluginId,
+      configVersion: Number(entry.configVersion),
+      config: entry.config,
+    };
+  });
+
+  const seen = new Set<string>();
+  for (const entry of configs) {
+    if (seen.has(entry.pluginId)) {
+      throw new Error(pluginText.pluginConfigDuplicateId(entry.pluginId));
+    }
+    seen.add(entry.pluginId);
+  }
+  return configs;
 }
 
 export function parseNativeJsonImport(text: string): ImportedAnnotations {

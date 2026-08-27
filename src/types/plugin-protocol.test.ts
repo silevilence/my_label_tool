@@ -4,6 +4,8 @@ import {
   PLUGIN_PROTOCOL_ERROR_CODES,
   PLUGIN_PROTOCOL_MESSAGE_TYPES,
   PLUGIN_PROTOCOL_VERSION,
+  type PluginConfigMigrationParams,
+  type PluginConfigMigrationResult,
   type PluginHelloParams,
   type PluginHelloResult,
   type PluginHostRequest,
@@ -21,6 +23,29 @@ describe("plugin protocol contract", () => {
     expect(protocolSchema.$defs.helloResult.properties.protocolVersion.const).toBe(
       PLUGIN_PROTOCOL_VERSION,
     );
+  });
+
+  it("defines the incremental config migration method contract", () => {
+    const params: PluginConfigMigrationParams = {
+      fromVersion: 1,
+      toVersion: 2,
+      config: { opaque: true },
+    };
+    const result: PluginConfigMigrationResult = {
+      configVersion: 2,
+      config: { opaque: "still opaque" },
+    };
+
+    expect(protocolSchema.$defs.configMigrationParams.required).toEqual([
+      "fromVersion",
+      "toVersion",
+      "config",
+    ]);
+    expect(protocolSchema.$defs.configMigrationResult.required).toEqual([
+      "configVersion",
+      "config",
+    ]);
+    expect(params.toVersion).toBe(result.configVersion);
   });
 
   it("keeps all ten standard error codes aligned with the Schema", () => {

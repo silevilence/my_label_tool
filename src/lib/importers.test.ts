@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import projectConfigSchema from "../../docs/project-config.schema.json";
 import type { LabelConfig } from "../types/annotation";
 import {
   parseCocoImport,
@@ -114,6 +115,103 @@ describe("importers", () => {
         }),
       ),
     ).toThrow("prelabelMappings.model-1[0] 的 classIndex 无效");
+  });
+
+  it("keeps old projects compatible and parses opaque plugin configs", () => {
+    const base = {
+      schemaVersion: 1,
+      format: "json",
+      annotationPath: "annotations.json",
+      exportedAt: "2026-08-27T00:00:00.000Z",
+      imageFolder: "images",
+      labels: [],
+      template: { id: "project-config", name: "项目临时配置" },
+      exportOptions: { format: "json" },
+    };
+
+    expect(parseProjectConfig(JSON.stringify(base)).pluginConfigs).toBeUndefined();
+    expect(
+      parseProjectConfig(
+        JSON.stringify({
+          ...base,
+          pluginConfigs: [
+            {
+              pluginId: "dev.acme.exporter",
+              configVersion: 2,
+              config: { nested: [1, true, null], authorField: "preserved" },
+            },
+          ],
+        }),
+      ).pluginConfigs,
+    ).toEqual([
+      {
+        pluginId: "dev.acme.exporter",
+        configVersion: 2,
+        config: { nested: [1, true, null], authorField: "preserved" },
+      },
+    ]);
+  });
+
+  it("rejects malformed or duplicate plugin configs", () => {
+    const base = {
+      schemaVersion: 1,
+      format: "json",
+      annotationPath: "annotations.json",
+      exportedAt: "2026-08-27T00:00:00.000Z",
+      imageFolder: "images",
+      labels: [],
+    };
+
+    expect(() =>
+      parseProjectConfig(
+        JSON.stringify({
+          ...base,
+          pluginConfigs: [
+            { pluginId: "dev.acme.one", configVersion: 0, config: {} },
+            { pluginId: "dev.acme.one", configVersion: 1, config: {} },
+          ],
+        }),
+      ),
+    ).toThrow("pluginConfigs 包含重复 pluginId：dev.acme.one");
+    expect(() =>
+      parseProjectConfig(
+        JSON.stringify({
+          ...base,
+          pluginConfigs: [{ pluginId: "bad", configVersion: -1 }],
+        }),
+      ),
+    ).toThrow("pluginConfigs[0].pluginId 无效");
+    expect(() =>
+      parseProjectConfig(
+        JSON.stringify({
+          ...base,
+          pluginConfigs: [
+            {
+              pluginId: "dev.acme.toonew",
+              configVersion: 4_294_967_296,
+              config: {},
+            },
+          ],
+        }),
+      ),
+    ).toThrow("pluginConfigs[0].configVersion 无效");
+  });
+
+  it("keeps the project config schema compatible with optional plugin configs", () => {
+    expect(projectConfigSchema.required).not.toContain("pluginConfigs");
+    expect(projectConfigSchema.required).not.toContain("template");
+    expect(projectConfigSchema.required).not.toContain("exportOptions");
+    expect(projectConfigSchema.properties.pluginConfigs.items.$ref).toBe(
+      "#/$defs/pluginConfig",
+    );
+    expect(projectConfigSchema.$defs.pluginConfig.required).toEqual([
+      "pluginId",
+      "configVersion",
+      "config",
+    ]);
+    expect("required" in projectConfigSchema.$defs.label).toBe(false);
+    expect("required" in projectConfigSchema.$defs.template).toBe(false);
+    expect("required" in projectConfigSchema.$defs.exportOptions).toBe(false);
   });
 
   it("rejects invalid project configs", () => {

@@ -409,6 +409,20 @@ pub fn plugin_runtime_read_failed(error: impl std::fmt::Display) -> String {
 pub const PLUGIN_NOT_FOUND: &str = "插件未注册或已卸载";
 pub const PLUGIN_AUTO_DISABLED_REQUIRES_CLEAR: &str = "插件已自动禁用，请先清除失败记录";
 pub const PLUGIN_CONFIG_MIGRATION_REQUIRED: &str = "插件配置等待迁移，迁移完成前不能更改启用状态";
+pub const PLUGIN_CONFIG_MIGRATION_CAPABILITY_MISSING: &str =
+    "插件未声明配置迁移能力，无法使用旧版本插件配置";
+pub const PLUGIN_CONFIG_MIGRATION_RESULT_INVALID: &str = "插件返回的配置迁移结果结构无效";
+pub const PLUGIN_CONFIG_REGISTRY_UNAVAILABLE: &str =
+    "插件注册表不可用，配置迁移已跳过，项目仍可继续打开";
+pub fn plugin_config_newer_than_plugin(project_version: u32, plugin_version: u32) -> String {
+    format!("项目中的插件配置版本 {project_version} 高于当前插件版本 {plugin_version}，无法降级")
+}
+pub fn plugin_config_migration_params_failed(error: impl std::fmt::Display) -> String {
+    format!("无法序列化插件配置迁移参数：{error}")
+}
+pub fn plugin_config_migration_task_failed(error: impl std::fmt::Display) -> String {
+    format!("插件配置迁移任务异常结束：{error}")
+}
 
 pub fn plugin_registry_write_failed(error: impl std::fmt::Display) -> String {
     format!("无法保存插件注册表：{error}")

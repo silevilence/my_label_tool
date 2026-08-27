@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 use crate::i18n::zh_cn as text;
+use crate::plugins::config::{
+    migrate_plugin_configs as migrate_configs, PluginConfig, PluginConfigMigrationReport,
+};
 use crate::plugins::registry::{
     authorize_plugin_install_for_project, clear_registered_plugin_failures, get_registered_plugin,
     load_plugin_registry, pending_plugin_install_id, prepare_plugin_install_for_project,
@@ -118,6 +121,17 @@ pub fn set_plugin_safe_mode(
 #[tauri::command]
 pub fn get_plugin_runtime_logs(plugin_id: String) -> Result<Vec<String>, String> {
     Ok(plugin_runtime_logs(&plugin_id))
+}
+
+#[tauri::command]
+pub async fn migrate_plugin_configs(
+    app: tauri::AppHandle,
+    configs: Vec<PluginConfig>,
+) -> Result<PluginConfigMigrationReport, String> {
+    let app_data_dir = plugin_app_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || migrate_configs(&app_data_dir, configs))
+        .await
+        .map_err(text::plugin_config_migration_task_failed)
 }
 
 fn plugin_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {

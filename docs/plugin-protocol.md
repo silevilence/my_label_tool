@@ -112,6 +112,25 @@ Windows 下文件代理拒绝远程卷，避免网络文件系统 I/O 绕过调�
 其他宿主代理方法（包括网络方法）在 v1 未实现，返回 `METHOD_NOT_FOUND`。代码型
 插件进程启动时会移除常见代理环境变量；`network` 声明在 v1 不会开放网络代理。
 
+## 配置迁移
+
+插件清单和 `hello` 握手都声明 `configMigration: true` 时，宿主可调用
+`config.migrate`。宿主只编排版本并透传不透明的 `config`，不会读取或改写其内容：
+
+```json
+{"v":1,"id":"config-1","type":"request","method":"config.migrate","params":{"fromVersion":1,"toVersion":2,"config":{"pluginOwned":true}}}
+{"v":1,"id":"config-1","type":"response","result":{"configVersion":2,"config":{"pluginOwned":true,"addedByV2":true}}}
+```
+
+每次调用只迁移一个版本，`toVersion` 必须等于 `fromVersion + 1`；跨多版本时宿主按
+顺序重复调用。响应 `configVersion` 必须等于本次 `toVersion` 且必须包含 `config`
+字段，否则按 `PROTOCOL_ERROR` 处理并保留迁移前配置。调用超时、进程崩溃、无迁移
+能力或结果非法时，项目照常打开，注册状态进入 `pending-migration`，相关能力不可用；
+用户可重试。迁移结果只写回内存，在用户下一次保存项目时进入项目文件。
+
+配置迁移属于宿主 API v1 的增量方法，NDJSON 信封和协议版本仍为 v1。迁移进程沿用
+运行时的断网环境和权限模型，不开放网络代理。
+
 ## 标准错误码
 
 | 错误码 | 产生位置 |

@@ -1,3 +1,4 @@
+import { useRef, type Dispatch, type SetStateAction } from "react";
 import {
   baseName,
   confirmReplaceCurrentAnnotations,
@@ -29,6 +30,7 @@ import {
   exportAnnotationsJson,
   exportTextFiles,
   listTextFiles,
+  migratePluginConfigs,
   readTextFile,
   selectExportFolder,
   selectExportJsonPath,
@@ -38,6 +40,7 @@ import {
 } from "../lib/tauri-api";
 import type { AnnotationShape, LabelConfig } from "../types/annotation";
 import type { ExportData, ExportFormatId } from "../types/export";
+import { mergePluginConfigMigration } from "../lib/plugin-config-migration";
 
 interface UseProjectActionsParams {
   activeProjectConfig: ProjectConfig | null;
@@ -51,7 +54,7 @@ interface UseProjectActionsParams {
   applyProjectTemplate: (template: ProjectConfig["template"], labels: LabelConfig[]) => void;
   clearProjectTemplate: () => void;
   replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
-  setActiveProjectConfig: (config: ProjectConfig | null) => void;
+  setActiveProjectConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
   setActiveProjectConfigPath: (path: string) => void;
   setError: (message: string) => void;
   setProjectTemplateId: (templateId: string) => void;
@@ -76,6 +79,8 @@ export function useProjectActions({
   setProjectTemplateId,
   setSelectedExportFormatId,
 }: UseProjectActionsParams) {
+  const projectMigrationGenerationRef = useRef(0);
+
   function reportError(caughtError: unknown) {
     setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
   }
@@ -192,6 +197,9 @@ export function useProjectActions({
       ...(activeProjectConfig?.prelabelMappings
         ? { prelabelMappings: activeProjectConfig.prelabelMappings }
         : {}),
+      ...(activeProjectConfig?.pluginConfigs
+        ? { pluginConfigs: activeProjectConfig.pluginConfigs }
+        : {}),
     };
 
     setActiveProjectConfig(nextConfig);
@@ -279,6 +287,7 @@ export function useProjectActions({
   }
 
   function clearProjectConfig() {
+    projectMigrationGenerationRef.current += 1;
     setActiveProjectConfig(null);
     setActiveProjectConfigPath("");
     setProjectTemplateId("");
@@ -293,6 +302,8 @@ export function useProjectActions({
     if (confirmReplace && !(await confirmReplaceCurrentAnnotations(currentImages))) {
       return null;
     }
+    const migrationGeneration = projectMigrationGenerationRef.current + 1;
+    projectMigrationGenerationRef.current = migrationGeneration;
 
     const config = withProjectTemplate(parseProjectConfig(await readTextFile(configPath)));
     const imported =
@@ -301,13 +312,52 @@ export function useProjectActions({
         : await loadConfiguredStandardImport(config, currentImages);
     const labelsFromConfig = config.labels.length > 0 ? config.labels : imported.labels;
 
+    const openedConfig = { ...config, labels: labelsFromConfig };
     applyImportedAnnotations(
       { ...imported, labels: labelsFromConfig },
       currentImages,
-      config,
+      openedConfig,
       configPath,
     );
-    return config;
+    void migrateProjectPluginConfigs(openedConfig, migrationGeneration);
+    return openedConfig;
+  }
+
+  async function migrateProjectPluginConfigs(
+    config: ProjectConfig,
+    migrationGeneration: number,
+  ): Promise<ProjectConfig> {
+    try {
+      const report = await migratePluginConfigs(config.pluginConfigs ?? []);
+      if (projectMigrationGenerationRef.current !== migrationGeneration) {
+        return config;
+      }
+      const nextConfig = config.pluginConfigs
+        ? { ...config, pluginConfigs: report.configs }
+        : config;
+      if (config.pluginConfigs) {
+        setActiveProjectConfig((current) => mergePluginConfigMigration(current, config, report));
+      }
+      if (report.issues.length > 0) {
+        setError(report.issues.map((issue) => `${issue.pluginId}：${issue.message}`).join("；"));
+      }
+      return nextConfig;
+    } catch (caughtError: unknown) {
+      if (projectMigrationGenerationRef.current === migrationGeneration) {
+        reportError(caughtError);
+      }
+      return config;
+    }
+  }
+
+  async function retryPluginConfigMigrations(): Promise<void> {
+    if (!activeProjectConfig) {
+      return;
+    }
+    setError("");
+    const migrationGeneration = projectMigrationGenerationRef.current + 1;
+    projectMigrationGenerationRef.current = migrationGeneration;
+    await migrateProjectPluginConfigs(activeProjectConfig, migrationGeneration);
   }
 
   async function loadConfiguredStandardImport(
@@ -413,6 +463,7 @@ export function useProjectActions({
     exportSelectedFormat,
     importAnnotations,
     maybeLoadProjectConfig,
+    retryPluginConfigMigrations,
     saveProjectExport,
   };
 }

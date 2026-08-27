@@ -20,6 +20,8 @@ import type {
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
 import type {
   PluginInstallPreview,
+  PluginConfig,
+  PluginConfigMigrationReport,
   PluginPermissionGrant,
   PluginRegistryEntry,
   PluginRegistrySnapshot,
@@ -284,4 +286,10 @@ export function setPluginSafeMode(safeMode: boolean): Promise<PluginRuntimeSetti
 
 export function getPluginRuntimeLogs(pluginId: string): Promise<string[]> {
   return invoke<string[]>("get_plugin_runtime_logs", { pluginId });
+}
+
+export function migratePluginConfigs(
+  configs: PluginConfig[],
+): Promise<PluginConfigMigrationReport> {
+  return invoke<PluginConfigMigrationReport>("migrate_plugin_configs", { configs });
 }

@@ -48,6 +48,7 @@ interface AppSidebarProps {
   newTemplate: () => void;
   openFolder: () => void;
   redo: () => void;
+  retryPluginConfigMigrations: () => Promise<void>;
   saveProjectExport: () => void;
   saveTemplate: () => void;
   saveTemplateAndUpdateAnnotations: () => void;
@@ -98,6 +99,7 @@ export function AppSidebar({
   newTemplate,
   openFolder,
   redo,
+  retryPluginConfigMigrations,
   saveProjectExport,
   saveTemplate,
   saveTemplateAndUpdateAnnotations,
@@ -434,6 +436,7 @@ export function AppSidebar({
       {isPluginSettingsOpen && (
         <PluginSettings
           projectDir={folderPath || null}
+          onRetryConfigMigration={retryPluginConfigMigrations}
           onClose={() => setIsPluginSettingsOpen(false)}
         />
       )}
