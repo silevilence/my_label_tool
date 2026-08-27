@@ -4,6 +4,7 @@
 use super::manifest::PluginPermission;
 use super::protocol::{ProtocolError, ProtocolErrorCode, ResponseOutcome};
 use crate::i18n::zh_cn as text;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -35,12 +36,25 @@ pub struct PluginPermissionGrant {
 #[serde(rename_all = "camelCase")]
 pub struct PluginFsReadParams {
     pub path: String,
+    #[serde(default)]
+    pub encoding: PluginFsReadEncoding,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginFsReadEncoding {
+    #[default]
+    Utf8,
+    Base64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginFsReadResult {
-    pub content_utf8: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_utf8: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_base64: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -248,17 +262,29 @@ impl FileProxyPolicy {
     }
 
     fn authorize_path(&self, access: FileAccess, path: &Path) -> Result<PathBuf, PermissionError> {
-        let normalized = normalize_for_comparison(path).map_err(|_| {
+        let roots = self.roots(access);
+        let candidate = if path.is_absolute() {
+            path.to_path_buf()
+        } else if roots.len() == 1
+            && !path.as_os_str().is_empty()
+            && path
+                .components()
+                .all(|component| matches!(component, Component::Normal(_)))
+        {
+            roots[0].join(path)
+        } else {
+            return Err(permission_error(
+                PermissionErrorKind::InvalidGrant,
+                text::PLUGIN_PERMISSION_ACCESS_DENIED,
+            ));
+        };
+        let normalized = normalize_for_comparison(&candidate).map_err(|_| {
             permission_error(
                 PermissionErrorKind::InvalidGrant,
                 text::PLUGIN_PERMISSION_ACCESS_DENIED,
             )
         })?;
-        if self
-            .roots(access)
-            .iter()
-            .any(|root| normalized.starts_with(root))
-        {
+        if roots.iter().any(|root| normalized.starts_with(root)) {
             Ok(normalized)
         } else {
             Err(permission_error(
@@ -467,19 +493,29 @@ fn proxy_read(policy: &FileProxyPolicy, params: &Value) -> ResponseOutcome {
         }
         Err(_) => return proxy_io_error(),
     };
-    let mut content = String::with_capacity(metadata.len() as usize);
+    let mut content = Vec::with_capacity(metadata.len() as usize);
     if file
         .by_ref()
         .take(MAX_PROXY_FILE_BYTES + 1)
-        .read_to_string(&mut content)
+        .read_to_end(&mut content)
         .is_err()
         || content.len() as u64 > MAX_PROXY_FILE_BYTES
     {
         return proxy_io_error();
     }
-    serialize_proxy_result(PluginFsReadResult {
-        content_utf8: content,
-    })
+    match params.encoding {
+        PluginFsReadEncoding::Utf8 => match String::from_utf8(content) {
+            Ok(content_utf8) => serialize_proxy_result(PluginFsReadResult {
+                content_utf8: Some(content_utf8),
+                content_base64: None,
+            }),
+            Err(_) => proxy_io_error(),
+        },
+        PluginFsReadEncoding::Base64 => serialize_proxy_result(PluginFsReadResult {
+            content_utf8: None,
+            content_base64: Some(base64::engine::general_purpose::STANDARD.encode(content)),
+        }),
+    }
 }
 
 fn proxy_write(
@@ -1033,6 +1069,40 @@ mod tests {
     }
 
     #[test]
+    fn file_proxy_reads_binary_project_relative_paths_as_base64() {
+        let base = test_root("relative-binary-read");
+        let project = base.join("project");
+        fs::create_dir_all(project.join("images")).expect("create project images");
+        fs::write(project.join("images/a.bin"), [0_u8, 0xff, 7]).expect("write binary fixture");
+        let policy = FileProxyPolicy::from_grants(&[grant(
+            "fs.read",
+            &fs::canonicalize(&project).expect("canonical project"),
+        )])
+        .expect("permission policy");
+
+        assert_eq!(
+            handle_file_proxy_request(
+                &policy,
+                "fs.read",
+                &json!({ "path": "images/a.bin", "encoding": "base64" }),
+            ),
+            ResponseOutcome::Result(json!({ "contentBase64": "AP8H" }))
+        );
+        assert!(matches!(
+            handle_file_proxy_request(
+                &policy,
+                "fs.read",
+                &json!({ "path": "../secret.bin", "encoding": "base64" }),
+            ),
+            ResponseOutcome::Error(ProtocolError {
+                code: ProtocolErrorCode::PermissionDenied,
+                ..
+            })
+        ));
+        fs::remove_dir_all(base).expect("remove fixture");
+    }
+
+    #[test]
     fn install_resolution_rejects_a_symlink_escape() {
         let base = test_root("install-symlink-escape");
         let project = base.join("project");
@@ -1141,6 +1211,7 @@ mod tests {
     fn typed_file_proxy_payloads_round_trip_with_the_public_field_names() {
         let read = PluginFsReadParams {
             path: "C:/data/input.txt".to_string(),
+            encoding: PluginFsReadEncoding::Utf8,
         };
         let write = PluginFsWriteParams {
             path: "C:/data/output.txt".to_string(),
@@ -1149,7 +1220,7 @@ mod tests {
 
         assert_eq!(
             serde_json::to_value(&read).expect("serialize read params"),
-            json!({ "path": "C:/data/input.txt" })
+            json!({ "path": "C:/data/input.txt", "encoding": "utf8" })
         );
         assert_eq!(
             serde_json::to_value(&write).expect("serialize write params"),

@@ -14,6 +14,12 @@ use crate::plugins::exporter::{
 use crate::plugins::label_preset::{
     load_plugin_label_presets as load_presets, PluginLabelPresetSnapshot,
 };
+use crate::plugins::prelabel::{
+    cancel_plugin_prelabel as cancel_prelabel,
+    load_plugin_prelabel_sources as load_prelabel_sources, run_plugin_prelabel as run_prelabel,
+    PluginPrelabelCancellationResult, PluginPrelabelRequest, PluginPrelabelResult,
+    PluginPrelabelSourceSnapshot,
+};
 use crate::plugins::registry::{
     authorize_plugin_install_for_project, clear_registered_plugin_failures, get_registered_plugin,
     load_plugin_registry, pending_plugin_install_id, prepare_plugin_install_for_project,
@@ -108,6 +114,41 @@ pub async fn run_plugin_export(
 #[tauri::command]
 pub fn cancel_plugin_export(export_id: String) -> Result<PluginExportCancellationResult, String> {
     Ok(cancel_export(&export_id))
+}
+
+#[tauri::command]
+pub fn load_plugin_prelabel_sources(
+    app: tauri::AppHandle,
+    project_folder: Option<PathBuf>,
+) -> Result<PluginPrelabelSourceSnapshot, String> {
+    Ok(load_prelabel_sources(
+        &plugin_app_data_dir(&app)?,
+        project_folder.as_deref(),
+    ))
+}
+
+#[tauri::command]
+pub async fn run_plugin_prelabel(
+    app: tauri::AppHandle,
+    request: PluginPrelabelRequest,
+    on_event: Channel<serde_json::Value>,
+) -> Result<PluginPrelabelResult, String> {
+    let app_data_dir = plugin_app_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        run_prelabel(&app_data_dir, request, move |event| {
+            let _ = on_event.send(event);
+        })
+        .map_err(runtime_command_error)
+    })
+    .await
+    .map_err(text::plugin_prelabel_task_failed)?
+}
+
+#[tauri::command]
+pub fn cancel_plugin_prelabel(
+    operation_id: String,
+) -> Result<PluginPrelabelCancellationResult, String> {
+    Ok(cancel_prelabel(&operation_id))
 }
 
 #[tauri::command]

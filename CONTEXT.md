@@ -39,6 +39,10 @@ _Avoid_: 标签包、在线模板
 `exporter` 代码型插件在 manifest `exporterOptions.formats` 中静态声明的格式。插件通过
 `exporter.export` 返回相对路径与文件内容，宿主先校验全部文件再写入用户选择目录；
 插件不接触输出目录。
+
+`prelabel` 代码型插件是与内置 ONNX 管线并存的预打标来源。插件只接收项目相对图片
+路径，通过 `fs.read:%PROJECT%` 代理读取图片，并返回原图像素坐标的标注图形；宿主
+负责类别映射、结果校验、按图片合并与撤销历史。
 _Avoid_: 外部导出器、动态格式
 
 **宿主 API 版本 (Host API Version)**:

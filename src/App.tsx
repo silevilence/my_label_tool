@@ -37,6 +37,7 @@ import {
   loadLabelTemplates,
   loadPluginLabelPresets,
   loadPluginExportFormats,
+  loadPluginPrelabelSources,
   type ImageFile,
 } from "./lib/tauri-api";
 import {
@@ -50,7 +51,11 @@ import type { ProjectConfig } from "./lib/importers";
 import type { PrelabelClassMapping } from "./types/prelabel";
 import { PRELABEL_ZH_CN as prelabelText } from "./i18n/prelabel.zh-CN";
 import { PLUGIN_ZH_CN as pluginText } from "./i18n/plugin.zh-CN";
-import type { PluginExportFormatDescriptor, PluginLabelPreset } from "./types/plugin";
+import type {
+  PluginExportFormatDescriptor,
+  PluginLabelPreset,
+  PluginPrelabelSourceDescriptor,
+} from "./types/plugin";
 import { updateProjectPrelabelMappings } from "./lib/prelabel-mapping";
 import "./App.css";
 
@@ -83,6 +88,9 @@ function App() {
   const pluginTemplateIdsRef = useRef<ReadonlySet<string>>(new Set());
   const pluginPresetsRef = useRef<PluginLabelPreset[]>([]);
   const [pluginExportFormats, setPluginExportFormats] = useState<PluginExportFormatDescriptor[]>([]);
+  const [pluginPrelabelSources, setPluginPrelabelSources] = useState<
+    PluginPrelabelSourceDescriptor[]
+  >([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState(DEFAULT_LABEL_TEMPLATES[0].id);
   const [projectTemplateId, setProjectTemplateId] = useState("");
   const [activeProjectConfigPath, setActiveProjectConfigPath] = useState("");
@@ -140,11 +148,13 @@ function App() {
     [annotationsByImage],
   );
   const refreshPluginLabelPresets = useCallback(async () => {
-    const [snapshot, exportSnapshot] = await Promise.all([
+    const [snapshot, exportSnapshot, prelabelSnapshot] = await Promise.all([
       loadPluginLabelPresets(),
       loadPluginExportFormats(),
+      loadPluginPrelabelSources(folderPath || null),
     ]);
     setPluginExportFormats(exportSnapshot.formats);
+    setPluginPrelabelSources(prelabelSnapshot.sources);
     if (
       selectedExportFormatId.startsWith("plugin:") &&
       !exportSnapshot.formats.some((format) => format.selectionId === selectedExportFormatId)
@@ -177,12 +187,13 @@ function App() {
     const messages = [
       snapshot.warning,
       exportSnapshot.warning,
+      prelabelSnapshot.warning,
       merged.collisions.length > 0
         ? pluginText.labelPresetCollision(merged.collisions)
         : null,
     ].filter((message): message is string => Boolean(message));
     if (messages.length > 0) setError(messages.join("；"));
-  }, [selectedExportFormatId, selectedTemplateId, templates]);
+  }, [folderPath, selectedExportFormatId, selectedTemplateId, templates]);
   const currentLabel = labelById.get(currentLabelId) ?? labels[0];
   const { imageLoadError, isImageLoading, loadedImage, selectedImage } = useImageLoader(
     images,
@@ -299,6 +310,9 @@ function App() {
     images,
     labels,
     library: prelabelModels.library,
+    pluginSources: pluginPrelabelSources,
+    projectFolder: folderPath,
+    refreshPluginSources: refreshPluginLabelPresets,
     selectedPath,
     insertAnnotationsBatch,
     setError,
@@ -474,6 +488,25 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    loadPluginPrelabelSources(folderPath || null)
+      .then((snapshot) => {
+        if (!cancelled) {
+          setPluginPrelabelSources(snapshot.sources);
+          if (snapshot.warning) setError(snapshot.warning);
+        }
+      })
+      .catch((caughtError: unknown) => {
+        if (!cancelled) {
+          setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [folderPath]);
+
+  useEffect(() => {
     const label = labelById.get(currentLabelId);
     if (!label) {
       setCurrentLabelId(labels[0].id);
@@ -644,6 +677,7 @@ function App() {
       shortcuts={shortcuts}
       templates={templates}
       pluginExportFormats={pluginExportFormats}
+      pluginPrelabelSources={pluginPrelabelSources}
       pluginExportProgress={pluginExportProgress}
       pluginTemplateIds={pluginTemplateIds}
       pluginTemplateSources={pluginTemplateSources}

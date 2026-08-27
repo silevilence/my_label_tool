@@ -29,12 +29,16 @@ describe("parsePluginManifest", () => {
   });
 
   it("normalizes optional fields for a valid code plugin", () => {
-    const result = parsePluginManifest(validPrelabelManifest);
+    const result = parsePluginManifest({
+      ...validPrelabelManifest,
+      prelabelOptions: { classNames: ["car", "person"] },
+    });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const expected: PluginManifest = {
       ...validPrelabelManifest,
+      prelabelOptions: { classNames: ["car", "person"] },
       schemaVersion: 1,
       extensionKind: "prelabel",
       runtime: "process",
@@ -53,6 +57,28 @@ describe("parsePluginManifest", () => {
       timeoutMs: 30_000,
     };
     expect(result.value).toEqual(expected);
+  });
+
+  it.each([
+    [{ ...validPrelabelManifest, prelabelOptions: { classNames: [] } }, "INVALID_VALUE"],
+    [{ ...validPrelabelManifest, prelabelOptions: { classNames: ["   "] } }, "INVALID_VALUE"],
+    [
+      { ...validPrelabelManifest, prelabelOptions: { classNames: ["car", "car"] } },
+      "INVALID_VALUE",
+    ],
+    [
+      {
+        ...validPrelabelManifest,
+        extensionKind: "exporter",
+        prelabelOptions: { classNames: ["car"] },
+      },
+      "FORBIDDEN",
+    ],
+  ])("rejects invalid prelabel class declarations", (input, code) => {
+    const result = parsePluginManifest(input);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual(expect.arrayContaining([expect.objectContaining({ code })]));
   });
 
   it("collects field paths and codes for independent validation failures", () => {
@@ -407,6 +433,12 @@ describe("parsePluginManifest", () => {
     expect(permissionPattern.test("fs.read:%PROJECT%/images")).toBe(true);
     expect(permissionPattern.test("fs.read:%HOME%/images")).toBe(false);
     expect(permissionPattern.test("fs.read:%PROJECT%/im\0ages")).toBe(false);
+    expect(
+      validateManifestSchema({
+        ...validPrelabelManifest,
+        prelabelOptions: { classNames: ["   "] },
+      }),
+    ).toBe(false);
     expect(manifestSchema.$defs.apiVersion.additionalProperties).toBe(false);
     expect(manifestSchema.$defs.apiVersion.properties.min.maximum).toBe(4_294_967_295);
     expect(manifestSchema.properties.timeoutMs.default).toBe(30_000);

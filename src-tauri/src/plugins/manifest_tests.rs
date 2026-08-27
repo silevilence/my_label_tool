@@ -74,6 +74,51 @@ fn rejects_invalid_or_misplaced_exporter_options() {
 }
 
 #[test]
+fn validates_optional_prelabel_class_names() {
+    let valid = parse_plugin_manifest(&json!({
+        "schemaVersion": 1,
+        "id": "dev.acme.prelabel",
+        "name": "预打标",
+        "version": "1.0.0",
+        "apiVersion": { "min": 1 },
+        "extensionKind": "prelabel",
+        "runtime": "process",
+        "entry": { "command": "plugin/main.exe" },
+        "prelabelOptions": { "classNames": ["car", "person"] },
+        "capabilities": { "annotationTypes": ["rect"] }
+    }));
+    assert_eq!(
+        valid
+            .value
+            .expect("valid manifest")
+            .prelabel_options
+            .expect("prelabel options")
+            .class_names,
+        vec!["car", "person"]
+    );
+
+    for options in [
+        json!({ "classNames": [] }),
+        json!({ "classNames": ["car", "car"] }),
+        json!({ "classNames": [""] }),
+    ] {
+        let result = parse_plugin_manifest(&json!({
+            "schemaVersion": 1,
+            "id": "dev.acme.prelabel",
+            "name": "预打标",
+            "version": "1.0.0",
+            "apiVersion": { "min": 1 },
+            "extensionKind": "prelabel",
+            "runtime": "process",
+            "entry": { "command": "plugin/main.exe" },
+            "prelabelOptions": options,
+            "capabilities": { "annotationTypes": ["rect"] }
+        }));
+        assert!(!result.ok);
+    }
+}
+
+#[test]
 fn collects_manifest_validation_errors() {
     let result = parse_plugin_manifest(&json!({
         "schemaVersion": 7,

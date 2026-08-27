@@ -1,6 +1,8 @@
 """my_label_tool prelabel protocol example using only Python's standard library."""
 
+import base64
 import json
+import queue
 import sys
 import threading
 import time
@@ -13,12 +15,18 @@ MAX_NDJSON_LINE_BYTES = 16 * 1024 * 1024
 _write_lock = threading.Lock()
 _jobs_lock = threading.Lock()
 _jobs = {}
+_proxy_lock = threading.Lock()
+_proxy_sequence = 0
+_proxy_responses = {}
 
 
 def send(message):
+    encoded = json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_NDJSON_LINE_BYTES:
+        raise ValueError("协议消息超过 16 MiB 上限")
     with _write_lock:
-        sys.stdout.write(json.dumps(message, ensure_ascii=False, separators=(",", ":")) + "\n")
-        sys.stdout.flush()
+        sys.stdout.buffer.write(encoded + b"\n")
+        sys.stdout.buffer.flush()
 
 
 def respond_result(request_id, result):
@@ -48,23 +56,110 @@ def progress(request_id, percent, message):
     )
 
 
-def run_prelabel(request_id, params, cancelled):
+def read_project_image(relative_path, cancelled):
+    global _proxy_sequence
+    with _proxy_lock:
+        _proxy_sequence += 1
+        proxy_id = f"fs-read-{_proxy_sequence}"
+        response_queue = queue.Queue(maxsize=1)
+        _proxy_responses[proxy_id] = response_queue
+    send(
+        {
+            "v": PROTOCOL_VERSION,
+            "id": proxy_id,
+            "type": "request",
+            "method": "fs.read",
+            "params": {"path": relative_path, "encoding": "base64"},
+        }
+    )
     try:
-        progress(request_id, 0, "开始示例预打标")
-        for step in range(1, 5):
-            if cancelled.wait(0.05):
-                respond_error(request_id, "CANCELLED", "示例预打标已取消")
+        while not cancelled.is_set():
+            try:
+                response = response_queue.get(timeout=0.05)
+                break
+            except queue.Empty:
+                continue
+        else:
+            raise RuntimeError("cancelled")
+        if "error" in response:
+            error = response["error"]
+            raise RuntimeError(f"{error.get('code')}: {error.get('message')}")
+        encoded = response.get("result", {}).get("contentBase64")
+        if not isinstance(encoded, str):
+            raise RuntimeError("fs.read 未返回 Base64 内容")
+        return base64.b64decode(encoded, validate=True)
+    finally:
+        with _proxy_lock:
+            _proxy_responses.pop(proxy_id, None)
+
+
+def run_prelabel(request_id, params, cancelled):
+    shapes = []
+    completed_image_paths = []
+    try:
+        image_paths = params.get("imagePaths") if isinstance(params, dict) else None
+        mappings = params.get("classMappings") if isinstance(params, dict) else None
+        if not isinstance(image_paths, list) or not image_paths or not isinstance(mappings, list):
+            respond_error(request_id, "INVALID_ARGUMENT", "imagePaths 与 classMappings 无效")
+            return
+        mapping = next(
+            (
+                candidate
+                for candidate in mappings
+                if isinstance(candidate, dict)
+                and candidate.get("modelClass") == "example-object"
+                and isinstance(candidate.get("labelId"), str)
+            ),
+            None,
+        )
+        for index, image_path in enumerate(image_paths):
+            if cancelled.is_set():
+                break
+            if not isinstance(image_path, str):
+                respond_error(request_id, "INVALID_ARGUMENT", "图片路径必须是字符串")
                 return
-            progress(request_id, step * 25, f"示例步骤 {step}/4")
+            image_bytes = read_project_image(image_path, cancelled)
+            if not image_bytes:
+                respond_error(request_id, "INVALID_ARGUMENT", "图片文件为空")
+                return
+            if mapping is not None:
+                shapes.append(
+                    {
+                        "imagePath": image_path,
+                        "id": f"example-{index}",
+                        "type": "rect",
+                        "labelId": mapping["labelId"],
+                        "points": [1, 1, 16, 16],
+                        "attributes": {"confidence": 0.9},
+                        "frameIndex": 0,
+                    }
+                )
+            progress(
+                request_id,
+                ((index + 1) / len(image_paths)) * 100,
+                f"已处理 {index + 1}/{len(image_paths)} 张图片",
+            )
+            completed_image_paths.append(image_path)
         respond_result(
             request_id,
             {
-                "annotations": [],
-                "imageId": params.get("imageId") if isinstance(params, dict) else None,
+                "shapes": shapes,
+                "cancelled": cancelled.is_set(),
+                "completedImagePaths": completed_image_paths if cancelled.is_set() else [],
             },
         )
     except Exception as error:  # The protocol boundary must always return a typed error.
-        respond_error(request_id, "INTERNAL_ERROR", str(error))
+        if cancelled.is_set():
+            respond_result(
+                request_id,
+                {
+                    "shapes": shapes,
+                    "cancelled": True,
+                    "completedImagePaths": completed_image_paths,
+                },
+            )
+        else:
+            respond_error(request_id, "INTERNAL_ERROR", str(error))
     finally:
         with _jobs_lock:
             _jobs.pop(request_id, None)
@@ -95,6 +190,7 @@ def handle_request(message):
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {
                     "prelabel": True,
+                    "batch": True,
                     "progress": True,
                     "cancel": True,
                 },
@@ -123,6 +219,13 @@ def handle_control(message):
             cancelled = _jobs.get(message.get("id"))
         if cancelled is not None:
             cancelled.set()
+
+
+def handle_response(message):
+    with _proxy_lock:
+        response_queue = _proxy_responses.get(message.get("id"))
+    if response_queue is not None:
+        response_queue.put(message)
 
 
 def read_protocol_line():
@@ -181,6 +284,10 @@ def decode_host_message(raw):
         if action not in ("cancel", "heartbeat"):
             respond_error(valid_id and message_id or "protocol-error", "PROTOCOL_ERROR", "控制动作无效")
             return None
+    elif message_type == "response":
+        if not valid_id or (("result" in message) == ("error" in message)):
+            respond_error(valid_id and message_id or "protocol-error", "PROTOCOL_ERROR", "响应形状无效")
+            return None
     else:
         respond_error(valid_id and message_id or "protocol-error", "PROTOCOL_ERROR", "消息类型无效")
         return None
@@ -200,8 +307,10 @@ def main():
             continue
         if message["type"] == "request":
             handle_request(message)
-        else:
+        elif message["type"] == "control":
             handle_control(message)
+        else:
+            handle_response(message)
 
 
 if __name__ == "__main__":

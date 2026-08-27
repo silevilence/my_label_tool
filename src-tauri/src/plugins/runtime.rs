@@ -150,6 +150,7 @@ pub struct PluginCallHooks {
     on_event: Arc<dyn Fn(Value) + Send + Sync>,
     cancel_grace: Duration,
     defer_success_recording: bool,
+    accept_cancelled_result: bool,
 }
 
 impl PluginCallHooks {
@@ -169,11 +170,20 @@ impl PluginCallHooks {
             on_event: Arc::new(on_event),
             cancel_grace: Duration::from_secs(2),
             defer_success_recording: false,
+            accept_cancelled_result: false,
         }
     }
 
     pub fn with_deferred_success_recording(mut self) -> Self {
         self.defer_success_recording = true;
+        self
+    }
+
+    /// Allows a cancellation-aware capability to return its validated partial
+    /// result before the host tears down the process. The process is still
+    /// terminated after the response so cancellation never leaves a session.
+    pub fn with_cancelled_result(mut self) -> Self {
+        self.accept_cancelled_result = true;
         self
     }
 }
@@ -630,6 +640,7 @@ struct ActiveCallHooks<'a> {
     hooks: &'a PluginCallHooks,
     progress: bool,
     cancel: bool,
+    accept_cancelled_result: bool,
 }
 
 #[derive(Debug, Default)]
@@ -764,7 +775,7 @@ impl PluginSession {
         if self.negotiated.is_none() {
             self.handshake_before(execution.deadline, proxy_budget)?;
         }
-        self.ensure_capability(extension_kind, declared_capabilities, method)?;
+        self.ensure_capability(extension_kind, declared_capabilities, method, &params)?;
         let active_hooks = execution.hooks.map(|hooks| {
             let negotiated = &self
                 .negotiated
@@ -775,6 +786,7 @@ impl PluginSession {
                 hooks,
                 progress: declared_capabilities.progress && negotiated.progress,
                 cancel: declared_capabilities.cancel && negotiated.cancel,
+                accept_cancelled_result: hooks.accept_cancelled_result,
             }
         });
         self.call(
@@ -791,6 +803,7 @@ impl PluginSession {
         extension_kind: &PluginExtensionKind,
         declared_capabilities: &PluginCapabilities,
         method: &str,
+        params: &Value,
     ) -> Result<(), PluginCallError> {
         let capabilities = &self
             .negotiated
@@ -802,7 +815,13 @@ impl PluginSession {
                 *extension_kind == PluginExtensionKind::Exporter && capabilities.exporter
             }
             "prelabel.run" => {
-                *extension_kind == PluginExtensionKind::Prelabel && capabilities.prelabel
+                let is_batch = params
+                    .get("imagePaths")
+                    .and_then(Value::as_array)
+                    .is_some_and(|paths| paths.len() > 1);
+                *extension_kind == PluginExtensionKind::Prelabel
+                    && capabilities.prelabel
+                    && (!is_batch || (declared_capabilities.batch && capabilities.batch))
             }
             "config.migrate" => {
                 declared_capabilities.config_migration && capabilities.config_migration
@@ -914,6 +933,17 @@ impl PluginSession {
                     {
                         if cancel_sent {
                             self.terminate();
+                            if hooks.is_some_and(|hooks| hooks.accept_cancelled_result)
+                                && matches!(
+                                    message,
+                                    PluginMessage::Response {
+                                        outcome: ResponseOutcome::Result(_),
+                                        ..
+                                    }
+                                )
+                            {
+                                return Ok(message);
+                            }
                             return Err(call_error("CANCELLED", text::PLUGIN_RUNTIME_CANCELLED));
                         }
                         return Ok(message);
@@ -1534,15 +1564,88 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn progress_hook_can_cancel_and_removes_the_plugin_process() {
+    fn progress_hook_can_cancel_exporter_and_prelabel_processes() {
         let _runtime_test_guard = runtime_test_guard();
-        let root = test_directory("cancel-export");
+        for (suffix, extension_kind, capability, method) in [
+            (
+                "export",
+                PluginExtensionKind::Exporter,
+                "exporter",
+                "exporter.export",
+            ),
+            (
+                "prelabel",
+                PluginExtensionKind::Prelabel,
+                "prelabel",
+                "prelabel.run",
+            ),
+        ] {
+            let root = test_directory(&format!("cancel-{suffix}"));
+            let process_id_path = root.join("process-id.txt");
+            let escaped_path = process_id_path.to_string_lossy().replace('\'', "''");
+            let script = format!(
+            "$hello = [Console]::In.ReadLine() | ConvertFrom-Json; $helloResponse = @{{ v = 1; id = $hello.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ {capability} = $true; progress = $true; cancel = $true }} }} }}; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $call = [Console]::In.ReadLine() | ConvertFrom-Json; [System.IO.File]::WriteAllText('{escaped_path}', [string]$PID); $event = @{{ v = 1; id = $call.id; type = 'event'; event = 'progress'; payload = @{{ percent = 25; message = 'working' }} }}; [Console]::Out.WriteLine(($event | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $control = [Console]::In.ReadLine() | ConvertFrom-Json; $response = @{{ v = 1; id = $call.id; type = 'response'; error = @{{ code = 'CANCELLED'; message = 'cancelled' }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); Start-Sleep -Seconds 30"
+        );
+            let mut entry = test_entry(&format!("dev.test.cancel{suffix}"), script, 10_000);
+            entry.extension_kind = extension_kind;
+            if entry.extension_kind == PluginExtensionKind::Prelabel {
+                entry.capabilities.annotation_types =
+                    vec![super::super::manifest::PluginAnnotationType::Rect];
+            }
+            entry.capabilities.progress = true;
+            entry.capabilities.cancel = true;
+            create_package(&root, &entry.id);
+            write_registry(&root, std::slice::from_ref(&entry));
+
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let callback_cancelled = Arc::clone(&cancelled);
+            let events = Arc::new(Mutex::new(Vec::new()));
+            let callback_events = Arc::clone(&events);
+            let hooks = PluginCallHooks::new(cancelled, move |event| {
+                callback_events.lock().expect("events").push(event);
+                callback_cancelled.store(true, Ordering::Release);
+            });
+            let error = invoke_plugin_with_hooks(&root, &entry.id, method, Value::Null, &hooks)
+                .expect_err("cancelled plugin call must fail");
+            assert_eq!(error.code, "CANCELLED");
+            assert_eq!(events.lock().expect("events")[0]["event"], "progress");
+            assert!(!runtime_manager()
+                .lock()
+                .expect("runtime manager")
+                .sessions
+                .contains_key(&entry.id));
+
+            let process_id = fs::read_to_string(&process_id_path)
+                .expect("process id")
+                .parse::<u32>()
+                .expect("numeric process id");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while process_exists(process_id) && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(50));
+            }
+            assert!(
+                !process_exists(process_id),
+                "cancel left the plugin process alive"
+            );
+            fs::remove_dir_all(root).expect("remove fixture");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cancellation_aware_prelabel_can_return_partial_result_before_termination() {
+        let _runtime_test_guard = runtime_test_guard();
+        let root = test_directory("cancel-partial-prelabel");
         let process_id_path = root.join("process-id.txt");
         let escaped_path = process_id_path.to_string_lossy().replace('\'', "''");
         let script = format!(
-            "$hello = [Console]::In.ReadLine() | ConvertFrom-Json; $helloResponse = @{{ v = 1; id = $hello.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ exporter = $true; progress = $true; cancel = $true }} }} }}; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $call = [Console]::In.ReadLine() | ConvertFrom-Json; [System.IO.File]::WriteAllText('{escaped_path}', [string]$PID); $event = @{{ v = 1; id = $call.id; type = 'event'; event = 'progress'; payload = @{{ percent = 25; message = 'working' }} }}; [Console]::Out.WriteLine(($event | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); $control = [Console]::In.ReadLine() | ConvertFrom-Json; $response = @{{ v = 1; id = $call.id; type = 'response'; error = @{{ code = 'CANCELLED'; message = 'cancelled' }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 6)); [Console]::Out.Flush(); Start-Sleep -Seconds 30"
+            "$hello = [Console]::In.ReadLine() | ConvertFrom-Json; $helloResponse = @{{ v = 1; id = $hello.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ prelabel = $true; batch = $true; progress = $true; cancel = $true }} }} }}; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); $call = [Console]::In.ReadLine() | ConvertFrom-Json; [System.IO.File]::WriteAllText('{escaped_path}', [string]$PID); $event = @{{ v = 1; id = $call.id; type = 'event'; event = 'progress'; payload = @{{ percent = 50 }} }}; [Console]::Out.WriteLine(($event | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); $null = [Console]::In.ReadLine(); $shape = @{{ imagePath = $call.params.imagePaths[0]; id = 'partial'; type = 'rect'; labelId = 'vehicle'; points = @(1,2,3,4) }}; $response = @{{ v = 1; id = $call.id; type = 'response'; result = @{{ shapes = @($shape); cancelled = $true; completedImagePaths = @($call.params.imagePaths[0]) }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 10)); [Console]::Out.Flush(); Start-Sleep -Seconds 30"
         );
-        let mut entry = test_entry("dev.test.cancelexport", script, 10_000);
+        let mut entry = test_entry("dev.test.cancelpartial", script, 10_000);
+        entry.extension_kind = PluginExtensionKind::Prelabel;
+        entry.capabilities.annotation_types =
+            vec![super::super::manifest::PluginAnnotationType::Rect];
+        entry.capabilities.batch = true;
         entry.capabilities.progress = true;
         entry.capabilities.cancel = true;
         create_package(&root, &entry.id);
@@ -1550,22 +1653,20 @@ mod tests {
 
         let cancelled = Arc::new(AtomicBool::new(false));
         let callback_cancelled = Arc::clone(&cancelled);
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let callback_events = Arc::clone(&events);
-        let hooks = PluginCallHooks::new(cancelled, move |event| {
-            callback_events.lock().expect("events").push(event);
+        let hooks = PluginCallHooks::new(cancelled, move |_| {
             callback_cancelled.store(true, Ordering::Release);
-        });
-        let error =
-            invoke_plugin_with_hooks(&root, &entry.id, "exporter.export", Value::Null, &hooks)
-                .expect_err("cancelled export must fail");
-        assert_eq!(error.code, "CANCELLED");
-        assert_eq!(events.lock().expect("events")[0]["event"], "progress");
-        assert!(!runtime_manager()
-            .lock()
-            .expect("runtime manager")
-            .sessions
-            .contains_key(&entry.id));
+        })
+        .with_cancelled_result();
+        let result = invoke_plugin_with_hooks(
+            &root,
+            &entry.id,
+            "prelabel.run",
+            serde_json::json!({ "imagePaths": ["images/a.jpg", "images/b.jpg"] }),
+            &hooks,
+        )
+        .expect("partial cancellation result");
+        assert_eq!(result["cancelled"], true);
+        assert_eq!(result["completedImagePaths"][0], "images/a.jpg");
 
         let process_id = fs::read_to_string(&process_id_path)
             .expect("process id")
@@ -1577,7 +1678,7 @@ mod tests {
         }
         assert!(
             !process_exists(process_id),
-            "cancel left the plugin process alive"
+            "cancel left a plugin process alive"
         );
         fs::remove_dir_all(root).expect("remove fixture");
     }
@@ -2182,6 +2283,7 @@ mod tests {
                 ],
             }),
             exporter_options: None,
+            prelabel_options: None,
             capabilities: PluginCapabilities {
                 annotation_types: Vec::new(),
                 batch: false,

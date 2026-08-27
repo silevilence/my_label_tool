@@ -44,9 +44,12 @@ describe("prelabel execution planning", () => {
           imagePath,
           detections: [{ classIndex: 0, confidence: 0.9, points: [1, 2, 3, 4] }],
         })),
-      toAnnotations: (result) => [
-        { id: result.imagePath, type: "rect", labelId: "person", points: [1, 2, 3, 4] },
-      ],
+      toEntry: (result) => ({
+        imagePath: result.imagePath,
+        annotations: [
+          { id: result.imagePath, type: "rect", labelId: "person", points: [1, 2, 3, 4] },
+        ],
+      }),
       commit: (entries) => {
         committed.push(entries.map((entry) => entry.imagePath));
         cancelled = true;
@@ -71,7 +74,7 @@ describe("prelabel execution planning", () => {
         images: [images[0]],
         chunkSize: 1,
         infer: async () => [{ imagePath: "a.jpg", detections: [] }],
-        toAnnotations: () => [],
+        toEntry: (result) => ({ imagePath: result.imagePath, annotations: [] }),
         commit: () => {
           throw new Error("must not commit");
         },
@@ -96,7 +99,7 @@ describe("prelabel execution planning", () => {
           }
           return paths.map((imagePath) => ({ imagePath, detections: [] }));
         },
-        toAnnotations: () => [],
+        toEntry: (result) => ({ imagePath: result.imagePath, annotations: [] }),
         commit: (entries) => committed.push(entries.map((entry) => entry.imagePath)),
         shouldCommit: (entry) => entry.imagePath !== "b.jpg",
         isContextCurrent: () => true,
@@ -105,5 +108,22 @@ describe("prelabel execution planning", () => {
       }),
     ).rejects.toThrow("inference failed");
     expect(committed).toEqual([["a.jpg"]]);
+  });
+
+  it("commits only completed images returned by a cancelled batch", async () => {
+    const committed: string[] = [];
+    const summary = await executePrelabelBatch({
+      images: images.slice(0, 2),
+      chunkSize: 2,
+      infer: async () => [{ imagePath: "a.jpg", detections: [] }],
+      toEntry: (result) => ({ imagePath: result.imagePath, annotations: [] }),
+      commit: (entries) => committed.push(...entries.map((entry) => entry.imagePath)),
+      isContextCurrent: () => true,
+      isCancelled: () => true,
+      onProgress: () => undefined,
+    });
+
+    expect(committed).toEqual(["a.jpg"]);
+    expect(summary).toMatchObject({ processed: 1, cancelled: true });
   });
 });

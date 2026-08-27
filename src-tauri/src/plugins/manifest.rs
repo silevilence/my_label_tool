@@ -41,6 +41,12 @@ pub struct PluginExporterOptions {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct PluginPrelabelOptions {
+    pub class_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginCapabilityVersion {
     pub api_version: PluginApiVersionTarget,
 }
@@ -197,6 +203,8 @@ pub struct PluginManifest {
     pub entry: Option<PluginEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exporter_options: Option<PluginExporterOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prelabel_options: Option<PluginPrelabelOptions>,
     pub capabilities: PluginCapabilities,
     pub permissions: Vec<PluginPermission>,
     pub config_version: u32,
@@ -256,6 +264,11 @@ pub fn parse_plugin_manifest(input: &Value) -> ManifestValidationResult {
         extension_kind.as_ref(),
         &mut errors,
     );
+    let prelabel_options = parse_prelabel_options(
+        object.get("prelabelOptions"),
+        extension_kind.as_ref(),
+        &mut errors,
+    );
     let capabilities = parse_capabilities(
         object.get("capabilities"),
         extension_kind.as_ref(),
@@ -294,6 +307,7 @@ pub fn parse_plugin_manifest(input: &Value) -> ManifestValidationResult {
             runtime,
             entry,
             exporter_options,
+            prelabel_options,
             capabilities,
             permissions,
             config_version,
@@ -301,6 +315,51 @@ pub fn parse_plugin_manifest(input: &Value) -> ManifestValidationResult {
         }),
         errors,
     }
+}
+
+fn parse_prelabel_options(
+    value: Option<&Value>,
+    extension_kind: Option<&PluginExtensionKind>,
+    errors: &mut Vec<ManifestValidationError>,
+) -> Option<PluginPrelabelOptions> {
+    let value = value?;
+    if extension_kind != Some(&PluginExtensionKind::Prelabel) {
+        push_error(
+            errors,
+            "prelabelOptions",
+            "FORBIDDEN",
+            text::PLUGIN_PRELABEL_OPTIONS_FORBIDDEN,
+        );
+        return None;
+    }
+    let Some(values) = value.get("classNames").and_then(Value::as_array) else {
+        push_error(
+            errors,
+            "prelabelOptions.classNames",
+            "INVALID_VALUE",
+            text::PLUGIN_PRELABEL_CLASS_NAMES_INVALID,
+        );
+        return None;
+    };
+    let class_names = values
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if class_names.len() != values.len()
+        || class_names.is_empty()
+        || class_names.iter().any(|name| name.trim().is_empty())
+        || class_names.iter().collect::<HashSet<_>>().len() != class_names.len()
+    {
+        push_error(
+            errors,
+            "prelabelOptions.classNames",
+            "INVALID_VALUE",
+            text::PLUGIN_PRELABEL_CLASS_NAMES_INVALID,
+        );
+        return None;
+    }
+    Some(PluginPrelabelOptions { class_names })
 }
 
 fn parse_exporter_options(

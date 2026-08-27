@@ -70,13 +70,15 @@ code-plugin/
   "extensionKind": "prelabel",
   "runtime": "process",
   "entry": { "command": "python", "args": ["plugin/main.py"] },
+  "prelabelOptions": { "classNames": ["example-object"] },
   "capabilities": {
     "annotationTypes": ["rect"],
+    "batch": true,
     "progress": true,
     "cancel": true,
     "prelabel": { "apiVersion": { "min": 1 } }
   },
-  "permissions": [],
+  "permissions": ["fs.read:%PROJECT%"],
   "timeoutMs": 30000
 }
 ```
@@ -95,6 +97,12 @@ code-plugin/
   请求/响应、50 MiB 单文件限制、进度与取消语义见
   [plugin-exporter.schema.json](plugin-exporter.schema.json) 和
   [plugin-protocol.md](plugin-protocol.md#导出格式插件)。
+- `prelabel` 必须声明非空 `annotationTypes` 与当前项目根读取权限；授权与打开项目绑定，
+  切换项目后需重新授权。可选
+  `prelabelOptions.classNames` 复用现有类别映射面板。图片路径按项目相对路径传递，插件
+  用 Base64 文件代理读取图片；请求/响应与像素坐标校验见
+  [plugin-prelabel.schema.json](plugin-prelabel.schema.json) 和
+  [plugin-protocol.md](plugin-protocol.md#外部预打标插件)。
 - 完整约束见 [plugin-manifest.schema.json](plugin-manifest.schema.json)，版本与兼容策略
   见 [plugin-api-versioning.md](plugin-api-versioning.md)。
 
@@ -105,7 +113,7 @@ code-plugin/
 发送同 id 的 `progress`/`log` 事件，最终只发送一个成功或错误响应。收到
 `{"type":"control","action":"cancel"}` 后停止对应调用，并以 `CANCELLED` 响应结束。
 
-单行上限 75,497,472 字节。stdout 不得输出 banner、traceback 或调试文本；使用
+单行基线上限 16 MiB；仅 exporter 进程使用 72 MiB 的能力限定上限。stdout 不得输出 banner、traceback 或调试文本；使用
 stderr 打印，例如 Python 的 `print("debug", file=sys.stderr, flush=True)`。完整信封、
 配置迁移、文件代理和十个标准错误码见 [plugin-protocol.md](plugin-protocol.md)。
 

@@ -10,15 +10,18 @@
     "command": "python",
     "args": ["plugin/main.py"]
   },
+  "prelabelOptions": {
+    "classNames": ["example-object"]
+  },
   "capabilities": {
     "annotationTypes": ["rect"],
-    "batch": false,
+    "batch": true,
     "progress": true,
     "cancel": true,
     "configMigration": false,
     "prelabel": { "apiVersion": { "min": 1 } }
   },
-  "permissions": [],
+  "permissions": ["fs.read:%PROJECT%"],
   "configVersion": 0,
   "timeoutMs": 30000
 }

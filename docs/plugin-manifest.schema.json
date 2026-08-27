@@ -111,6 +111,19 @@
         }
       },
       "additionalProperties": true
+    },
+    "prelabelOptions": {
+      "type": "object",
+      "required": ["classNames"],
+      "properties": {
+        "classNames": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      },
+      "additionalProperties": true
     }
   },
   "allOf": [
@@ -136,6 +149,10 @@
     {
       "if": { "properties": { "extensionKind": { "const": "exporter" } } },
       "else": { "not": { "required": ["exporterOptions"] } }
+    },
+    {
+      "if": { "properties": { "extensionKind": { "const": "prelabel" } } },
+      "else": { "not": { "required": ["prelabelOptions"] } }
     }
   ],
   "$defs": {

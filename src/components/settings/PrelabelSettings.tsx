@@ -48,6 +48,7 @@ import type {
 } from "../../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
 import { PtConversionDialog } from "./PtConversionDialog";
+import type { PluginPrelabelSourceDescriptor } from "../../types/plugin";
 
 interface PrelabelSettingsProps {
   activeProjectConfig: ProjectConfig | null;
@@ -55,6 +56,7 @@ interface PrelabelSettingsProps {
   isLoaded: boolean;
   labels: LabelConfig[];
   library: PrelabelModelLibrary;
+  pluginSources: PluginPrelabelSourceDescriptor[];
   onAddModel: (model: PrelabelModelConfig) => Promise<void>;
   onClose: () => void;
   onDeleteModel: (modelId: string) => Promise<void>;
@@ -79,6 +81,7 @@ export function PrelabelSettings({
   isLoaded,
   labels,
   library,
+  pluginSources,
   onAddModel,
   onClose,
   onDeleteModel,
@@ -92,6 +95,8 @@ export function PrelabelSettings({
   );
   const [draft, setDraft] = useState<PrelabelModelConfig | null>(null);
   const [editingModel, setEditingModel] = useState<PrelabelModelConfig | null>(currentModel);
+  const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
+  const selectedPlugin = pluginSources.find((source) => source.pluginId === selectedPluginId) ?? null;
   const [ptGuidance, setPtGuidance] = useState<PtGuidance | null>(null);
   const [ptConversionSession, setPtConversionSession] = useState<PtConversionSession | null>(null);
   const [ptConversionNotice, setPtConversionNotice] = useState("");
@@ -380,7 +385,10 @@ export function PrelabelSettings({
                   key={model.id}
                   disabled={isBusy}
                   type="button"
-                  onClick={() => void runLibraryMutation(() => onSelectModel(model.id))}
+                  onClick={() => {
+                    setSelectedPluginId(null);
+                    void runLibraryMutation(() => onSelectModel(model.id));
+                  }}
                 >
                   <span className="block truncate text-sm font-medium text-slate-100">
                     {model.name}
@@ -392,6 +400,35 @@ export function PrelabelSettings({
                 </button>
               ))}
             </div>
+            {pluginSources.length > 0 && (
+              <>
+                <p className="mt-5 text-xs font-medium text-slate-400">{text.pluginSourcesTitle}</p>
+                <div className="mt-2 space-y-2">
+                  {pluginSources.map((source) => (
+                    <button
+                      className={`w-full rounded border p-3 text-left ${
+                        source.pluginId === selectedPluginId
+                          ? "border-violet-500 bg-violet-500/10"
+                          : "border-slate-800 bg-slate-950 hover:border-slate-600"
+                      }`}
+                      key={source.pluginId}
+                      type="button"
+                      onClick={() => {
+                        setEditingModel(null);
+                        setSelectedPluginId(source.pluginId);
+                      }}
+                    >
+                      <span className="block truncate text-sm font-medium text-slate-100">
+                        {source.pluginName}
+                      </span>
+                      <span className={`mt-1 block text-xs ${source.enabled ? "text-slate-500" : "text-amber-300"}`}>
+                        {source.disabledReason ?? text.pluginSourceReady}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </aside>
 
           <main className="overflow-y-auto p-5">
@@ -461,7 +498,8 @@ export function PrelabelSettings({
                     disabled={isBusy || isLabelDirty}
                     isLabelDirty={isLabelDirty}
                     labels={labels}
-                    model={currentModel}
+                    classNames={currentModel.classNames}
+                    sourceId={currentModel.id}
                     onSave={(mappings, nextLabels) =>
                       runLibraryMutation(() =>
                         onSaveMappings(currentModel.id, mappings, nextLabels),
@@ -471,7 +509,34 @@ export function PrelabelSettings({
                 )}
               </>
             )}
-            {!draft && !ptGuidance && !editingModel && isLoaded && (
+            {!draft && !ptGuidance && selectedPlugin && (
+              <>
+                <section className="rounded border border-violet-500/30 bg-violet-500/5 p-4">
+                  <h3 className="font-medium text-slate-100">{selectedPlugin.pluginName}</h3>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {text.pluginSourceDescription(selectedPlugin.annotationTypes.join("、"))}
+                  </p>
+                </section>
+                <ClassMappingPanel
+                  activeProjectConfig={activeProjectConfig}
+                  classNames={
+                    selectedPlugin.classNames.length > 0
+                      ? selectedPlugin.classNames
+                      : labels.map((label) => label.name)
+                  }
+                  disabled={isBusy || isLabelDirty || !selectedPlugin.enabled}
+                  isLabelDirty={isLabelDirty}
+                  labels={labels}
+                  sourceId={selectedPlugin.selectionId}
+                  onSave={(mappings, nextLabels) =>
+                    runLibraryMutation(() =>
+                      onSaveMappings(selectedPlugin.selectionId, mappings, nextLabels),
+                    )
+                  }
+                />
+              </>
+            )}
+            {!draft && !ptGuidance && !editingModel && !selectedPlugin && isLoaded && (
               <div className="grid min-h-64 place-items-center text-sm text-slate-500">
                 {text.emptySelection}
               </div>
@@ -503,26 +568,28 @@ function ClassMappingPanel({
   disabled,
   isLabelDirty,
   labels,
-  model,
+  classNames,
+  sourceId,
   onSave,
 }: {
   activeProjectConfig: ProjectConfig | null;
   disabled: boolean;
   isLabelDirty: boolean;
   labels: LabelConfig[];
-  model: PrelabelModelConfig;
+  classNames: string[];
+  sourceId: string;
   onSave: (mappings: PrelabelClassMapping[], labels: LabelConfig[]) => Promise<void>;
 }) {
-  const savedMappings = activeProjectConfig?.prelabelMappings?.[model.id] ?? [];
+  const savedMappings = activeProjectConfig?.prelabelMappings?.[sourceId] ?? [];
   const resolved = useMemo(
     () =>
       resolvePrelabelClassMappings(
-        model.id,
-        model.classNames,
+        sourceId,
+        classNames,
         labels,
         activeProjectConfig?.prelabelMappings ?? {},
       ),
-    [activeProjectConfig?.prelabelMappings, labels, model.classNames, model.id],
+    [activeProjectConfig?.prelabelMappings, classNames, labels, sourceId],
   );
   const unmatchedCount = resolved.filter(isUnmatchedPrelabelMapping).length;
 

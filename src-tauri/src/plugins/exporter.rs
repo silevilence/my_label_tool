@@ -1,7 +1,8 @@
 use super::manifest::{is_safe_relative_path, PluginExporterFormat, PluginExtensionKind};
 use super::permissions::{normalize_for_comparison, opened_file_path};
 use super::registry::{
-    load_plugin_registry, record_plugin_runtime_failure, record_plugin_runtime_success, PluginState,
+    load_plugin_registry, plugin_state_disabled_reason, record_plugin_runtime_failure,
+    record_plugin_runtime_success, PluginState,
 };
 use super::runtime::{
     invoke_plugin_with_hooks, load_plugin_runtime_settings, stop_plugin_process, PluginCallError,
@@ -112,7 +113,7 @@ pub fn load_plugin_export_formats(app_data_dir: &Path) -> PluginExportFormatSnap
         let disabled_reason = if safe_mode {
             Some(text::PLUGIN_RUNTIME_SAFE_MODE.to_string())
         } else if plugin.state != PluginState::Enabled {
-            state_disabled_reason(plugin.state)
+            plugin_state_disabled_reason(plugin.state)
         } else {
             plugin.last_error.clone()
         };
@@ -694,15 +695,6 @@ fn is_safe_windows_segment(segment: &str) -> bool {
             && stem.as_bytes()[3] != b'0')
 }
 
-fn state_disabled_reason(state: PluginState) -> Option<String> {
-    match state {
-        PluginState::Enabled => None,
-        PluginState::Disabled => Some(text::PLUGIN_RUNTIME_DISABLED.to_string()),
-        PluginState::AutoDisabled => Some(text::PLUGIN_RUNTIME_AUTO_DISABLED.to_string()),
-        PluginState::PendingMigration => Some(text::PLUGIN_CONFIG_MIGRATION_REQUIRED.to_string()),
-    }
-}
-
 fn export_error(code: &str, message: &str) -> PluginCallError {
     PluginCallError::external(code, message)
 }
@@ -947,6 +939,7 @@ mod tests {
             exporter_options: Some(PluginExporterOptions {
                 formats: vec![format(true)],
             }),
+            prelabel_options: None,
             capabilities: PluginCapabilities {
                 annotation_types: Vec::new(),
                 batch: false,

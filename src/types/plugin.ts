@@ -1,4 +1,4 @@
-import type { AnnotationShapeType, LabelTemplate } from "./annotation";
+import type { AnnotationShape, AnnotationShapeType, LabelTemplate } from "./annotation";
 import { PLUGIN_ZH_CN as text } from "../i18n/plugin.zh-CN";
 
 /** Manifest structure version. Independent from host API and protocol versions. */
@@ -179,6 +179,7 @@ export const PLUGIN_MANIFEST_FIELDS = [
   "runtime",
   "entry",
   "exporterOptions",
+  "prelabelOptions",
   "capabilities",
   "permissions",
   "configVersion",
@@ -214,6 +215,10 @@ export interface PluginExporterOptions {
   formats: PluginExporterFormat[];
 }
 
+export interface PluginPrelabelOptions {
+  classNames: string[];
+}
+
 export interface PluginCapabilityVersion {
   apiVersion: PluginApiVersionTarget;
 }
@@ -243,6 +248,7 @@ export interface PluginManifest {
   runtime?: PluginRuntime;
   entry?: PluginEntry;
   exporterOptions?: PluginExporterOptions;
+  prelabelOptions?: PluginPrelabelOptions;
   capabilities: PluginCapabilities;
   permissions: PluginPermission[];
   configVersion: number;
@@ -263,6 +269,7 @@ export interface PluginRegistryEntry {
   extensionKind: PluginExtensionKind;
   entry: PluginEntry | null;
   exporterOptions?: PluginExporterOptions;
+  prelabelOptions?: PluginPrelabelOptions;
   capabilities: PluginCapabilities;
   grants: PluginPermissionGrant[];
   state: PluginState;
@@ -317,6 +324,50 @@ export interface PluginExportEvent {
 
 export interface PluginExportCancellationResult {
   exportId: string;
+  found: boolean;
+}
+
+export interface PluginPrelabelSourceDescriptor {
+  selectionId: `plugin:${string}`;
+  pluginId: string;
+  pluginName: string;
+  classNames: string[];
+  annotationTypes: AnnotationShapeType[];
+  enabled: boolean;
+  disabledReason: string | null;
+  supportsBatch: boolean;
+  supportsProgress: boolean;
+  supportsCancel: boolean;
+}
+
+export interface PluginPrelabelSourceSnapshot {
+  sources: PluginPrelabelSourceDescriptor[];
+  warning: string | null;
+}
+
+export interface PluginPrelabelClassMapping {
+  modelClass: string;
+  labelId: string;
+  labelName: string;
+}
+
+export interface PluginPrelabelImageResult {
+  imagePath: string;
+  shapes: AnnotationShape[];
+}
+
+export interface PluginPrelabelResult {
+  images: PluginPrelabelImageResult[];
+  cancelled: boolean;
+}
+
+export interface PluginPrelabelEvent {
+  event: "progress" | "log";
+  payload: { percent?: number; message?: string; [key: string]: unknown };
+}
+
+export interface PluginPrelabelCancellationResult {
+  operationId: string;
   found: boolean;
 }
 
@@ -419,6 +470,7 @@ export function parsePluginManifest(input: unknown): PluginManifestParseResult {
   const runtime = parseRuntime(input.runtime, extensionKind, errors);
   const entry = parseEntry(input.entry, extensionKind, errors);
   const exporterOptions = parseExporterOptions(input.exporterOptions, extensionKind, errors);
+  const prelabelOptions = parsePrelabelOptions(input.prelabelOptions, extensionKind, errors);
   const capabilities = parseCapabilities(input.capabilities, extensionKind, apiVersion, errors);
   const permissions = parsePermissions(input.permissions, errors);
   const configVersion = parseBoundedInteger(
@@ -450,12 +502,51 @@ export function parsePluginManifest(input: unknown): PluginManifestParseResult {
       ...(runtime ? { runtime } : {}),
       ...(entry ? { entry } : {}),
       ...(exporterOptions ? { exporterOptions } : {}),
+      ...(prelabelOptions ? { prelabelOptions } : {}),
       capabilities,
       permissions,
       configVersion,
       timeoutMs,
     },
   };
+}
+
+function parsePrelabelOptions(
+  value: unknown,
+  extensionKind: PluginExtensionKind | undefined,
+  errors: PluginManifestError[],
+): PluginPrelabelOptions | undefined {
+  if (value === undefined) return undefined;
+  if (extensionKind !== "prelabel") {
+    addError(errors, "prelabelOptions", "FORBIDDEN", text.prelabelOptionsForbidden);
+    return undefined;
+  }
+  if (!isRecord(value) || !Array.isArray(value.classNames)) {
+    addError(
+      errors,
+      "prelabelOptions.classNames",
+      "INVALID_VALUE",
+      text.prelabelClassNamesInvalid,
+    );
+    return undefined;
+  }
+  const classNames = value.classNames.filter(
+    (name): name is string => typeof name === "string" && name.trim().length > 0,
+  );
+  if (
+    classNames.length === 0 ||
+    classNames.length !== value.classNames.length ||
+    new Set(classNames).size !== classNames.length
+  ) {
+    addError(
+      errors,
+      "prelabelOptions.classNames",
+      "INVALID_VALUE",
+      text.prelabelClassNamesInvalid,
+    );
+    return undefined;
+  }
+  return { classNames };
 }
 
 function parseExporterOptions(

@@ -40,7 +40,10 @@ import { isEditableTarget } from "../lib/app-utils";
 import type { PrelabelExecutionControls } from "../hooks/usePrelabelExecution";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
 import type { PrelabelClassMapping } from "../types/prelabel";
-import type { PluginExportFormatDescriptor } from "../types/plugin";
+import type {
+  PluginExportFormatDescriptor,
+  PluginPrelabelSourceDescriptor,
+} from "../types/plugin";
 import type { PluginExportProgressState } from "../hooks/useProjectActions";
 
 const ShortcutSettings = lazy(async () => {
@@ -112,6 +115,7 @@ interface AppLayoutProps {
   pluginTemplateIds: ReadonlySet<string>;
   pluginTemplateSources: ReadonlyMap<string, string>;
   pluginExportFormats: PluginExportFormatDescriptor[];
+  pluginPrelabelSources: PluginPrelabelSourceDescriptor[];
   pluginExportProgress: PluginExportProgressState | null;
   transformerRef: MutableRefObject<KonvaTransformer | null>;
   updateMessage: string;
@@ -239,6 +243,7 @@ export function AppLayout({
   pluginTemplateIds,
   pluginTemplateSources,
   pluginExportFormats,
+  pluginPrelabelSources,
   pluginExportProgress,
   transformerRef,
   updateMessage,
@@ -728,6 +733,7 @@ export function AppLayout({
             isLoaded={prelabelModels.isLoaded}
             labels={labels}
             library={prelabelModels.library}
+            pluginSources={pluginPrelabelSources}
             onAddModel={prelabelModels.addModel}
             onClose={() => setIsPrelabelSettingsOpen(false)}
             onDeleteModel={prelabelModels.deleteModel}

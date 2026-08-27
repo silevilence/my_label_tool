@@ -1,13 +1,12 @@
 import type { AnnotationShape } from "../types/annotation";
 import type { ImageFile } from "./tauri-api";
-import type { PrelabelImageInference } from "../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../i18n/prelabel.zh-CN";
 
-interface ExecutePrelabelBatchOptions {
+interface ExecutePrelabelBatchOptions<TResult> {
   images: ImageFile[];
   chunkSize: number;
-  infer: (imagePaths: string[]) => Promise<PrelabelImageInference[]>;
-  toAnnotations: (result: PrelabelImageInference) => AnnotationShape[];
+  infer: (imagePaths: string[]) => Promise<TResult[]>;
+  toEntry: (result: TResult) => { imagePath: string; annotations: AnnotationShape[] };
   commit: (entries: Array<{ imagePath: string; annotations: AnnotationShape[] }>) => void;
   shouldCommit?: (entry: { imagePath: string; annotations: AnnotationShape[] }) => boolean;
   isContextCurrent?: () => boolean;
@@ -36,17 +35,17 @@ export function chunkPrelabelImages(images: ImageFile[], chunkSize: number): Ima
   return chunks;
 }
 
-export async function executePrelabelBatch({
+export async function executePrelabelBatch<TResult>({
   images,
   chunkSize,
   infer,
-  toAnnotations,
+  toEntry,
   commit,
   shouldCommit = () => true,
   isContextCurrent = () => true,
   isCancelled,
   onProgress,
-}: ExecutePrelabelBatchOptions): Promise<{
+}: ExecutePrelabelBatchOptions<TResult>): Promise<{
   processed: number;
   annotationCount: number;
   cancelled: boolean;
@@ -60,10 +59,7 @@ export async function executePrelabelBatch({
     if (!isContextCurrent()) {
       throw new Error(text.executionContextChanged);
     }
-    const entries = results.map((result) => {
-      const annotations = toAnnotations(result);
-      return { imagePath: result.imagePath, annotations };
-    });
+    const entries = results.map(toEntry);
     const committableEntries = entries.filter(shouldCommit);
     skippedConflictCount += entries.length - committableEntries.length;
     annotationCount += committableEntries.reduce(
@@ -71,7 +67,9 @@ export async function executePrelabelBatch({
       0,
     );
     commit(committableEntries);
-    processed += chunk.length;
+    // Cancellation-aware plugin batches may return only the images completed
+    // before the control message was observed.
+    processed += entries.length;
     onProgress(processed);
     if (isCancelled()) {
       return { processed, annotationCount, cancelled: true, skippedConflictCount };

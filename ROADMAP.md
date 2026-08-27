@@ -159,14 +159,14 @@
   - [x] 内置 COCO/VOC/YOLO/custom 格式不变，插件格式只增不减
   - 验收：示例导出插件（LabelMe JSON，Python 实现）走通「选图目录 → 选格式 → 导出」完整流程且产物可被外部工具解析；插件返回 `../evil.txt` 等越权路径被宿主拒绝且不写盘；导出中取消无残留进程
 
-- [ ] **实现外部预打标程序插件支持（代码型，扩展类型 prelabel）**
-  - [ ] 目标：第三方预打标程序以插件形式接入现有预打标链路，与内置 ONNX 管线并存
-  - [ ] manifest：`prelabel` 必须声明非空 `annotationTypes`；`batch`/`progress`/`cancel` 可选声明
-  - [ ] 协议方法 `prelabel.run`：params `{ imagePaths: string[]（%PROJECT% 内相对路径）, classMappings: [{ modelClass, labelId, labelName }], params: Record<string, unknown> }`；响应 `{ shapes: AnnotationShape[] }`——`points` 必须为原图像素坐标（rect `[x,y,width,height]`、polygon 顶点序列、point `[x,y]`），`labelId` 必须存在于映射结果，`attributes.confidence?` 可选；宿主校验坐标合法后合并
-  - [ ] 批量与进度：声明 `batch` 时可一次传多图，否则逐图调用；声明 `progress` 时进度事件驱动现有批量进度条（复用无百分比进度语义）；声明 `cancel` 时批量可中断，中断后已完成图片的标注保留（与内置管线语义一致）
-  - [ ] 复用现有预打标链路：预打标执行层抽象「预打标来源」接口（内置 ONNX 管线与插件实现同一接口）；结果合并、每图一个撤销事务、`attributes.confidence` 记录、跳过已有标注/强制覆盖选项全部复用现有实现
-  - [ ] 入口：预打标面板「模型来源」选择（内置模型 / 插件名）；插件来源的类别映射 UI 复用现有映射面板
-  - [ ] 图片访问：插件经权限模型读图（`fs.read:<%PROJECT%>` 授权），宿主不传图片字节
+- [x] **实现外部预打标程序插件支持（代码型，扩展类型 prelabel）**
+  - [x] 目标：第三方预打标程序以插件形式接入现有预打标链路，与内置 ONNX 管线并存
+  - [x] manifest：`prelabel` 必须声明非空 `annotationTypes`；`batch`/`progress`/`cancel` 可选声明
+  - [x] 协议方法 `prelabel.run`：params `{ imagePaths: string[]（%PROJECT% 内相对路径）, classMappings: [{ modelClass, labelId, labelName }], params: Record<string, unknown> }`；响应 `{ shapes: AnnotationShape[] }`——`points` 必须为原图像素坐标（rect `[x,y,width,height]`、polygon 顶点序列、point `[x,y]`），`labelId` 必须存在于映射结果，`attributes.confidence?` 可选；宿主校验坐标合法后合并
+  - [x] 批量与进度：声明 `batch` 时可一次传多图，否则逐图调用；声明 `progress` 时进度事件驱动现有批量进度条（复用无百分比进度语义）；声明 `cancel` 时批量可中断，中断后已完成图片的标注保留（与内置管线语义一致）
+  - [x] 复用现有预打标链路：预打标执行层抽象「预打标来源」接口（内置 ONNX 管线与插件实现同一接口）；结果合并、每图一个撤销事务、`attributes.confidence` 记录、跳过已有标注/强制覆盖选项全部复用现有实现
+  - [x] 入口：预打标面板「模型来源」选择（内置模型 / 插件名）；插件来源的类别映射 UI 复用现有映射面板
+  - [x] 图片访问：插件经权限模型读图（`fs.read:<%PROJECT%>` 授权），宿主不传图片字节
   - 验收：示例预打标插件（Python，实现 hello/run/进度/取消）跑通单图与批量；批量中取消后已完成图片标注保留且进程无残留；非法坐标/未知 labelId 返回 `INVALID_ARGUMENT` 且不产生脏数据；与内置 ONNX 管线切换无状态串扰
 
 - [ ] **插件系统整体验收与文档**

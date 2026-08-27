@@ -12,8 +12,9 @@ export function PrelabelExecutionDialog({
   onClose: () => void;
 }) {
   const [forceOverwrite, setForceOverwrite] = useState(false);
-  const { currentModel, progress } = execution;
-  const progressPercent = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0;
+  const { currentSource, progress } = execution;
+  const progressPercent =
+    progress.percent ?? (progress.total > 0 ? (progress.processed / progress.total) * 100 : 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 py-6">
@@ -35,8 +36,28 @@ export function PrelabelExecutionDialog({
         </header>
 
         <div className="space-y-3 p-5">
-          <p className={`text-xs ${currentModel ? "text-slate-400" : "text-amber-300"}`}>
-            {currentModel ? text.executionModel(currentModel.name) : text.executionNoModel}
+          <label className="block text-xs text-slate-300">
+            <span className="mb-1 block">{text.sourceLabel}</span>
+            <select
+              className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              disabled={progress.isRunning}
+              value={currentSource?.selectionId ?? ""}
+              onChange={(event) => execution.selectSource(event.target.value)}
+            >
+              {execution.sources.map((source) => (
+                <option disabled={!source.enabled} key={source.selectionId} value={source.selectionId}>
+                  {source.kind === "builtin"
+                    ? text.sourceBuiltinOption(source.name)
+                    : text.sourcePluginOption(source.name)}
+                  {!source.enabled && source.disabledReason ? ` — ${source.disabledReason}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className={`text-xs ${currentSource?.enabled ? "text-slate-400" : "text-amber-300"}`}>
+            {currentSource
+              ? currentSource.disabledReason ?? text.executionSource(currentSource.name)
+              : text.executionNoModel}
           </p>
           {execution.unmatchedClassCount > 0 && (
             <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200">
@@ -45,7 +66,7 @@ export function PrelabelExecutionDialog({
           )}
           <button
             className="w-full rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!currentModel || !hasSelectedImage || progress.isRunning}
+            disabled={!currentSource?.enabled || !hasSelectedImage || progress.isRunning}
             type="button"
             onClick={() => void execution.runSingle()}
           >
@@ -61,7 +82,9 @@ export function PrelabelExecutionDialog({
             {text.forceOverwrite}
           </label>
           <p className="text-xs leading-5 text-slate-500">{text.batchDefaultHint}</p>
-          {progress.isRunning && progress.operation === "batch" ? (
+          {progress.isRunning &&
+          progress.operation === "batch" &&
+          currentSource?.supportsCancel ? (
             <button
               className="w-full rounded border border-amber-500/60 px-3 py-2 text-sm font-medium text-amber-200 disabled:opacity-50"
               disabled={progress.cancelRequested}
@@ -73,7 +96,7 @@ export function PrelabelExecutionDialog({
           ) : (
             <button
               className="w-full rounded border border-sky-500/60 px-3 py-2 text-sm font-medium text-sky-200 hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!currentModel || progress.isRunning}
+              disabled={!currentSource?.enabled || progress.isRunning}
               type="button"
               onClick={() => void execution.runBatch(forceOverwrite)}
             >

@@ -31,6 +31,11 @@ import type {
   PluginRegistryEntry,
   PluginRegistrySnapshot,
   PluginRuntimeSettings,
+  PluginPrelabelCancellationResult,
+  PluginPrelabelClassMapping,
+  PluginPrelabelEvent,
+  PluginPrelabelResult,
+  PluginPrelabelSourceSnapshot,
 } from "../types/plugin";
 
 export interface ImageFile {
@@ -306,6 +311,35 @@ export function cancelPluginExport(
   exportId: string,
 ): Promise<PluginExportCancellationResult> {
   return invoke<PluginExportCancellationResult>("cancel_plugin_export", { exportId });
+}
+
+export function loadPluginPrelabelSources(
+  projectFolder: string | null,
+): Promise<PluginPrelabelSourceSnapshot> {
+  return invoke<PluginPrelabelSourceSnapshot>("load_plugin_prelabel_sources", { projectFolder });
+}
+
+export function runPluginPrelabel(
+  pluginId: string,
+  projectFolder: string,
+  imagePaths: string[],
+  classMappings: PluginPrelabelClassMapping[],
+  params: Record<string, unknown>,
+  operationId: string,
+  onEvent: (event: PluginPrelabelEvent) => void,
+): Promise<PluginPrelabelResult> {
+  const eventChannel = new Channel<PluginPrelabelEvent>();
+  eventChannel.onmessage = onEvent;
+  return invoke<PluginPrelabelResult>("run_plugin_prelabel", {
+    request: { pluginId, projectFolder, imagePaths, classMappings, params, operationId },
+    onEvent: eventChannel,
+  });
+}
+
+export function cancelPluginPrelabel(
+  operationId: string,
+): Promise<PluginPrelabelCancellationResult> {
+  return invoke<PluginPrelabelCancellationResult>("cancel_plugin_prelabel", { operationId });
 }
 
 export function setPluginEnabled(

@@ -291,6 +291,19 @@ pub const PLUGIN_EXPORTER_FORMAT_INVALID: &str = "导出格式声明必须是对
 pub const PLUGIN_EXPORTER_FORMAT_ID_INVALID: &str =
     "导出格式 ID 必须唯一且只含小写字母、数字、点、下划线或连字符";
 pub const PLUGIN_EXPORTER_EXTENSIONS_INVALID: &str = "导出扩展名必须唯一、非空且不带点号";
+pub const PLUGIN_PRELABEL_OPTIONS_FORBIDDEN: &str = "只有 prelabel 扩展可以声明 prelabelOptions";
+pub const PLUGIN_PRELABEL_CLASS_NAMES_INVALID: &str =
+    "prelabelOptions.classNames 必须是唯一的非空字符串数组";
+pub const PLUGIN_PRELABEL_SOURCE_NOT_FOUND: &str = "预打标插件不存在或未声明 prelabel 能力";
+pub const PLUGIN_PRELABEL_ARGUMENT_INVALID: &str = "预打标插件调用参数无效";
+pub const PLUGIN_PRELABEL_READ_PERMISSION_REQUIRED: &str = "预打标插件缺少项目目录 fs.read 授权";
+pub const PLUGIN_PRELABEL_RESULT_INVALID: &str = "预打标插件返回结果不符合契约";
+pub const PLUGIN_PRELABEL_SHAPE_INVALID: &str = "预打标插件返回了非法坐标、类型或标签";
+pub const PLUGIN_PRELABEL_ALREADY_RUNNING: &str = "同一预打标任务已在运行";
+pub const PLUGIN_PRELABEL_SUCCESS_PERSIST_CONTEXT: &str = "插件预打标成功状态";
+pub fn plugin_prelabel_task_failed(error: impl std::fmt::Display) -> String {
+    format!("插件预打标任务异常结束：{error}")
+}
 pub const PLUGIN_EXPORT_FORMAT_NOT_FOUND: &str = "插件未声明该导出格式";
 pub const PLUGIN_EXPORT_ARGUMENT_INVALID: &str = "插件导出参数或输出目录无效";
 pub const PLUGIN_EXPORT_RESULT_INVALID: &str = "插件导出结果结构无效";

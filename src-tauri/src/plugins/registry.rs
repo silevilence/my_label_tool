@@ -6,7 +6,7 @@ use super::manifest::{
     is_safe_relative_path, is_valid_export_extension, is_valid_export_format_id,
     is_valid_permission_target, is_valid_plugin_id, is_valid_semver, parse_plugin_manifest,
     PluginCapabilities, PluginEntry, PluginExporterOptions, PluginExtensionKind, PluginManifest,
-    DEFAULT_PLUGIN_TIMEOUT_MS, MAX_PLUGIN_TIMEOUT_MS,
+    PluginPrelabelOptions, DEFAULT_PLUGIN_TIMEOUT_MS, MAX_PLUGIN_TIMEOUT_MS,
 };
 use super::permissions::{
     resolve_permission_grants_for_install, PermissionPolicy, PermissionRoots,
@@ -62,6 +62,15 @@ pub enum PluginState {
     PendingMigration,
 }
 
+pub fn plugin_state_disabled_reason(state: PluginState) -> Option<String> {
+    match state {
+        PluginState::Enabled => None,
+        PluginState::Disabled => Some(text::PLUGIN_RUNTIME_DISABLED.to_string()),
+        PluginState::AutoDisabled => Some(text::PLUGIN_RUNTIME_AUTO_DISABLED.to_string()),
+        PluginState::PendingMigration => Some(text::PLUGIN_CONFIG_MIGRATION_REQUIRED.to_string()),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginRegistryEntry {
@@ -72,6 +81,8 @@ pub struct PluginRegistryEntry {
     pub entry: Option<PluginEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exporter_options: Option<PluginExporterOptions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prelabel_options: Option<PluginPrelabelOptions>,
     pub capabilities: PluginCapabilities,
     pub grants: Vec<PluginPermissionGrant>,
     pub state: PluginState,
@@ -642,6 +653,7 @@ fn authorize_plugin_install_inner(
         extension_kind: manifest.extension_kind.clone(),
         entry: manifest.entry.clone(),
         exporter_options: manifest.exporter_options.clone(),
+        prelabel_options: manifest.prelabel_options.clone(),
         capabilities: manifest.capabilities.clone(),
         grants: persisted_grants,
         state,
@@ -773,11 +785,27 @@ fn registry_entries_are_valid(plugins: &[PluginRegistryEntry]) -> bool {
                     )
             )
             && registry_exporter_options_are_valid(plugin)
+            && registry_prelabel_options_are_valid(plugin)
+            && (plugin.extension_kind != PluginExtensionKind::Prelabel
+                || !plugin.capabilities.annotation_types.is_empty())
             && plugin.capabilities.exporter.api_version.min >= 1
             && plugin.capabilities.prelabel.api_version.min >= 1
             && (1..=MAX_PLUGIN_TIMEOUT_MS).contains(&plugin.timeout_ms)
             && registry_grants_are_valid(&plugin.grants)
     })
+}
+
+fn registry_prelabel_options_are_valid(plugin: &PluginRegistryEntry) -> bool {
+    let Some(options) = &plugin.prelabel_options else {
+        return true;
+    };
+    plugin.extension_kind == PluginExtensionKind::Prelabel
+        && !options.class_names.is_empty()
+        && options
+            .class_names
+            .iter()
+            .all(|name| !name.trim().is_empty())
+        && options.class_names.iter().collect::<HashSet<_>>().len() == options.class_names.len()
 }
 
 fn registry_exporter_options_are_valid(plugin: &PluginRegistryEntry) -> bool {

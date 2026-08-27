@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://my-label-tool.local/schemas/plugin-prelabel-v1.json",
+  "title": "my_label_tool prelabel.run v1",
+  "$defs": {
+    "classMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modelClass", "labelId", "labelName"],
+      "properties": {
+        "modelClass": { "type": "string", "minLength": 1 },
+        "labelId": { "type": "string", "minLength": 1 },
+        "labelName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["imagePaths", "classMappings", "params"],
+      "properties": {
+        "imagePaths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?![\\/])(?!.*(?:^|[\\/])\\.{1,2}(?:[\\/]|$))(?!.*:).+$"
+          }
+        },
+        "classMappings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/classMapping" }
+        },
+        "params": { "type": "object" }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "labelId", "points"],
+      "properties": {
+        "imagePath": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["rect", "polygon", "point"] },
+        "labelId": { "type": "string", "minLength": 1 },
+        "points": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          },
+          "properties": {
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "frameIndex": { "const": 0 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "rect" } } },
+          "then": {
+            "properties": {
+              "points": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "prefixItems": [
+                  { "type": "number", "minimum": 0 },
+                  { "type": "number", "minimum": 0 },
+                  { "type": "number", "exclusiveMinimum": 0 },
+                  { "type": "number", "exclusiveMinimum": 0 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "point" } } },
+          "then": {
+            "properties": { "points": { "type": "array", "minItems": 2, "maxItems": 2 } }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "polygon" } } },
+          "then": {
+            "properties": {
+              "points": {
+                "type": "array",
+                "minItems": 6,
+                "maxItems": 200,
+                "oneOf": [
+                { "type": "array", "minItems": 6, "maxItems": 6 },
+                { "type": "array", "minItems": 8, "maxItems": 8 },
+                { "type": "array", "minItems": 10, "maxItems": 10 },
+                { "type": "array", "minItems": 12, "maxItems": 12 },
+                { "type": "array", "minItems": 14, "maxItems": 14 },
+                { "type": "array", "minItems": 16, "maxItems": 16 },
+                { "type": "array", "minItems": 18, "maxItems": 18 },
+                { "type": "array", "minItems": 20, "maxItems": 20 },
+                { "type": "array", "minItems": 22, "maxItems": 22 },
+                { "type": "array", "minItems": 24, "maxItems": 24 },
+                { "type": "array", "minItems": 26, "maxItems": 26 },
+                { "type": "array", "minItems": 28, "maxItems": 28 },
+                { "type": "array", "minItems": 30, "maxItems": 30 },
+                { "type": "array", "minItems": 32, "maxItems": 32 },
+                { "type": "array", "minItems": 34, "maxItems": 34 },
+                { "type": "array", "minItems": 36, "maxItems": 36 },
+                { "type": "array", "minItems": 38, "maxItems": 38 },
+                { "type": "array", "minItems": 40, "maxItems": 40 },
+                { "type": "array", "minItems": 42, "maxItems": 42 },
+                { "type": "array", "minItems": 44, "maxItems": 44 },
+                { "type": "array", "minItems": 46, "maxItems": 46 },
+                { "type": "array", "minItems": 48, "maxItems": 48 },
+                { "type": "array", "minItems": 50, "maxItems": 50 },
+                { "type": "array", "minItems": 52, "maxItems": 52 },
+                { "type": "array", "minItems": 54, "maxItems": 54 },
+                { "type": "array", "minItems": 56, "maxItems": 56 },
+                { "type": "array", "minItems": 58, "maxItems": 58 },
+                { "type": "array", "minItems": 60, "maxItems": 60 },
+                { "type": "array", "minItems": 62, "maxItems": 62 },
+                { "type": "array", "minItems": 64, "maxItems": 64 },
+                { "type": "array", "minItems": 66, "maxItems": 66 },
+                { "type": "array", "minItems": 68, "maxItems": 68 },
+                { "type": "array", "minItems": 70, "maxItems": 70 },
+                { "type": "array", "minItems": 72, "maxItems": 72 },
+                { "type": "array", "minItems": 74, "maxItems": 74 },
+                { "type": "array", "minItems": 76, "maxItems": 76 },
+                { "type": "array", "minItems": 78, "maxItems": 78 },
+                { "type": "array", "minItems": 80, "maxItems": 80 },
+                { "type": "array", "minItems": 82, "maxItems": 82 },
+                { "type": "array", "minItems": 84, "maxItems": 84 },
+                { "type": "array", "minItems": 86, "maxItems": 86 },
+                { "type": "array", "minItems": 88, "maxItems": 88 },
+                { "type": "array", "minItems": 90, "maxItems": 90 },
+                { "type": "array", "minItems": 92, "maxItems": 92 },
+                { "type": "array", "minItems": 94, "maxItems": 94 },
+                { "type": "array", "minItems": 96, "maxItems": 96 },
+                { "type": "array", "minItems": 98, "maxItems": 98 },
+                { "type": "array", "minItems": 100, "maxItems": 100 },
+                { "type": "array", "minItems": 102, "maxItems": 102 },
+                { "type": "array", "minItems": 104, "maxItems": 104 },
+                { "type": "array", "minItems": 106, "maxItems": 106 },
+                { "type": "array", "minItems": 108, "maxItems": 108 },
+                { "type": "array", "minItems": 110, "maxItems": 110 },
+                { "type": "array", "minItems": 112, "maxItems": 112 },
+                { "type": "array", "minItems": 114, "maxItems": 114 },
+                { "type": "array", "minItems": 116, "maxItems": 116 },
+                { "type": "array", "minItems": 118, "maxItems": 118 },
+                { "type": "array", "minItems": 120, "maxItems": 120 },
+                { "type": "array", "minItems": 122, "maxItems": 122 },
+                { "type": "array", "minItems": 124, "maxItems": 124 },
+                { "type": "array", "minItems": 126, "maxItems": 126 },
+                { "type": "array", "minItems": 128, "maxItems": 128 },
+                { "type": "array", "minItems": 130, "maxItems": 130 },
+                { "type": "array", "minItems": 132, "maxItems": 132 },
+                { "type": "array", "minItems": 134, "maxItems": 134 },
+                { "type": "array", "minItems": 136, "maxItems": 136 },
+                { "type": "array", "minItems": 138, "maxItems": 138 },
+                { "type": "array", "minItems": 140, "maxItems": 140 },
+                { "type": "array", "minItems": 142, "maxItems": 142 },
+                { "type": "array", "minItems": 144, "maxItems": 144 },
+                { "type": "array", "minItems": 146, "maxItems": 146 },
+                { "type": "array", "minItems": 148, "maxItems": 148 },
+                { "type": "array", "minItems": 150, "maxItems": 150 },
+                { "type": "array", "minItems": 152, "maxItems": 152 },
+                { "type": "array", "minItems": 154, "maxItems": 154 },
+                { "type": "array", "minItems": 156, "maxItems": 156 },
+                { "type": "array", "minItems": 158, "maxItems": 158 },
+                { "type": "array", "minItems": 160, "maxItems": 160 },
+                { "type": "array", "minItems": 162, "maxItems": 162 },
+                { "type": "array", "minItems": 164, "maxItems": 164 },
+                { "type": "array", "minItems": 166, "maxItems": 166 },
+                { "type": "array", "minItems": 168, "maxItems": 168 },
+                { "type": "array", "minItems": 170, "maxItems": 170 },
+                { "type": "array", "minItems": 172, "maxItems": 172 },
+                { "type": "array", "minItems": 174, "maxItems": 174 },
+                { "type": "array", "minItems": 176, "maxItems": 176 },
+                { "type": "array", "minItems": 178, "maxItems": 178 },
+                { "type": "array", "minItems": 180, "maxItems": 180 },
+                { "type": "array", "minItems": 182, "maxItems": 182 },
+                { "type": "array", "minItems": 184, "maxItems": 184 },
+                { "type": "array", "minItems": 186, "maxItems": 186 },
+                { "type": "array", "minItems": 188, "maxItems": 188 },
+                { "type": "array", "minItems": 190, "maxItems": 190 },
+                { "type": "array", "minItems": 192, "maxItems": 192 },
+                { "type": "array", "minItems": 194, "maxItems": 194 },
+                { "type": "array", "minItems": 196, "maxItems": 196 },
+                { "type": "array", "minItems": 198, "maxItems": 198 },
+                { "type": "array", "minItems": 200, "maxItems": 200 }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shapes"],
+      "properties": {
+        "cancelled": { "type": "boolean", "default": false },
+        "completedImagePaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?![\\/])(?!.*(?:^|[\\/])\\.{1,2}(?:[\\/]|$))(?!.*:).+$"
+          }
+        },
+        "shapes": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": { "$ref": "#/$defs/shape" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["cancelled"], "properties": { "cancelled": { "const": true } } },
+          "then": {
+            "required": ["completedImagePaths"],
+            "properties": { "completedImagePaths": true }
+          },
+          "else": {
+            "properties": { "completedImagePaths": { "type": "array", "maxItems": 0 } }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/params" },
+    { "$ref": "#/$defs/result" }
+  ]
+}
