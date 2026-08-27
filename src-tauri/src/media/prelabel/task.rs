@@ -97,9 +97,10 @@ impl CancelHandle for AsyncCancellation {
 /// A thread-safe map of active task handles keyed by an application-generated task id.
 ///
 /// Semantics mirror [`crate::media::pt_conversion`]'s conversion registry: registering a
-/// duplicate id fails, cancelling an unknown id fails, and cancelling twice reports
-/// [`CancellationStatus::AlreadyCompleted`]. Workers remove their entry on completion so
-/// the map does not grow without bound. `label` is embedded in error messages (e.g.
+/// duplicate id fails, and cancelling a task that is no longer registered (already finished and
+/// removed) reports [`CancellationStatus::AlreadyCompleted`] rather than an error, so a cancel race
+/// against a just-completed task stays benign. Workers remove their entry on completion so the map
+/// does not grow without bound. `label` is embedded in error messages (e.g.
 /// "预打标任务…" / "ONNX Runtime 下载任务…").
 pub struct TaskRegistry<T> {
     inner: Mutex<HashMap<String, Arc<T>>>,
@@ -115,7 +116,9 @@ impl<T: CancelHandle> TaskRegistry<T> {
     }
 
     fn guard(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, Arc<T>>>, String> {
-        self.inner.lock().map_err(|_| text::TASK_LOCK_FAILED.to_string())
+        self.inner
+            .lock()
+            .map_err(|_| text::TASK_LOCK_FAILED.to_string())
     }
 
     /// Registers a new task handle. Fails if `task_id` is empty or already running.
@@ -131,16 +134,23 @@ impl<T: CancelHandle> TaskRegistry<T> {
         Ok(())
     }
 
-    pub fn get(&self, task_id: &str) -> Result<Arc<T>, String> {
-        self.guard()?
-            .get(task_id)
-            .cloned()
-            .ok_or_else(|| text::task_id_missing(self.label, task_id))
-    }
-
     /// Flags the handle as cancelled and returns whether it was already cancelled.
+    ///
+    /// A missing id means the task already finished (completed, cancelled or failed) and its entry
+    /// was removed, so the cancel is reported as [`CancellationStatus::AlreadyCompleted`] rather than
+    /// an error. This keeps cancelling a just-finished task benign: it closes the race where a worker
+    /// removes its entry right as the user hits cancel, which would otherwise surface "task not
+    /// found" as an apparent failure on the frontend.
     pub fn cancel(&self, task_id: &str) -> Result<CancellationResult, String> {
-        let handle = self.get(task_id)?;
+        let tasks = self.guard()?;
+        let handle = match tasks.get(task_id) {
+            Some(handle) => Arc::clone(handle),
+            None => {
+                return Ok(CancellationResult {
+                    status: CancellationStatus::AlreadyCompleted,
+                })
+            }
+        };
         let already = handle.is_cancelled();
         handle.cancel();
         Ok(CancellationResult {
@@ -168,13 +178,13 @@ impl<T: CancelHandle> TaskRegistry<T> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Duration};
 
     use super::{
-        AsyncCancellation, CancellationResult, CancellationToken, TaskRegistry, CancellationStatus,
+        AsyncCancellation, CancelHandle, CancellationResult, CancellationStatus, CancellationToken,
+        TaskRegistry,
     };
 
     fn registry() -> TaskRegistry<CancellationToken> {
@@ -184,7 +194,8 @@ mod tests {
     #[test]
     fn register_rejects_duplicate_and_cancel_reports_status() {
         let reg = registry();
-        reg.register("a", Arc::new(CancellationToken::new())).unwrap();
+        reg.register("a", Arc::new(CancellationToken::new()))
+            .unwrap();
         let error = reg
             .register("a", Arc::new(CancellationToken::new()))
             .unwrap_err();
@@ -205,15 +216,21 @@ mod tests {
     }
 
     #[test]
-    fn cancel_unknown_id_fails_and_remove_drops_entry() {
+    fn cancel_unknown_or_removed_id_reports_already_completed() {
         let reg = registry();
-        assert!(reg
-            .cancel("missing")
-            .unwrap_err()
-            .contains("不存在或已结束"));
-        reg.register("a", Arc::new(CancellationToken::new())).unwrap();
+        // A missing id means the task already finished and its entry was removed; cancelling it
+        // must be benign (reports AlreadyCompleted) rather than an error the frontend reads as a failure.
+        assert_eq!(
+            reg.cancel("missing").unwrap().status,
+            CancellationStatus::AlreadyCompleted
+        );
+        reg.register("a", Arc::new(CancellationToken::new()))
+            .unwrap();
         reg.remove("a");
-        assert!(reg.cancel("a").is_err());
+        assert_eq!(
+            reg.cancel("a").unwrap().status,
+            CancellationStatus::AlreadyCompleted
+        );
     }
 
     #[test]

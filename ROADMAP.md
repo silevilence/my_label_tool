@@ -63,6 +63,14 @@
 
 ## 🚧 开发中 (In Progress)
 
+- [ ] **预打标运行时下载/推理可取消，支持可选 DirectML GPU 加速**
+  - [ ] 目标：ONNX Runtime 下载与预打标批量推理支持中途取消；下载在断网/弱网下定时超时而非无限挂起；模型推理设备可配「自动 / 仅 CPU / 仅 GPU」，自动优先 DirectML 失败回退 CPU；下载与推理的模型/网络编排逻辑沉入 `src-tauri/src/media/prelabel/`，command 只做参数校验与结果转发
+  - [ ] 下载取消/超时：`send().await` 与响应头读取纳入取消/超时 `select!`，连接建立后响应头迟迟不返回不再无限等待
+  - [ ] DirectML 回退：auto 模式在 DirectML 注册成功但创建 Session 失败时重试 CPU（保证回退 CPU）
+  - [ ] 取消完成竞态：任务完成并已从注册表移除后点击取消返回「已完成」而非「任务不存在」，前端不再误显推理失败
+  - [ ] 关键测试：下载响应头超时与取消、流式下载中断、DirectML 失败回退 CPU、取消与正常完成竞态、DirectML 推理路径
+  - 验收：`cargo clippy --manifest-path src-tauri/Cargo.toml` 通过、Rust 单测全绿；前端 `npm run typecheck && npm run lint && npm test` 通过；提交同步 `src-tauri/Cargo.lock`，不修改 `changelog.md`，并更新 `AGENTS.md` 命令清单
+
 - [x] **插件系统契约：Manifest Schema、稳定 ID 与版本分层**
   - [x] 目标：定义插件系统全部对外契约（manifest 结构、校验语义、版本规则），作为后续所有插件任务的实现依据；产出 `src/types/plugin.ts`（前端契约）+ Rust 端 `src-tauri/src/plugins/manifest.rs`（字段一一对应）+ `docs/plugin-manifest.schema.json`（JSON Schema）+ 校验单测
   - [x] `PluginManifest` 字段（除注明外均必填）：

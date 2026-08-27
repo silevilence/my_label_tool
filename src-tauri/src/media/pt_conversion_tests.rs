@@ -536,7 +536,7 @@ fn output_fixture_command() -> (&'static str, Vec<String>) {
         "sh",
         vec![
             "-c".to_string(),
-            "printf 'Downloading 10%\\rDownloading 20%\\r\\nready\\n'".to_string(),
+            "printf 'Downloading 10%%\\rDownloading 20%%\\r\\nready\\n'".to_string(),
         ],
     )
 }

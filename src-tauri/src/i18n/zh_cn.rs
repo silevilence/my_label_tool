@@ -57,7 +57,8 @@ pub const PRELABEL_ENCODED_IMAGE_TOO_LARGE: &str =
     "源图片编码文件超过 128 MiB，已拒绝读取以避免内存耗尽";
 pub const PRELABEL_SESSION_CACHE_LOCK_FAILED: &str = "预打标模型会话缓存不可用，请重启应用后重试";
 pub fn prelabel_gpu_unavailable() -> String {
-    "无法启用 GPU（DirectML）推理，请检查显卡驱动与图形环境，或改用「自动」或「CPU」设备".to_string()
+    "无法启用 GPU（DirectML）推理，请检查显卡驱动与图形环境，或改用「自动」或「CPU」设备"
+        .to_string()
 }
 
 pub fn prelabel_image_decode_failed(error: impl std::fmt::Display) -> String {
@@ -256,9 +257,6 @@ pub const PRELABEL_TASK_LABEL: &str = "预打标";
 pub const RUNTIME_DOWNLOAD_TASK_LABEL: &str = "ONNX Runtime 下载";
 pub fn task_id_already_running(label: &str, task_id: &str) -> String {
     format!("{label}任务已存在：{task_id}")
-}
-pub fn task_id_missing(label: &str, task_id: &str) -> String {
-    format!("{label}任务不存在或已结束：{task_id}")
 }
 
 pub const PLUGIN_MANIFEST_MUST_BE_OBJECT: &str = "插件清单必须是 JSON 对象";

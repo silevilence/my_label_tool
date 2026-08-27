@@ -124,8 +124,10 @@ my_label_tool/
 | `get_onnx_runtime_status` | 重新检测并按需加载应用数据目录中的 ONNX Runtime |
 | `install_onnx_runtime_from_file` | 校验并成对安装手动选择的 Runtime DLL |
 | `download_onnx_runtime` | 经确认后下载、校验并安装项目 Release 中的 Runtime DLL |
+| `cancel_onnx_runtime_download` | 按 download_id 取消进行中的 Runtime 下载，成功后返回 Runtime 状态 |
 | `validate_prelabel_model` | 通过 ONNX Runtime 校验模型张量契约与元数据一致性 |
 | `run_prelabel_inference` | 复用模型会话批量执行预处理、推理与后处理 |
+| `cancel_prelabel_inference` | 按 task_id 取消进行中的预打标推理，在下一张图片边界停止并保留已完成结果 |
 | `detect_pt_conversion_environment` | 探测本机可用的 `.pt` 转换环境（yolo CLI / Python ultralytics / uvx） |
 | `preview_pt_conversion_command` | 预览转换计划（执行命令、超时等），供用户在弹窗中确认 |
 | `convert_pt_to_onnx` | 按转换计划执行 `.pt` 转 ONNX，实时回调输出事件 |

@@ -1873,7 +1873,6 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
     fn runtime_test_guard() -> MutexGuard<'static, ()> {
         static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         TEST_LOCK
@@ -1882,6 +1881,7 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    #[cfg(windows)]
     fn powershell_plugin(call_body: &str) -> String {
         powershell_plugin_with_exporter(call_body, true)
     }

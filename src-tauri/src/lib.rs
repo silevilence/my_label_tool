@@ -63,8 +63,8 @@ pub fn run() {
                 tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
             ) {
                 commands::cancel_all_pt_conversions_and_wait();
-                commands::prelabel_inference::cancel_all_prelabel_tasks();
-                commands::prelabel_runtime::cancel_all_runtime_downloads();
+                commands::cancel_all_prelabel_tasks();
+                commands::cancel_all_runtime_downloads();
                 plugins::runtime::shutdown_all_plugin_processes();
             }
         });
