@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.mylabeltool.prelabeldemo",
+  "name": "示例外部预打标",
+  "version": "1.0.0",
+  "apiVersion": { "min": 1 },
+  "extensionKind": "prelabel",
+  "runtime": "process",
+  "entry": {
+    "command": "python",
+    "args": ["plugin/main.py"]
+  },
+  "prelabelOptions": {
+    "classNames": ["example-object"]
+  },
+  "capabilities": {
+    "annotationTypes": ["rect"],
+    "batch": true,
+    "progress": true,
+    "cancel": true,
+    "configMigration": false,
+    "prelabel": { "apiVersion": { "min": 1 } }
+  },
+  "permissions": ["fs.read:%PROJECT%"],
+  "configVersion": 0,
+  "timeoutMs": 30000
+}

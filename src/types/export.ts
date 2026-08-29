@@ -1,9 +1,11 @@
 import type { AnnotationShape, LabelConfig } from "./annotation";
 
-export type ExportFormatId = "json" | "coco" | "voc" | "yolo" | "custom";
+export type BuiltInExportFormatId = "json" | "coco" | "voc" | "yolo" | "custom";
+export type PluginExportFormatId = `plugin:${string}:${string}`;
+export type ExportFormatId = BuiltInExportFormatId | PluginExportFormatId;
 
 export interface ExportTemplate {
-  id: ExportFormatId;
+  id: BuiltInExportFormatId;
   name: string;
   description: string;
   output: "file" | "directory";

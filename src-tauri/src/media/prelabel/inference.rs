@@ -228,7 +228,7 @@ mod tests {
     };
     use crate::{
         media::prelabel::runtime::{load_runtime, ModelTensorContract},
-        models::prelabel::{PrelabelModelConfig, YoloModelFormat},
+        models::prelabel::{PrelabelDevice, PrelabelModelConfig, YoloModelFormat},
     };
 
     #[test]
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires a DirectML ONNX Runtime build and a GPU; covered in CI"]
+    #[ignore = "requires a DirectML ONNX Runtime build and official YOLOv8/image fixtures"]
     fn auto_device_prefers_gpu_but_falls_back_to_cpu() {
         let runtime = fixture("MY_LABEL_TOOL_ORT_DLL");
         let image = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
@@ -299,10 +299,28 @@ mod tests {
             YoloModelFormat::YoloV8,
             0.25,
         );
-        model.device = crate::models::prelabel::PrelabelDevice::Auto;
+        model.device = PrelabelDevice::Auto;
         // On a DirectML runtime without a usable GPU the DML session build may fail after the
         // provider registers; Auto must fall back to a pure-CPU session and still produce results
         // rather than surfacing an error the user can't act on.
+        let mut session = PrelabelSession::from_config(&model).unwrap();
+        let detections = session.infer_file(&image).unwrap();
+        assert!(!detections.is_empty());
+    }
+
+    #[test]
+    #[ignore = "requires a DirectML ONNX Runtime build, a usable GPU, and official fixtures"]
+    fn gpu_device_runs_inference_with_directml_when_available() {
+        let runtime = fixture("MY_LABEL_TOOL_ORT_DLL");
+        let image = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
+        load_runtime(&runtime).unwrap();
+
+        let mut model = config(
+            fixture("MY_LABEL_TOOL_YOLOV8_ONNX"),
+            YoloModelFormat::YoloV8,
+            0.25,
+        );
+        model.device = PrelabelDevice::Gpu;
         let mut session = PrelabelSession::from_config(&model).unwrap();
         let detections = session.infer_file(&image).unwrap();
         assert!(!detections.is_empty());
@@ -389,7 +407,7 @@ mod tests {
             iou_threshold: 0.7,
             added_at: "2026-08-20T00:00:00.000Z".to_string(),
             // These fixture tests run inference on a CPU ONNX Runtime build, so pin to CPU.
-            device: crate::models::prelabel::PrelabelDevice::Cpu,
+            device: PrelabelDevice::Cpu,
         }
     }
 

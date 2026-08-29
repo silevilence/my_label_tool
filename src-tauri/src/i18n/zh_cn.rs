@@ -301,6 +301,42 @@ pub const PLUGIN_PROXY_IO_FAILED: &str = "插件文件代理读写失败";
 pub const PLUGIN_PROXY_BUDGET_EXCEEDED: &str = "单次插件调用的文件代理请求已超过数量或数据预算";
 pub const PLUGIN_PROXY_WORKER_UNAVAILABLE: &str = "插件文件代理工作线程暂时不可用";
 pub const PLUGIN_COMMAND_ARGUMENT_MUST_BE_STRING: &str = "命令参数必须是字符串";
+pub const PLUGIN_EXPORTER_OPTIONS_FORBIDDEN: &str = "只有 exporter 扩展可以声明 exporterOptions";
+pub const PLUGIN_EXPORTER_FORMATS_REQUIRED: &str = "exporterOptions.formats 必须是非空数组";
+pub const PLUGIN_EXPORTER_FORMAT_INVALID: &str = "导出格式声明必须是对象";
+pub const PLUGIN_EXPORTER_FORMAT_ID_INVALID: &str =
+    "导出格式 ID 必须唯一且只含小写字母、数字、点、下划线或连字符";
+pub const PLUGIN_EXPORTER_EXTENSIONS_INVALID: &str = "导出扩展名必须唯一、非空且不带点号";
+pub const PLUGIN_PRELABEL_OPTIONS_FORBIDDEN: &str = "只有 prelabel 扩展可以声明 prelabelOptions";
+pub const PLUGIN_PRELABEL_CLASS_NAMES_INVALID: &str =
+    "prelabelOptions.classNames 必须是唯一的非空字符串数组";
+pub const PLUGIN_PRELABEL_SOURCE_NOT_FOUND: &str = "预打标插件不存在或未声明 prelabel 能力";
+pub const PLUGIN_PRELABEL_ARGUMENT_INVALID: &str = "预打标插件调用参数无效";
+pub const PLUGIN_PRELABEL_READ_PERMISSION_REQUIRED: &str = "预打标插件缺少项目目录 fs.read 授权";
+pub const PLUGIN_PRELABEL_RESULT_INVALID: &str = "预打标插件返回结果不符合契约";
+pub const PLUGIN_PRELABEL_SHAPE_INVALID: &str = "预打标插件返回了非法坐标、类型或标签";
+pub const PLUGIN_PRELABEL_ALREADY_RUNNING: &str = "同一预打标任务已在运行";
+pub const PLUGIN_PRELABEL_SUCCESS_PERSIST_CONTEXT: &str = "插件预打标成功状态";
+pub fn plugin_prelabel_task_failed(error: impl std::fmt::Display) -> String {
+    format!("插件预打标任务异常结束：{error}")
+}
+pub const PLUGIN_EXPORT_FORMAT_NOT_FOUND: &str = "插件未声明该导出格式";
+pub const PLUGIN_EXPORT_ARGUMENT_INVALID: &str = "插件导出参数或输出目录无效";
+pub const PLUGIN_EXPORT_RESULT_INVALID: &str = "插件导出结果结构无效";
+pub const PLUGIN_EXPORT_PATH_INVALID: &str = "插件返回了不安全或重复的相对路径";
+pub const PLUGIN_EXPORT_EXTENSION_INVALID: &str = "插件返回文件的扩展名不在 manifest 声明中";
+pub const PLUGIN_EXPORT_TOO_LARGE: &str = "插件导出文件超过大小或总量上限";
+pub const PLUGIN_EXPORT_ALREADY_RUNNING: &str = "同一导出任务 ID 已在运行";
+pub const PLUGIN_EXPORT_SUCCESS_PERSIST_CONTEXT: &str = "导出结果校验成功";
+pub const PLUGIN_EXPORT_STAGING_FAILED: &str = "无法创建安全的导出暂存目录";
+
+pub fn plugin_export_write_failed(error: impl std::fmt::Display) -> String {
+    format!("写入插件导出文件失败：{error}")
+}
+
+pub fn plugin_export_task_failed(error: impl std::fmt::Display) -> String {
+    format!("插件导出任务异常结束：{error}")
+}
 
 pub fn plugin_required_field(field: &str) -> String {
     format!("缺少{field}")
@@ -338,6 +374,19 @@ pub fn plugin_api_version_unsupported(scope: &str, required: u32, supported: &[u
 pub const PLUGIN_UNVERIFIED_AUTHOR_WARNING: &str =
     "未验证作者：代码型插件可能运行任意代码，请仅安装可信来源的插件";
 pub const PLUGIN_ARCHIVE_MISSING_MANIFEST: &str = "插件包根目录缺少 manifest.json";
+pub const PLUGIN_LABEL_PRESET_MISSING: &str = "预置标签插件包根目录缺少 labels.json";
+pub const PLUGIN_LABEL_PRESET_EXTRA_ENTRY: &str =
+    "预置标签插件只能包含包根 manifest.json 与 labels.json";
+pub const PLUGIN_LABEL_PRESET_TOO_LARGE: &str = "labels.json 超过 1 MiB 安全上限";
+pub const PLUGIN_LABEL_PRESET_ID_INVALID: &str = "模板 ID 必须使用插件 ID 命名空间";
+pub const PLUGIN_LABEL_PRESET_NAME_REQUIRED: &str = "模板名称不能为空";
+pub const PLUGIN_LABEL_PRESET_LABEL_COUNT_INVALID: &str = "预置标签数量必须为 1 到 1000 个";
+pub const PLUGIN_LABEL_PRESET_LABEL_ID_INVALID: &str = "标签 ID 必须唯一且使用插件 ID 命名空间";
+pub const PLUGIN_LABEL_PRESET_LABEL_NAME_REQUIRED: &str = "标签名称不能为空";
+pub const PLUGIN_LABEL_PRESET_COLOR_INVALID: &str = "标签颜色必须为 #RRGGBB 格式";
+pub const PLUGIN_LABEL_PRESET_SHAPE_INVALID: &str =
+    "标签图形类型必须为 any、rect、polygon 或 point";
+pub const PLUGIN_LABEL_PRESET_SHORTCUT_INVALID: &str = "标签快捷键必须是唯一的小写字母或数字";
 pub const PLUGIN_ARCHIVE_UNSAFE_ENTRY: &str = "插件包包含不安全的路径或符号链接条目";
 pub const PLUGIN_ARCHIVE_TOO_LARGE: &str = "插件包解压体积超过安全上限";
 pub const PLUGIN_ARCHIVE_RATIO_TOO_HIGH: &str = "插件包压缩比异常，已拒绝解压";
@@ -352,6 +401,54 @@ pub fn plugin_archive_read_failed(error: impl std::fmt::Display) -> String {
 
 pub fn plugin_archive_extract_failed(error: impl std::fmt::Display) -> String {
     format!("无法解压插件包：{error}")
+}
+
+pub fn plugin_label_preset_read_failed(error: impl std::fmt::Display) -> String {
+    format!("无法读取 labels.json：{error}")
+}
+
+pub fn plugin_label_preset_json_failed(error: impl std::fmt::Display) -> String {
+    format!("labels.json 结构无效：{error}")
+}
+
+pub fn plugin_label_preset_load_warning(plugin_name: &str, error: &str) -> String {
+    format!("插件「{plugin_name}」的预置标签不可用：{error}")
+}
+
+pub fn plugin_validator_source_missing(path: &std::path::Path) -> String {
+    format!("插件校验来源不存在：{}", path.display())
+}
+
+pub const PLUGIN_VALIDATOR_USAGE: &str =
+    "用法：plugin-validator <插件目录或 zip>；退出码 0=通过，1=校验失败，2=调用错误";
+pub const PLUGIN_VALIDATOR_DUPLICATE_ENTRY: &str = "插件包包含重复路径条目";
+
+pub fn plugin_validator_read_failed(
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> String {
+    format!("读取插件校验来源 {} 失败：{error}", path.display())
+}
+
+pub fn plugin_validator_archive_failed(
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> String {
+    format!("读取插件压缩包 {} 失败：{error}", path.display())
+}
+
+pub fn plugin_validator_manifest_json_failed(
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> String {
+    format!(
+        "解析插件压缩包 {} 中的 manifest.json 失败：{error}",
+        path.display()
+    )
+}
+
+pub fn plugin_validator_unsafe_directory_entry(path: &std::path::Path) -> String {
+    format!("插件目录包含符号链接或不安全条目：{}", path.display())
 }
 
 pub fn plugin_manifest_invalid(reasons: &str) -> String {
@@ -402,6 +499,7 @@ pub const PLUGIN_RUNTIME_AUTO_DISABLED: &str = "插件连续失败，已自动�
 pub const PLUGIN_RUNTIME_ENTRY_MISSING: &str = "插件缺少进程入口";
 pub const PLUGIN_RUNTIME_RESPONSE_INVALID: &str = "插件返回了不匹配的协议消息";
 pub const PLUGIN_RUNTIME_TIMEOUT: &str = "插件调用超时，进程树已终止";
+pub const PLUGIN_RUNTIME_CANCELLED: &str = "插件调用已取消，进程树已终止";
 pub const PLUGIN_RUNTIME_EXITED: &str = "插件进程在返回结果前退出";
 pub const PLUGIN_RUNTIME_STDIO_MISSING: &str = "无法建立插件进程标准输入输出管道";
 pub const PLUGIN_SETTINGS_LOCK_POISONED: &str = "插件运行设置暂时不可用";
@@ -425,6 +523,20 @@ pub fn plugin_runtime_read_failed(error: impl std::fmt::Display) -> String {
 pub const PLUGIN_NOT_FOUND: &str = "插件未注册或已卸载";
 pub const PLUGIN_AUTO_DISABLED_REQUIRES_CLEAR: &str = "插件已自动禁用，请先清除失败记录";
 pub const PLUGIN_CONFIG_MIGRATION_REQUIRED: &str = "插件配置等待迁移，迁移完成前不能更改启用状态";
+pub const PLUGIN_CONFIG_MIGRATION_CAPABILITY_MISSING: &str =
+    "插件未声明配置迁移能力，无法使用旧版本插件配置";
+pub const PLUGIN_CONFIG_MIGRATION_RESULT_INVALID: &str = "插件返回的配置迁移结果结构无效";
+pub const PLUGIN_CONFIG_REGISTRY_UNAVAILABLE: &str =
+    "插件注册表不可用，配置迁移已跳过，项目仍可继续打开";
+pub fn plugin_config_newer_than_plugin(project_version: u32, plugin_version: u32) -> String {
+    format!("项目中的插件配置版本 {project_version} 高于当前插件版本 {plugin_version}，无法降级")
+}
+pub fn plugin_config_migration_params_failed(error: impl std::fmt::Display) -> String {
+    format!("无法序列化插件配置迁移参数：{error}")
+}
+pub fn plugin_config_migration_task_failed(error: impl std::fmt::Display) -> String {
+    format!("插件配置迁移任务异常结束：{error}")
+}
 
 pub fn plugin_registry_write_failed(error: impl std::fmt::Display) -> String {
     format!("无法保存插件注册表：{error}")
@@ -471,6 +583,33 @@ pub fn process_stdio_setup_failed(error: impl std::fmt::Display) -> String {
 
 pub fn process_resume_failed(error: impl std::fmt::Display) -> String {
     format!("插件进程加入隔离作业后无法恢复运行：{error}")
+}
+
+pub const PLUGIN_SANDBOX_PACKAGE_MISSING: &str = "插件隔离目录不存在";
+pub const PLUGIN_SANDBOX_SYMLINK_REJECTED: &str = "插件包包含隔离边界不允许的符号链接";
+
+pub fn plugin_sandbox_profile_failed(error: impl std::fmt::Display) -> String {
+    format!("无法创建插件 AppContainer 隔离配置：{error}")
+}
+
+pub fn plugin_sandbox_profile_delete_failed(error: impl std::fmt::Display) -> String {
+    format!("无法删除插件 AppContainer 隔离配置：{error}")
+}
+
+pub fn plugin_sandbox_capability_failed(error: impl std::fmt::Display) -> String {
+    format!("无法创建插件隔离能力：{error}")
+}
+
+pub fn plugin_sandbox_acl_failed(error: impl std::fmt::Display) -> String {
+    format!("无法授权插件包进入隔离容器：{error}")
+}
+
+pub fn plugin_sandbox_launch_failed(error: impl std::fmt::Display) -> String {
+    format!("无法应用插件 AppContainer 隔离：{error}")
+}
+
+pub fn plugin_python_resolution_failed(error: impl std::fmt::Display) -> String {
+    format!("无法解析插件所需的 Python 3 解释器：{error}")
 }
 
 pub fn process_argument_contains_nul() -> String {

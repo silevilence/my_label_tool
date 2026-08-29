@@ -55,6 +55,10 @@
         {
           "if": { "properties": { "method": { "const": "fs.write" } }, "required": ["method"] },
           "then": { "properties": { "params": { "$ref": "#/$defs/fsWriteParams" } } }
+        },
+        {
+          "if": { "properties": { "method": { "const": "config.migrate" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/configMigrationParams" } } }
         }
       ]
     },
@@ -83,6 +87,25 @@
       "type": "object",
       "required": ["writtenBytes"],
       "properties": { "writtenBytes": { "type": "integer", "minimum": 0 } },
+      "additionalProperties": true
+    },
+    "configMigrationParams": {
+      "type": "object",
+      "required": ["fromVersion", "toVersion", "config"],
+      "properties": {
+        "fromVersion": { "type": "integer", "minimum": 0 },
+        "toVersion": { "type": "integer", "minimum": 1 },
+        "config": {}
+      },
+      "additionalProperties": true
+    },
+    "configMigrationResult": {
+      "type": "object",
+      "required": ["configVersion", "config"],
+      "properties": {
+        "configVersion": { "type": "integer", "minimum": 1 },
+        "config": {}
+      },
       "additionalProperties": true
     },
     "response": {

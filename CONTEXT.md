@@ -30,6 +30,21 @@ _Avoid_: 元数据、插件配置
 反向域名命名空间的永久稳定标识（如 `dev.acme.xxx`）。名称可改，ID 一经发布不得复用。
 _Avoid_: 插件名、slug
 
+**标签预置 (Label Preset)**:
+`label-preset` 数据型插件在包根 `labels.json` 提供的只读 `LabelTemplate`。模板与标签 ID
+使用插件 ID 命名空间；加载后进入项目标签快照，插件更新、停用或卸载不回写已加载项目。
+_Avoid_: 标签包、在线模板
+
+**插件导出格式 (Plugin Export Format)**:
+`exporter` 代码型插件在 manifest `exporterOptions.formats` 中静态声明的格式。插件通过
+`exporter.export` 返回相对路径与文件内容，宿主先校验全部文件再写入用户选择目录；
+插件不接触输出目录。
+
+`prelabel` 代码型插件是与内置 ONNX 管线并存的预打标来源。插件只接收项目相对图片
+路径，通过 `fs.read:%PROJECT%` 代理读取图片，并返回原图像素坐标的标注图形；宿主
+负责类别映射、结果校验、按图片合并与撤销历史。
+_Avoid_: 外部导出器、动态格式
+
 **宿主 API 版本 (Host API Version)**:
 宿主暴露给插件的能力接口版本号，独立递增，与主程序版本号互不绑定（主程序发版不得顺手同步 bump）。分两层：整体版本（覆盖 `hello`/`fs`/`config.migrate` 等基础能力）与业务能力版本（`exporter`/`prelabel` 各自独立）。同一版本号内宿主承诺增量兼容；破坏性变更必须开新版本号，旧版本实现按弃用期保留后移除，宿主按插件声明的目标版本分派对应实现（见 ADR 0007）。
 _Avoid_: 接口版本、API 兼容区间
@@ -43,7 +58,7 @@ _Avoid_: 兼容范围、最低版本
 _Avoid_: 特性、功能列表
 
 **权限授予 (Permission Grant)**:
-宿主授予插件的资源访问权。v1 权限面为 `fs.read` / `fs.write`（安装授权时把目录占位符解析为绝对路径后落盘）与 `network`，默认全部拒绝；v1 不提供网络代理。
+宿主授予插件的资源访问权。v1 权限面为 `fs.read` / `fs.write`（安装授权时把目录占位符解析为绝对路径后落盘）与 `network`，默认全部拒绝；v1 不提供网络代理。Windows 代码型插件由 AppContainer 强制限制为插件包、声明使用的系统解释器运行目录只读/执行与协议 stdio，其他包外文件必须经宿主代理，宿主环境按白名单重建，v1 不授予网络 capability。
 _Avoid_: 权限、access
 
 **授权 (Authorization)**:

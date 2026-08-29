@@ -10,20 +10,15 @@ pub enum YoloModelFormat {
     Yolo11,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub enum PrelabelDevice {
     #[serde(rename = "auto")]
+    #[default]
     Auto,
     #[serde(rename = "cpu")]
     Cpu,
     #[serde(rename = "gpu")]
     Gpu,
-}
-
-impl Default for PrelabelDevice {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

@@ -16,6 +16,8 @@ import { isUserTemplate } from "../../lib/app-utils";
 import { PRELABEL_ZH_CN } from "../../i18n/prelabel.zh-CN";
 import { PLUGIN_ZH_CN } from "../../i18n/plugin.zh-CN";
 import { PluginSettings } from "../settings/PluginSettings";
+import type { PluginExportFormatDescriptor } from "../../types/plugin";
+import type { PluginExportProgressState } from "../../hooks/useProjectActions";
 
 interface AppSidebarProps {
   activeProjectConfig: ProjectConfig | null;
@@ -37,8 +39,13 @@ interface AppSidebarProps {
   selectedPath: string;
   selectedTemplateId: string;
   templates: LabelTemplate[];
+  pluginTemplateIds: ReadonlySet<string>;
+  pluginTemplateSources: ReadonlyMap<string, string>;
+  pluginExportFormats: PluginExportFormatDescriptor[];
+  pluginExportProgress: PluginExportProgressState | null;
   usedLabelIds: Set<string>;
   cancelLabelChanges: () => void;
+  cancelPluginExport: () => void;
   checkForUpdates: () => void;
   clearCurrentImageAnnotations: () => void;
   createProjectFromExternalYolo: () => void;
@@ -48,6 +55,8 @@ interface AppSidebarProps {
   newTemplate: () => void;
   openFolder: () => void;
   redo: () => void;
+  retryPluginConfigMigrations: () => Promise<void>;
+  refreshPluginLabelPresets: () => Promise<void>;
   saveProjectExport: () => void;
   saveTemplate: () => void;
   saveTemplateAndUpdateAnnotations: () => void;
@@ -87,8 +96,13 @@ export function AppSidebar({
   selectedPath,
   selectedTemplateId,
   templates,
+  pluginTemplateIds,
+  pluginTemplateSources,
+  pluginExportFormats,
+  pluginExportProgress,
   usedLabelIds,
   cancelLabelChanges,
+  cancelPluginExport,
   checkForUpdates,
   clearCurrentImageAnnotations,
   createProjectFromExternalYolo,
@@ -98,6 +112,8 @@ export function AppSidebar({
   newTemplate,
   openFolder,
   redo,
+  retryPluginConfigMigrations,
+  refreshPluginLabelPresets,
   saveProjectExport,
   saveTemplate,
   saveTemplateAndUpdateAnnotations,
@@ -274,7 +290,10 @@ export function AppSidebar({
         disabled={images.length === 0}
         isSaving={isSaving}
         selectedFormatId={selectedExportFormatId}
+        pluginFormats={pluginExportFormats}
+        pluginExportProgress={pluginExportProgress}
         onChangeCustomMappingText={setCustomMappingText}
+        onCancelPluginExport={cancelPluginExport}
         onChangeFormat={setSelectedExportFormatId}
         onExport={exportSelectedFormat}
         onSaveProject={saveProjectExport}
@@ -293,15 +312,19 @@ export function AppSidebar({
       <div className="scrollbar-dark min-h-0 max-h-[45vh] overflow-y-auto">
         <LabelSettings
           canSaveTemplate={
-            isUserTemplate(selectedTemplateId) || selectedTemplateId === projectTemplateId
+            (isUserTemplate(selectedTemplateId) && !pluginTemplateIds.has(selectedTemplateId)) ||
+            selectedTemplateId === projectTemplateId
           }
           canDeleteTemplate={
-            isUserTemplate(selectedTemplateId) && selectedTemplateId !== projectTemplateId
+            isUserTemplate(selectedTemplateId) &&
+            selectedTemplateId !== projectTemplateId &&
+            !pluginTemplateIds.has(selectedTemplateId)
           }
           isDirty={isLabelDirty}
           labels={labels}
           selectedTemplateId={selectedTemplateId}
           templates={templates}
+          pluginTemplateSources={pluginTemplateSources}
           usedLabelIds={usedLabelIds}
           onCancelChanges={cancelLabelChanges}
           onChangeLabels={updateLabels}
@@ -434,6 +457,8 @@ export function AppSidebar({
       {isPluginSettingsOpen && (
         <PluginSettings
           projectDir={folderPath || null}
+          onRetryConfigMigration={retryPluginConfigMigrations}
+          onPluginsChanged={refreshPluginLabelPresets}
           onClose={() => setIsPluginSettingsOpen(false)}
         />
       )}

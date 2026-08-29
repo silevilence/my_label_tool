@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.mylabeltool.labelme",
+  "name": "LabelMe JSON 示例导出器",
+  "version": "1.0.0",
+  "apiVersion": { "min": 1 },
+  "extensionKind": "exporter",
+  "runtime": "process",
+  "entry": {
+    "command": "python",
+    "args": ["plugin/main.py"]
+  },
+  "capabilities": {
+    "progress": true,
+    "cancel": true,
+    "exporter": { "apiVersion": { "min": 1 } }
+  },
+  "exporterOptions": {
+    "formats": [
+      {
+        "id": "labelme",
+        "displayName": "LabelMe JSON",
+        "extensions": ["json"],
+        "multiFile": true
+      }
+    ]
+  },
+  "permissions": [],
+  "configVersion": 0,
+  "timeoutMs": 30000
+}

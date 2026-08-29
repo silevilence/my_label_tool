@@ -382,6 +382,8 @@ mod tests {
                 images: vec![ImageAnnotations {
                     path: "a.png".to_string(),
                     name: "a.png".to_string(),
+                    width: 640,
+                    height: 480,
                     annotations: vec![AnnotationShape {
                         id: "shape-1".to_string(),
                         shape_type: "rect".to_string(),

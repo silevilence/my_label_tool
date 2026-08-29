@@ -1,10 +1,12 @@
 // The registry keeps archive publication and durable state transitions in one
 // transactional module; it exceeds 1000 lines so rollback invariants and their
 // private test seams are not split across partially authoritative modules.
+use super::label_preset::validate_label_preset_package;
 use super::manifest::{
-    is_safe_relative_path, is_valid_permission_target, is_valid_plugin_id, is_valid_semver,
-    parse_plugin_manifest, PluginCapabilities, PluginEntry, PluginExtensionKind, PluginManifest,
-    DEFAULT_PLUGIN_TIMEOUT_MS, MAX_PLUGIN_TIMEOUT_MS,
+    is_safe_relative_path, is_valid_export_extension, is_valid_export_format_id,
+    is_valid_permission_target, is_valid_plugin_id, is_valid_semver, parse_plugin_manifest,
+    PluginCapabilities, PluginEntry, PluginExporterOptions, PluginExtensionKind, PluginManifest,
+    PluginPrelabelOptions, DEFAULT_PLUGIN_TIMEOUT_MS, MAX_PLUGIN_TIMEOUT_MS,
 };
 use super::permissions::{
     resolve_permission_grants_for_install, PermissionPolicy, PermissionRoots,
@@ -26,9 +28,9 @@ use std::sync::{
     Mutex, OnceLock,
 };
 
-const MAX_ARCHIVE_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
-const MAX_ARCHIVE_FILE_BYTES: u64 = 50 * 1024 * 1024;
-const MAX_COMPRESSION_RATIO: u64 = 1_000;
+pub(crate) const MAX_ARCHIVE_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
+pub(crate) const MAX_ARCHIVE_FILE_BYTES: u64 = 50 * 1024 * 1024;
+pub(crate) const MAX_COMPRESSION_RATIO: u64 = 1_000;
 static INSTALL_TOKEN_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static REGISTRY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -60,6 +62,15 @@ pub enum PluginState {
     PendingMigration,
 }
 
+pub fn plugin_state_disabled_reason(state: PluginState) -> Option<String> {
+    match state {
+        PluginState::Enabled => None,
+        PluginState::Disabled => Some(text::PLUGIN_RUNTIME_DISABLED.to_string()),
+        PluginState::AutoDisabled => Some(text::PLUGIN_RUNTIME_AUTO_DISABLED.to_string()),
+        PluginState::PendingMigration => Some(text::PLUGIN_CONFIG_MIGRATION_REQUIRED.to_string()),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginRegistryEntry {
@@ -68,6 +79,10 @@ pub struct PluginRegistryEntry {
     pub version: String,
     pub extension_kind: PluginExtensionKind,
     pub entry: Option<PluginEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exporter_options: Option<PluginExporterOptions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prelabel_options: Option<PluginPrelabelOptions>,
     pub capabilities: PluginCapabilities,
     pub grants: Vec<PluginPermissionGrant>,
     pub state: PluginState,
@@ -237,6 +252,7 @@ fn prepare_plugin_install_inner(
     reject_code_plugin_in_safe_mode(app_data_dir, &manifest)?;
     negotiate_manifest(&manifest)?;
     validate_runtime(&manifest, pending_root, probe, false)?;
+    validate_label_preset_package(&manifest, pending_root)?;
     let permissions = resolve_permission_grants_for_install(
         &manifest.permissions,
         &permission_roots(app_data_dir, project_dir),
@@ -601,6 +617,7 @@ fn authorize_plugin_install_inner(
         });
     }
     validate_runtime(&manifest, pending_root, probe, true)?;
+    validate_label_preset_package(&manifest, pending_root)?;
     verify_bound_install_token(pending_root, install_token)?;
 
     let _registry_guard = registry_lock().lock().map_err(|_| registry_lock_error())?;
@@ -635,6 +652,8 @@ fn authorize_plugin_install_inner(
         version: manifest.version.clone(),
         extension_kind: manifest.extension_kind.clone(),
         entry: manifest.entry.clone(),
+        exporter_options: manifest.exporter_options.clone(),
+        prelabel_options: manifest.prelabel_options.clone(),
         capabilities: manifest.capabilities.clone(),
         grants: persisted_grants,
         state,
@@ -765,10 +784,52 @@ fn registry_entries_are_valid(plugins: &[PluginRegistryEntry]) -> bool {
                         Some(_)
                     )
             )
+            && registry_exporter_options_are_valid(plugin)
+            && registry_prelabel_options_are_valid(plugin)
+            && (plugin.extension_kind != PluginExtensionKind::Prelabel
+                || !plugin.capabilities.annotation_types.is_empty())
             && plugin.capabilities.exporter.api_version.min >= 1
             && plugin.capabilities.prelabel.api_version.min >= 1
             && (1..=MAX_PLUGIN_TIMEOUT_MS).contains(&plugin.timeout_ms)
             && registry_grants_are_valid(&plugin.grants)
+    })
+}
+
+fn registry_prelabel_options_are_valid(plugin: &PluginRegistryEntry) -> bool {
+    let Some(options) = &plugin.prelabel_options else {
+        return true;
+    };
+    plugin.extension_kind == PluginExtensionKind::Prelabel
+        && !options.class_names.is_empty()
+        && options
+            .class_names
+            .iter()
+            .all(|name| !name.trim().is_empty())
+        && options.class_names.iter().collect::<HashSet<_>>().len() == options.class_names.len()
+}
+
+fn registry_exporter_options_are_valid(plugin: &PluginRegistryEntry) -> bool {
+    let Some(options) = &plugin.exporter_options else {
+        return true;
+    };
+    if plugin.extension_kind != PluginExtensionKind::Exporter || options.formats.is_empty() {
+        return false;
+    }
+    let mut ids = HashSet::new();
+    options.formats.iter().all(|format| {
+        is_valid_export_format_id(&format.id)
+            && ids.insert(&format.id)
+            && !format.display_name.trim().is_empty()
+            && !format.extensions.is_empty()
+            && format.extensions.iter().all(|extension| {
+                is_valid_export_extension(extension)
+                    && format
+                        .extensions
+                        .iter()
+                        .filter(|candidate| *candidate == extension)
+                        .count()
+                        == 1
+            })
     })
 }
 
@@ -914,6 +975,34 @@ pub fn record_plugin_runtime_failure(
         if entry.failure_count >= 3 {
             entry.state = PluginState::AutoDisabled;
         }
+        entry.updated_at = timestamp();
+        Ok(())
+    })
+}
+
+pub fn mark_plugin_pending_migration(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    message: &str,
+) -> Result<PluginRegistryEntry, PluginRegistryError> {
+    update_registry_entry(app_data_dir, plugin_id, |entry| {
+        entry.state = PluginState::PendingMigration;
+        entry.last_error = Some(message.to_string());
+        entry.updated_at = timestamp();
+        Ok(())
+    })
+}
+
+pub fn complete_plugin_config_migration(
+    app_data_dir: &Path,
+    plugin_id: &str,
+) -> Result<PluginRegistryEntry, PluginRegistryError> {
+    update_registry_entry(app_data_dir, plugin_id, |entry| {
+        if entry.state == PluginState::PendingMigration {
+            entry.state = PluginState::Enabled;
+        }
+        entry.failure_count = 0;
+        entry.last_error = None;
         entry.updated_at = timestamp();
         Ok(())
     })

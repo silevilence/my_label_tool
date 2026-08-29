@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { AppLayout } from "./components/AppLayout";
@@ -32,13 +32,30 @@ import { usePrelabelExecution } from "./hooks/usePrelabelExecution";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
 import { isEditableTarget, saveProjectConfig } from "./lib/app-utils";
-import { loadLabelConfigs, loadLabelTemplates, type ImageFile } from "./lib/tauri-api";
+import {
+  loadLabelConfigs,
+  loadLabelTemplates,
+  loadPluginLabelPresets,
+  loadPluginExportFormats,
+  loadPluginPrelabelSources,
+  type ImageFile,
+} from "./lib/tauri-api";
+import {
+  getSelectedPluginPresetRefreshImpact,
+  mergePluginLabelPresets,
+} from "./lib/plugin-label-presets";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "./types/annotation";
 import type { ExportFormatId } from "./types/export";
 import type { ProjectConfig } from "./lib/importers";
 import type { PrelabelClassMapping } from "./types/prelabel";
 import { PRELABEL_ZH_CN as prelabelText } from "./i18n/prelabel.zh-CN";
+import { PLUGIN_ZH_CN as pluginText } from "./i18n/plugin.zh-CN";
+import type {
+  PluginExportFormatDescriptor,
+  PluginLabelPreset,
+  PluginPrelabelSourceDescriptor,
+} from "./types/plugin";
 import { updateProjectPrelabelMappings } from "./lib/prelabel-mapping";
 import "./App.css";
 
@@ -64,6 +81,16 @@ function App() {
   const [labels, setLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
   const [savedLabels, setSavedLabels] = useState<LabelConfig[]>(DEFAULT_LABELS);
   const [templates, setTemplates] = useState<LabelTemplate[]>(DEFAULT_LABEL_TEMPLATES);
+  const [pluginTemplateIds, setPluginTemplateIds] = useState<Set<string>>(new Set());
+  const [pluginTemplateSources, setPluginTemplateSources] = useState<ReadonlyMap<string, string>>(
+    new Map(),
+  );
+  const pluginTemplateIdsRef = useRef<ReadonlySet<string>>(new Set());
+  const pluginPresetsRef = useRef<PluginLabelPreset[]>([]);
+  const [pluginExportFormats, setPluginExportFormats] = useState<PluginExportFormatDescriptor[]>([]);
+  const [pluginPrelabelSources, setPluginPrelabelSources] = useState<
+    PluginPrelabelSourceDescriptor[]
+  >([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState(DEFAULT_LABEL_TEMPLATES[0].id);
   const [projectTemplateId, setProjectTemplateId] = useState("");
   const [activeProjectConfigPath, setActiveProjectConfigPath] = useState("");
@@ -120,6 +147,53 @@ function App() {
       ),
     [annotationsByImage],
   );
+  const refreshPluginLabelPresets = useCallback(async () => {
+    const [snapshot, exportSnapshot, prelabelSnapshot] = await Promise.all([
+      loadPluginLabelPresets(),
+      loadPluginExportFormats(),
+      loadPluginPrelabelSources(folderPath || null),
+    ]);
+    setPluginExportFormats(exportSnapshot.formats);
+    setPluginPrelabelSources(prelabelSnapshot.sources);
+    if (
+      selectedExportFormatId.startsWith("plugin:") &&
+      !exportSnapshot.formats.some((format) => format.selectionId === selectedExportFormatId)
+    ) {
+      setSelectedExportFormatId("json");
+    }
+    const previousPresets = pluginPresetsRef.current;
+    const selectedPresetImpact = getSelectedPluginPresetRefreshImpact(
+      previousPresets,
+      snapshot.presets,
+      selectedTemplateId,
+    );
+    const merged = mergePluginLabelPresets(
+      templates,
+      pluginTemplateIdsRef.current,
+      snapshot.presets,
+    );
+    pluginTemplateIdsRef.current = merged.pluginTemplateIds;
+    setPluginTemplateIds(merged.pluginTemplateIds);
+    setPluginTemplateSources(merged.sourceByTemplateId);
+    setTemplates(merged.templates);
+    pluginPresetsRef.current = snapshot.presets;
+
+    if (selectedPresetImpact === "removed") {
+      setSelectedTemplateId(DEFAULT_LABEL_TEMPLATES[0].id);
+      setIsLabelDirty(true);
+    } else if (selectedPresetImpact === "updated") {
+      setIsLabelDirty(true);
+    }
+    const messages = [
+      snapshot.warning,
+      exportSnapshot.warning,
+      prelabelSnapshot.warning,
+      merged.collisions.length > 0
+        ? pluginText.labelPresetCollision(merged.collisions)
+        : null,
+    ].filter((message): message is string => Boolean(message));
+    if (messages.length > 0) setError(messages.join("；"));
+  }, [folderPath, selectedExportFormatId, selectedTemplateId, templates]);
   const currentLabel = labelById.get(currentLabelId) ?? labels[0];
   const { imageLoadError, isImageLoading, loadedImage, selectedImage } = useImageLoader(
     images,
@@ -175,6 +249,7 @@ function App() {
     isLabelDirty,
     labels,
     projectTemplateId,
+    readOnlyTemplateIds: pluginTemplateIds,
     savedLabels,
     selectedPath,
     selectedShapeId,
@@ -200,10 +275,13 @@ function App() {
     showMessage(message);
   };
   const {
+    cancelActivePluginExport,
     createProjectFromExternalYolo,
     exportSelectedFormat,
     importAnnotations,
     maybeLoadProjectConfig,
+    pluginExportProgress,
+    retryPluginConfigMigrations,
     saveProjectExport,
   } = useProjectActions({
     activeProjectConfig,
@@ -214,6 +292,8 @@ function App() {
     images,
     labels,
     selectedExportFormatId,
+    pluginExportFormats,
+    refreshPluginExtensions: refreshPluginLabelPresets,
     applyProjectTemplate,
     clearProjectTemplate,
     replaceAnnotations,
@@ -230,6 +310,9 @@ function App() {
     images,
     labels,
     library: prelabelModels.library,
+    pluginSources: pluginPrelabelSources,
+    projectFolder: folderPath,
+    refreshPluginSources: refreshPluginLabelPresets,
     selectedPath,
     insertAnnotationsBatch,
     setError,
@@ -355,14 +438,20 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([loadLabelConfigs(), loadLabelTemplates()])
-      .then(([savedLabels, savedTemplates]) => {
-        const nextTemplates = [
+    Promise.all([
+      loadLabelConfigs(),
+      loadLabelTemplates(),
+      loadPluginLabelPresets(),
+      loadPluginExportFormats(),
+    ])
+      .then(([savedLabels, savedTemplates, pluginSnapshot, exportSnapshot]) => {
+        const baseTemplates = [
           ...DEFAULT_LABEL_TEMPLATES,
           ...savedTemplates.filter(
             (template) => !DEFAULT_LABEL_TEMPLATES.some((item) => item.id === template.id),
           ),
         ];
+        const merged = mergePluginLabelPresets(baseTemplates, new Set(), pluginSnapshot.presets);
         const nextLabels = savedLabels.length > 0 ? savedLabels : DEFAULT_LABELS;
 
         if (!cancelled && savedLabels.length > 0) {
@@ -371,7 +460,20 @@ function App() {
           setCurrentLabelId(nextLabels[0].id);
         }
         if (!cancelled) {
-          setTemplates(nextTemplates);
+          pluginPresetsRef.current = pluginSnapshot.presets;
+          pluginTemplateIdsRef.current = merged.pluginTemplateIds;
+          setPluginTemplateIds(merged.pluginTemplateIds);
+          setPluginTemplateSources(merged.sourceByTemplateId);
+          setPluginExportFormats(exportSnapshot.formats);
+          setTemplates(merged.templates);
+          const messages = [
+            pluginSnapshot.warning,
+            exportSnapshot.warning,
+            merged.collisions.length > 0
+              ? pluginText.labelPresetCollision(merged.collisions)
+              : null,
+          ].filter((message): message is string => Boolean(message));
+          if (messages.length > 0) setError(messages.join("；"));
         }
       })
       .catch((caughtError: unknown) => {
@@ -384,6 +486,25 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadPluginPrelabelSources(folderPath || null)
+      .then((snapshot) => {
+        if (!cancelled) {
+          setPluginPrelabelSources(snapshot.sources);
+          if (snapshot.warning) setError(snapshot.warning);
+        }
+      })
+      .catch((caughtError: unknown) => {
+        if (!cancelled) {
+          setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [folderPath]);
 
   useEffect(() => {
     const label = labelById.get(currentLabelId);
@@ -555,12 +676,18 @@ function App() {
       transientMessage={transientMessage}
       shortcuts={shortcuts}
       templates={templates}
+      pluginExportFormats={pluginExportFormats}
+      pluginPrelabelSources={pluginPrelabelSources}
+      pluginExportProgress={pluginExportProgress}
+      pluginTemplateIds={pluginTemplateIds}
+      pluginTemplateSources={pluginTemplateSources}
       transformerRef={transformerRef}
       updateMessage={updateMessage}
       updateProgress={updateProgress}
       updateStatus={updateStatus}
       usedLabelIds={usedLabelIds}
       cancelLabelChanges={cancelLabelChanges}
+      cancelPluginExport={() => void cancelActivePluginExport()}
       changeAnnotationLabel={changeAnnotationLabel}
       checkForUpdates={() => void checkForUpdates()}
       clearCurrentImageAnnotations={clearCurrentImageAnnotations}
@@ -585,6 +712,8 @@ function App() {
       openContextMenu={openContextMenu}
       openFolder={openFolder}
       redo={redo}
+      retryPluginConfigMigrations={retryPluginConfigMigrations}
+      refreshPluginLabelPresets={refreshPluginLabelPresets}
       resetZoom={resetZoom}
       saveProjectExport={saveWithFeedback}
       savePrelabelMappings={savePrelabelMappings}

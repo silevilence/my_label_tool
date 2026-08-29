@@ -3,6 +3,23 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 use crate::i18n::zh_cn as text;
+use crate::plugins::config::{
+    migrate_plugin_configs as migrate_configs, PluginConfig, PluginConfigMigrationReport,
+};
+use crate::plugins::exporter::{
+    cancel_plugin_export as cancel_export, load_plugin_export_formats as load_export_formats,
+    run_plugin_export as run_export, PluginExportCancellationResult, PluginExportFormatSnapshot,
+    PluginExportRequest, PluginExportResult,
+};
+use crate::plugins::label_preset::{
+    load_plugin_label_presets as load_presets, PluginLabelPresetSnapshot,
+};
+use crate::plugins::prelabel::{
+    cancel_plugin_prelabel as cancel_prelabel,
+    load_plugin_prelabel_sources as load_prelabel_sources, run_plugin_prelabel as run_prelabel,
+    PluginPrelabelCancellationResult, PluginPrelabelRequest, PluginPrelabelResult,
+    PluginPrelabelSourceSnapshot,
+};
 use crate::plugins::registry::{
     authorize_plugin_install_for_project, clear_registered_plugin_failures, get_registered_plugin,
     load_plugin_registry, pending_plugin_install_id, prepare_plugin_install_for_project,
@@ -14,6 +31,7 @@ use crate::plugins::runtime::{
     save_plugin_runtime_settings, shutdown_all_plugin_processes, stop_plugin_process,
     PluginRuntimeSettings,
 };
+use tauri::ipc::Channel;
 
 #[tauri::command]
 pub fn install_plugin(
@@ -60,6 +78,77 @@ pub fn uninstall_plugin(app: tauri::AppHandle, plugin_id: String) -> Result<(), 
 #[tauri::command]
 pub fn list_plugins(app: tauri::AppHandle) -> Result<PluginRegistrySnapshot, String> {
     Ok(load_plugin_registry(&plugin_app_data_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn load_plugin_label_presets(
+    app: tauri::AppHandle,
+) -> Result<PluginLabelPresetSnapshot, String> {
+    Ok(load_presets(&plugin_app_data_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn load_plugin_export_formats(
+    app: tauri::AppHandle,
+) -> Result<PluginExportFormatSnapshot, String> {
+    Ok(load_export_formats(&plugin_app_data_dir(&app)?))
+}
+
+#[tauri::command]
+pub async fn run_plugin_export(
+    app: tauri::AppHandle,
+    request: PluginExportRequest,
+    on_event: Channel<serde_json::Value>,
+) -> Result<PluginExportResult, String> {
+    let app_data_dir = plugin_app_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        run_export(&app_data_dir, request, move |event| {
+            let _ = on_event.send(event);
+        })
+        .map_err(runtime_command_error)
+    })
+    .await
+    .map_err(text::plugin_export_task_failed)?
+}
+
+#[tauri::command]
+pub fn cancel_plugin_export(export_id: String) -> Result<PluginExportCancellationResult, String> {
+    Ok(cancel_export(&export_id))
+}
+
+#[tauri::command]
+pub fn load_plugin_prelabel_sources(
+    app: tauri::AppHandle,
+    project_folder: Option<PathBuf>,
+) -> Result<PluginPrelabelSourceSnapshot, String> {
+    Ok(load_prelabel_sources(
+        &plugin_app_data_dir(&app)?,
+        project_folder.as_deref(),
+    ))
+}
+
+#[tauri::command]
+pub async fn run_plugin_prelabel(
+    app: tauri::AppHandle,
+    request: PluginPrelabelRequest,
+    on_event: Channel<serde_json::Value>,
+) -> Result<PluginPrelabelResult, String> {
+    let app_data_dir = plugin_app_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        run_prelabel(&app_data_dir, request, move |event| {
+            let _ = on_event.send(event);
+        })
+        .map_err(runtime_command_error)
+    })
+    .await
+    .map_err(text::plugin_prelabel_task_failed)?
+}
+
+#[tauri::command]
+pub fn cancel_plugin_prelabel(
+    operation_id: String,
+) -> Result<PluginPrelabelCancellationResult, String> {
+    Ok(cancel_prelabel(&operation_id))
 }
 
 #[tauri::command]
@@ -118,6 +207,17 @@ pub fn set_plugin_safe_mode(
 #[tauri::command]
 pub fn get_plugin_runtime_logs(plugin_id: String) -> Result<Vec<String>, String> {
     Ok(plugin_runtime_logs(&plugin_id))
+}
+
+#[tauri::command]
+pub async fn migrate_plugin_configs(
+    app: tauri::AppHandle,
+    configs: Vec<PluginConfig>,
+) -> Result<PluginConfigMigrationReport, String> {
+    let app_data_dir = plugin_app_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || migrate_configs(&app_data_dir, configs))
+        .await
+        .map_err(text::plugin_config_migration_task_failed)
 }
 
 fn plugin_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {

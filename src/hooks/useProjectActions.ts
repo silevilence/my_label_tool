@@ -1,3 +1,4 @@
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   baseName,
   confirmReplaceCurrentAnnotations,
@@ -26,9 +27,12 @@ import {
   type TextImportFile,
 } from "../lib/importers";
 import {
+  cancelPluginExport,
   exportAnnotationsJson,
   exportTextFiles,
+  runPluginExport,
   listTextFiles,
+  migratePluginConfigs,
   readTextFile,
   selectExportFolder,
   selectExportJsonPath,
@@ -38,6 +42,17 @@ import {
 } from "../lib/tauri-api";
 import type { AnnotationShape, LabelConfig } from "../types/annotation";
 import type { ExportData, ExportFormatId } from "../types/export";
+import type { PluginExportFormatDescriptor } from "../types/plugin";
+import { mergePluginConfigMigration } from "../lib/plugin-config-migration";
+import { PLUGIN_ZH_CN as pluginText } from "../i18n/plugin.zh-CN";
+
+export interface PluginExportProgressState {
+  exportId: string;
+  percent: number | null;
+  message: string;
+  canCancel: boolean;
+  cancelling: boolean;
+}
 
 interface UseProjectActionsParams {
   activeProjectConfig: ProjectConfig | null;
@@ -48,10 +63,12 @@ interface UseProjectActionsParams {
   images: ImageFile[];
   labels: LabelConfig[];
   selectedExportFormatId: ExportFormatId;
+  pluginExportFormats: PluginExportFormatDescriptor[];
+  refreshPluginExtensions: () => Promise<void>;
   applyProjectTemplate: (template: ProjectConfig["template"], labels: LabelConfig[]) => void;
   clearProjectTemplate: () => void;
   replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
-  setActiveProjectConfig: (config: ProjectConfig | null) => void;
+  setActiveProjectConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
   setActiveProjectConfigPath: (path: string) => void;
   setError: (message: string) => void;
   setProjectTemplateId: (templateId: string) => void;
@@ -67,6 +84,8 @@ export function useProjectActions({
   images,
   labels,
   selectedExportFormatId,
+  pluginExportFormats,
+  refreshPluginExtensions,
   applyProjectTemplate,
   clearProjectTemplate,
   replaceAnnotations,
@@ -76,6 +95,10 @@ export function useProjectActions({
   setProjectTemplateId,
   setSelectedExportFormatId,
 }: UseProjectActionsParams) {
+  const projectMigrationGenerationRef = useRef(0);
+  const [pluginExportProgress, setPluginExportProgress] =
+    useState<PluginExportProgressState | null>(null);
+
   function reportError(caughtError: unknown) {
     setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
   }
@@ -85,7 +108,7 @@ export function useProjectActions({
 
     try {
       const savedPath = await exportSelectedFormatAs();
-      if (savedPath && selectedExportFormatId !== "custom") {
+      if (savedPath && isBuiltInProjectFormat(selectedExportFormatId)) {
         await updateProjectConfig(selectedExportFormatId, savedPath);
       }
     } catch (caughtError: unknown) {
@@ -131,6 +154,65 @@ export function useProjectActions({
       }
       await exportTextFiles(outputDir, exportYolo(exportData));
       return outputDir;
+    }
+
+    const pluginFormat = pluginExportFormats.find(
+      (format) => format.selectionId === selectedExportFormatId,
+    );
+    if (pluginFormat) {
+      if (!pluginFormat.enabled) {
+        throw new Error(pluginFormat.disabledReason ?? pluginText.exportFormatUnavailable);
+      }
+      const outputDir = await selectExportFolder();
+      if (!outputDir) return null;
+      const exportId = crypto.randomUUID();
+      setPluginExportProgress({
+        exportId,
+        percent: null,
+        message: pluginText.exportRunning,
+        canCancel: pluginFormat.supportsCancel,
+        cancelling: false,
+      });
+      try {
+        const result = await runPluginExport(
+          pluginFormat.pluginId,
+          pluginFormat.format.id,
+          toPluginExportData(exportData, folderPath),
+          {},
+          "annotations",
+          outputDir,
+          exportId,
+          (event) => {
+            if (!pluginFormat.supportsProgress || event.event !== "progress") return;
+            setPluginExportProgress((current) =>
+              current?.exportId === exportId
+                ? {
+                    ...current,
+                    percent:
+                      typeof event.payload.percent === "number"
+                        ? Math.max(0, Math.min(100, event.payload.percent))
+                        : current.percent,
+                    message:
+                      typeof event.payload.message === "string"
+                        ? event.payload.message
+                        : current.message,
+                  }
+                : current,
+            );
+          },
+        );
+        setError(pluginText.exportComplete(result.files.length));
+      } finally {
+        setPluginExportProgress((current) =>
+          current?.exportId === exportId ? null : current,
+        );
+        void refreshPluginExtensions().catch(reportError);
+      }
+      return outputDir;
+    }
+
+    if (selectedExportFormatId.startsWith("plugin:")) {
+      throw new Error(pluginText.exportFormatUnavailable);
     }
 
     const mapping = parseCustomMapping(customMappingText);
@@ -191,6 +273,9 @@ export function useProjectActions({
       exportOptions: { format },
       ...(activeProjectConfig?.prelabelMappings
         ? { prelabelMappings: activeProjectConfig.prelabelMappings }
+        : {}),
+      ...(activeProjectConfig?.pluginConfigs
+        ? { pluginConfigs: activeProjectConfig.pluginConfigs }
         : {}),
     };
 
@@ -279,6 +364,7 @@ export function useProjectActions({
   }
 
   function clearProjectConfig() {
+    projectMigrationGenerationRef.current += 1;
     setActiveProjectConfig(null);
     setActiveProjectConfigPath("");
     setProjectTemplateId("");
@@ -293,6 +379,8 @@ export function useProjectActions({
     if (confirmReplace && !(await confirmReplaceCurrentAnnotations(currentImages))) {
       return null;
     }
+    const migrationGeneration = projectMigrationGenerationRef.current + 1;
+    projectMigrationGenerationRef.current = migrationGeneration;
 
     const config = withProjectTemplate(parseProjectConfig(await readTextFile(configPath)));
     const imported =
@@ -301,13 +389,83 @@ export function useProjectActions({
         : await loadConfiguredStandardImport(config, currentImages);
     const labelsFromConfig = config.labels.length > 0 ? config.labels : imported.labels;
 
+    const openedConfig = { ...config, labels: labelsFromConfig };
     applyImportedAnnotations(
       { ...imported, labels: labelsFromConfig },
       currentImages,
-      config,
+      openedConfig,
       configPath,
     );
-    return config;
+    void migrateProjectPluginConfigs(openedConfig, migrationGeneration);
+    return openedConfig;
+  }
+
+  async function migrateProjectPluginConfigs(
+    config: ProjectConfig,
+    migrationGeneration: number,
+  ): Promise<ProjectConfig> {
+    try {
+      const report = await migratePluginConfigs(config.pluginConfigs ?? []);
+      if (projectMigrationGenerationRef.current !== migrationGeneration) {
+        return config;
+      }
+      const nextConfig = config.pluginConfigs
+        ? { ...config, pluginConfigs: report.configs }
+        : config;
+      if (config.pluginConfigs) {
+        setActiveProjectConfig((current) => mergePluginConfigMigration(current, config, report));
+      }
+      if (report.issues.length > 0) {
+        setError(report.issues.map((issue) => `${issue.pluginId}：${issue.message}`).join("；"));
+      }
+      try {
+        await refreshPluginExtensions();
+      } catch (caughtError: unknown) {
+        if (projectMigrationGenerationRef.current === migrationGeneration) {
+          reportError(caughtError);
+        }
+      }
+      return nextConfig;
+    } catch (caughtError: unknown) {
+      if (projectMigrationGenerationRef.current === migrationGeneration) {
+        reportError(caughtError);
+      }
+      return config;
+    }
+  }
+
+  async function retryPluginConfigMigrations(): Promise<void> {
+    if (!activeProjectConfig) {
+      return;
+    }
+    setError("");
+    const migrationGeneration = projectMigrationGenerationRef.current + 1;
+    projectMigrationGenerationRef.current = migrationGeneration;
+    await migrateProjectPluginConfigs(activeProjectConfig, migrationGeneration);
+  }
+
+  async function cancelActivePluginExport(): Promise<void> {
+    const current = pluginExportProgress;
+    if (!current?.canCancel || current.cancelling) return;
+    setPluginExportProgress({
+      ...current,
+      cancelling: true,
+      message: pluginText.exportCancelling,
+    });
+    try {
+      const result = await cancelPluginExport(current.exportId);
+      if (!result.found) {
+        setPluginExportProgress((latest) =>
+          latest?.exportId === current.exportId ? { ...latest, cancelling: false } : latest,
+        );
+        setError(pluginText.exportCancelUnavailable);
+      }
+    } catch (caughtError: unknown) {
+      reportError(caughtError);
+      setPluginExportProgress((latest) =>
+        latest?.exportId === current.exportId ? { ...latest, cancelling: false } : latest,
+      );
+    }
   }
 
   async function loadConfiguredStandardImport(
@@ -404,15 +562,41 @@ export function useProjectActions({
     }
   }
 
+  function toPluginExportData(data: ExportData, projectFolder: string): ExportData {
+    const normalizedFolder = projectFolder.replace(/\\/g, "/").replace(/\/$/, "");
+    return {
+      ...data,
+      images: data.images.map((image) => {
+        const normalizedPath = image.path.replace(/\\/g, "/");
+        const prefix = `${normalizedFolder}/`;
+        return {
+          ...image,
+          path: normalizedPath.toLowerCase().startsWith(prefix.toLowerCase())
+            ? normalizedPath.slice(prefix.length)
+            : image.name,
+        };
+      }),
+    };
+  }
+
   function withProjectTemplate(config: ProjectConfig): ProjectConfig {
     return { ...config, template: projectConfigTemplate() };
   }
 
   return {
+    cancelActivePluginExport,
     createProjectFromExternalYolo,
     exportSelectedFormat,
     importAnnotations,
     maybeLoadProjectConfig,
+    pluginExportProgress,
+    retryPluginConfigMigrations,
     saveProjectExport,
   };
+}
+
+function isBuiltInProjectFormat(
+  format: ExportFormatId,
+): format is ProjectConfig["format"] {
+  return ["json", "coco", "voc", "yolo"].includes(format);
 }

@@ -48,12 +48,20 @@ pub fn run() {
             commands::authorize_plugin,
             commands::uninstall_plugin,
             commands::list_plugins,
+            commands::load_plugin_label_presets,
+            commands::load_plugin_export_formats,
+            commands::run_plugin_export,
+            commands::cancel_plugin_export,
+            commands::load_plugin_prelabel_sources,
+            commands::run_plugin_prelabel,
+            commands::cancel_plugin_prelabel,
             commands::set_plugin_enabled,
             commands::get_plugin_status,
             commands::clear_plugin_failures,
             commands::get_plugin_runtime_settings,
             commands::set_plugin_safe_mode,
-            commands::get_plugin_runtime_logs
+            commands::get_plugin_runtime_logs,
+            commands::migrate_plugin_configs
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -2,10 +2,48 @@ use std::process::{Command, Stdio};
 
 use crate::i18n::zh_cn as text;
 
+#[cfg(all(windows, test))]
+pub(crate) fn windows_isolation_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    static TEST_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    TEST_LOCK
+        .get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(all(windows, test))]
+pub(crate) const PLUGIN_TEST_STUB_FILENAME: &str = "plugin-runtime-test-stub.exe";
+
+#[cfg(all(windows, test))]
+pub(crate) fn install_plugin_test_stub(package_root: &std::path::Path) -> std::path::PathBuf {
+    let current = std::env::current_exe().expect("current Rust test executable");
+    let debug_directory = current
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("Cargo debug directory");
+    let source = debug_directory.join("plugin-conformance-stub.exe");
+    assert!(
+        source.is_file(),
+        "missing native plugin test stub: {source:?}"
+    );
+    let destination = package_root.join(PLUGIN_TEST_STUB_FILENAME);
+    std::fs::copy(&source, &destination).expect("copy native plugin test stub into package");
+    destination
+}
+
+#[cfg(windows)]
+mod app_container;
 #[cfg(windows)]
 mod piped;
 #[cfg(windows)]
 pub(crate) use piped::PipedJobProcess;
+
+#[cfg(windows)]
+pub(crate) struct PluginSandbox<'a> {
+    pub identity: &'a str,
+    pub package_root: &'a std::path::Path,
+    pub allow_network: bool,
+}
 
 #[cfg(unix)]
 pub(crate) fn configure_process_group(command: &mut Command) {
@@ -54,6 +92,7 @@ pub(crate) struct SuspendedJobProcess {
     process: windows::Win32::Foundation::HANDLE,
     stdin_write: windows::Win32::Foundation::HANDLE,
     terminated: bool,
+    _sandbox: app_container::AppContainerLaunch,
 }
 
 #[cfg(windows)]
@@ -62,6 +101,7 @@ impl SuspendedJobProcess {
         executable: &std::path::Path,
         arguments: &[String],
         working_directory: &std::path::Path,
+        sandbox: PluginSandbox<'_>,
         environment_overrides: &[(&str, &str)],
         environment_removals: &[&str],
     ) -> Result<Self, String> {
@@ -90,8 +130,9 @@ impl SuspendedJobProcess {
             },
         };
 
-        let display = executable.to_string_lossy();
-        let mut command_line = windows_command_line(executable.as_os_str(), arguments)?;
+        let executable = resolve_windows_executable(executable)?;
+        let display = executable.path.to_string_lossy();
+        let mut command_line = windows_command_line(executable.path.as_os_str(), arguments)?;
         let current_directory = wide_null(working_directory.as_os_str())?;
         let environment =
             windows_environment_block_filtered(environment_overrides, environment_removals)?;
@@ -100,6 +141,13 @@ impl SuspendedJobProcess {
             bInheritHandle: true.into(),
             ..Default::default()
         };
+        let mut app_container = app_container::AppContainerLaunch::prepare(
+            sandbox.identity,
+            sandbox.package_root,
+            executable.runtime_root.as_deref(),
+            sandbox.allow_network,
+        )?;
+        let mut security_capabilities = app_container.security_capabilities();
 
         // SAFETY: all inherited handles are created explicitly, the child is
         // suspended until it is assigned to the kill-on-close Job Object, and
@@ -143,7 +191,7 @@ impl SuspendedJobProcess {
                 }
             };
             let mut attribute_size = 0;
-            let _ = InitializeProcThreadAttributeList(None, 1, None, &mut attribute_size);
+            let _ = InitializeProcThreadAttributeList(None, 2, None, &mut attribute_size);
             if attribute_size == 0 {
                 let error = windows::core::Error::from_win32();
                 close_handle(stdin_read);
@@ -157,7 +205,7 @@ impl SuspendedJobProcess {
                 LPPROC_THREAD_ATTRIBUTE_LIST(attribute_storage.as_mut_ptr().cast());
             if let Err(error) = InitializeProcThreadAttributeList(
                 Some(attribute_list),
-                1,
+                2,
                 None,
                 &mut attribute_size,
             ) {
@@ -183,6 +231,27 @@ impl SuspendedJobProcess {
                 close_handle(null_output);
                 close_handle(job);
                 return Err(text::process_stdio_setup_failed(error));
+            }
+            if let Err(error) = UpdateProcThreadAttribute(
+                attribute_list,
+                0,
+                windows::Win32::System::Threading::PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES
+                    as usize,
+                Some(
+                    (&mut security_capabilities
+                        as *mut windows::Win32::Security::SECURITY_CAPABILITIES)
+                        .cast(),
+                ),
+                size_of::<windows::Win32::Security::SECURITY_CAPABILITIES>(),
+                None,
+                None,
+            ) {
+                DeleteProcThreadAttributeList(attribute_list);
+                close_handle(stdin_read);
+                close_handle(stdin_write);
+                close_handle(null_output);
+                close_handle(job);
+                return Err(text::plugin_sandbox_launch_failed(error));
             }
             let startup = STARTUPINFOEXW {
                 StartupInfo: windows::Win32::System::Threading::STARTUPINFOW {
@@ -239,6 +308,7 @@ impl SuspendedJobProcess {
                 process: process_information.hProcess,
                 stdin_write,
                 terminated: false,
+                _sandbox: app_container,
             })
         }
     }
@@ -404,6 +474,111 @@ pub(super) fn wide_null(value: &std::ffi::OsStr) -> Result<Vec<u16>, String> {
 }
 
 #[cfg(windows)]
+pub(super) struct ResolvedWindowsExecutable {
+    pub path: std::path::PathBuf,
+    pub runtime_root: Option<std::path::PathBuf>,
+}
+
+#[cfg(windows)]
+static LAUNCH_DISCOVERY_SEQUENCE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+
+#[cfg(windows)]
+pub(super) fn resolve_windows_executable(
+    executable: &std::path::Path,
+) -> Result<ResolvedWindowsExecutable, String> {
+    if executable.components().count() == 1
+        && matches!(
+            executable.to_string_lossy().to_ascii_lowercase().as_str(),
+            "python" | "python3" | "py"
+        )
+    {
+        return resolve_windows_python(executable);
+    }
+    if executable.is_absolute() || executable.components().count() > 1 {
+        return Ok(ResolvedWindowsExecutable {
+            path: executable.to_path_buf(),
+            runtime_root: None,
+        });
+    }
+    let has_extension = executable.extension().is_some();
+    let path = std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+        .flat_map(|directory| {
+            let direct = directory.join(executable);
+            if has_extension {
+                vec![direct]
+            } else {
+                vec![direct.with_extension("exe"), direct]
+            }
+        })
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(|| executable.to_path_buf());
+    Ok(ResolvedWindowsExecutable {
+        path,
+        runtime_root: None,
+    })
+}
+
+#[cfg(windows)]
+fn resolve_windows_python(command: &std::path::Path) -> Result<ResolvedWindowsExecutable, String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    let command_name = command.to_string_lossy().to_ascii_lowercase();
+    let discovery_script = std::env::temp_dir().join(format!(
+        "my-label-tool-python-discovery-{}-{}.py",
+        std::process::id(),
+        LAUNCH_DISCOVERY_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::write(&discovery_script, "import sys\nprint(sys.executable)\n")
+        .map_err(text::plugin_python_resolution_failed)?;
+    let launcher_arguments = if command_name == "py" { " -3" } else { "" };
+    let discovery = format!(
+        "\"\"{command_name}\"{launcher_arguments} -I \"{}\"\"",
+        discovery_script.to_string_lossy().replace('"', "\"\"")
+    );
+    let output = Command::new("cmd.exe")
+        .args(["/d", "/s", "/c"])
+        .raw_arg(&discovery)
+        .stdin(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(text::plugin_python_resolution_failed);
+    let _ = std::fs::remove_file(&discovery_script);
+    let output = output?;
+    if !output.status.success() {
+        return Err(text::plugin_python_resolution_failed(
+            String::from_utf8_lossy(&output.stderr).trim(),
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let first_line = stdout
+        .lines()
+        .next()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .ok_or_else(|| text::plugin_python_resolution_failed("empty interpreter path"))?;
+    let path = std::fs::canonicalize(first_line).map_err(text::plugin_python_resolution_failed)?;
+    if !path.is_file()
+        || !path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+    {
+        return Err(text::plugin_python_resolution_failed(first_line));
+    }
+    let runtime_root = path
+        .parent()
+        .ok_or_else(|| text::plugin_python_resolution_failed(first_line))?
+        .to_path_buf();
+    Ok(ResolvedWindowsExecutable {
+        path,
+        runtime_root: Some(runtime_root),
+    })
+}
+
+#[cfg(windows)]
 pub(super) fn windows_environment_block_filtered(
     overrides: &[(&str, &str)],
     removals: &[&str],
@@ -427,11 +602,33 @@ fn windows_environment_block_from(
         .iter()
         .map(|key| key.to_ascii_lowercase())
         .collect::<HashSet<_>>();
+    const SAFE_KEYS: [&str; 18] = [
+        "path",
+        "systemroot",
+        "systemdrive",
+        "windir",
+        "comspec",
+        "pathext",
+        "userprofile",
+        "localappdata",
+        "appdata",
+        "temp",
+        "tmp",
+        "homedrive",
+        "homepath",
+        "username",
+        "lang",
+        "lc_all",
+        "tz",
+        "number_of_processors",
+    ];
     let mut variables = current
         .into_iter()
         .filter(|(key, _)| {
             let key = key.to_string_lossy().to_ascii_lowercase();
-            !overridden.contains(&key) && !removed.contains(&key)
+            (SAFE_KEYS.contains(&key.as_str()) || key.starts_with('='))
+                && !overridden.contains(&key)
+                && !removed.contains(&key)
         })
         .collect::<Vec<_>>();
     variables.extend(
@@ -473,6 +670,7 @@ mod environment_tests {
                     OsString::from("https_proxy"),
                     OsString::from("http://proxy"),
                 ),
+                (OsString::from("GITHUB_TOKEN"), OsString::from("secret")),
             ],
             &[("MY_LABEL_TOOL_PLUGIN_DIR", "C:\\plugin")],
             &["http_proxy", "HTTPS_PROXY"],
@@ -483,5 +681,7 @@ mod environment_tests {
         assert!(decoded.contains("MY_LABEL_TOOL_PLUGIN_DIR=C:\\plugin"));
         assert!(!decoded.to_ascii_lowercase().contains("http_proxy="));
         assert!(!decoded.to_ascii_lowercase().contains("https_proxy="));
+        assert!(!decoded.contains("GITHUB_TOKEN="));
+        assert!(!decoded.contains("secret"));
     }
 }

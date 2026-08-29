@@ -40,6 +40,11 @@ import { isEditableTarget } from "../lib/app-utils";
 import type { PrelabelExecutionControls } from "../hooks/usePrelabelExecution";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
 import type { PrelabelClassMapping } from "../types/prelabel";
+import type {
+  PluginExportFormatDescriptor,
+  PluginPrelabelSourceDescriptor,
+} from "../types/plugin";
+import type { PluginExportProgressState } from "../hooks/useProjectActions";
 
 const ShortcutSettings = lazy(async () => {
   const settings = await import("./settings/ShortcutSettings");
@@ -107,12 +112,18 @@ interface AppLayoutProps {
   transientMessage: string;
   shortcuts: ShortcutMap;
   templates: LabelTemplate[];
+  pluginTemplateIds: ReadonlySet<string>;
+  pluginTemplateSources: ReadonlyMap<string, string>;
+  pluginExportFormats: PluginExportFormatDescriptor[];
+  pluginPrelabelSources: PluginPrelabelSourceDescriptor[];
+  pluginExportProgress: PluginExportProgressState | null;
   transformerRef: MutableRefObject<KonvaTransformer | null>;
   updateMessage: string;
   updateProgress: AppUpdateProgress | null;
   updateStatus: AppUpdateStatus;
   usedLabelIds: Set<string>;
   cancelLabelChanges: () => void;
+  cancelPluginExport: () => void;
   changeAnnotationLabel: (annotationId: string, labelId: string) => void;
   checkForUpdates: () => void;
   clearCurrentImageAnnotations: () => void;
@@ -141,6 +152,8 @@ interface AppLayoutProps {
   openContextMenu: (event: KonvaEventObject<MouseEvent>, annotationId?: string) => void;
   openFolder: () => void;
   redo: () => void;
+  retryPluginConfigMigrations: () => Promise<void>;
+  refreshPluginLabelPresets: () => Promise<void>;
   resetZoom: () => void;
   saveProjectExport: () => void;
   savePrelabelMappings: (
@@ -227,12 +240,18 @@ export function AppLayout({
   transientMessage,
   shortcuts,
   templates,
+  pluginTemplateIds,
+  pluginTemplateSources,
+  pluginExportFormats,
+  pluginPrelabelSources,
+  pluginExportProgress,
   transformerRef,
   updateMessage,
   updateProgress,
   updateStatus,
   usedLabelIds,
   cancelLabelChanges,
+  cancelPluginExport,
   changeAnnotationLabel,
   checkForUpdates,
   clearCurrentImageAnnotations,
@@ -257,6 +276,8 @@ export function AppLayout({
   openContextMenu,
   openFolder,
   redo,
+  retryPluginConfigMigrations,
+  refreshPluginLabelPresets,
   resetZoom,
   saveProjectExport,
   savePrelabelMappings,
@@ -393,8 +414,13 @@ export function AppLayout({
         selectedPath={selectedPath}
         selectedTemplateId={selectedTemplateId}
         templates={templates}
+        pluginTemplateIds={pluginTemplateIds}
+        pluginTemplateSources={pluginTemplateSources}
+        pluginExportFormats={pluginExportFormats}
+        pluginExportProgress={pluginExportProgress}
         usedLabelIds={usedLabelIds}
         cancelLabelChanges={cancelLabelChanges}
+        cancelPluginExport={cancelPluginExport}
         checkForUpdates={checkForUpdates}
         clearCurrentImageAnnotations={clearCurrentImageAnnotations}
         createProjectFromExternalYolo={createProjectFromExternalYolo}
@@ -404,6 +430,8 @@ export function AppLayout({
         newTemplate={newTemplate}
         openFolder={openFolder}
         redo={redo}
+        retryPluginConfigMigrations={retryPluginConfigMigrations}
+        refreshPluginLabelPresets={refreshPluginLabelPresets}
         saveProjectExport={saveProjectExport}
         saveTemplate={saveTemplate}
         saveTemplateAndUpdateAnnotations={saveTemplateAndUpdateAnnotations}
@@ -705,6 +733,7 @@ export function AppLayout({
             isLoaded={prelabelModels.isLoaded}
             labels={labels}
             library={prelabelModels.library}
+            pluginSources={pluginPrelabelSources}
             onAddModel={prelabelModels.addModel}
             onClose={() => setIsPrelabelSettingsOpen(false)}
             onDeleteModel={prelabelModels.deleteModel}

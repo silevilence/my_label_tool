@@ -9,7 +9,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError},
         Arc, Condvar, Mutex, OnceLock,
     },
@@ -26,8 +26,9 @@ use super::{
     },
     process_environment::{OFFLINE_ENVIRONMENT_OVERRIDES, PROXY_ENVIRONMENT_VARIABLES},
     protocol::{
-        encode_message, host_hello_request, negotiate_hello_response, NdjsonDecoder,
-        NegotiatedSession, PluginMessage, ResponseOutcome, PLUGIN_PROTOCOL_VERSION,
+        encode_message_with_limit, host_hello_request, negotiate_hello_response, ControlAction,
+        EventKind, NdjsonDecoder, NegotiatedSession, PluginMessage, ResponseOutcome,
+        MAX_EXPORTER_NDJSON_LINE_BYTES, MAX_NDJSON_LINE_BYTES, PLUGIN_PROTOCOL_VERSION,
     },
     registry::{
         get_registered_plugin, record_plugin_runtime_failure, record_plugin_runtime_success,
@@ -38,17 +39,17 @@ use super::{
 #[cfg(unix)]
 use super::process_environment::apply_offline_environment;
 
-#[cfg(windows)]
-use crate::process_control::PipedJobProcess;
 #[cfg(unix)]
 use crate::process_control::{configure_process_group, terminate_process_tree};
+#[cfg(windows)]
+use crate::process_control::{PipedJobProcess, PluginSandbox};
 #[cfg(unix)]
 use std::process::{Child, Command, Stdio};
 
 const SETTINGS_FILE: &str = "plugin-settings.json";
 const STDERR_LOG_LINES: usize = 500;
 const STDERR_LINE_BYTES: usize = 64 * 1024;
-const RUNTIME_MESSAGE_QUEUE_CAPACITY: usize = 8;
+const RUNTIME_MESSAGE_QUEUE_CAPACITY: usize = 2;
 const MAX_PROXY_REQUESTS_PER_CALL: usize = 8;
 const MAX_PROXY_BYTES_PER_CALL: u64 = MAX_PROXY_FILE_BYTES * MAX_PROXY_REQUESTS_PER_CALL as u64;
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -137,6 +138,56 @@ pub struct PluginCallError {
     counts_as_failure: bool,
 }
 
+impl PluginCallError {
+    pub(crate) fn external(code: &str, message: &str) -> Self {
+        call_error(code, message)
+    }
+}
+
+#[derive(Clone)]
+pub struct PluginCallHooks {
+    is_cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+    on_event: Arc<dyn Fn(Value) + Send + Sync>,
+    cancel_grace: Duration,
+    defer_success_recording: bool,
+    accept_cancelled_result: bool,
+}
+
+impl PluginCallHooks {
+    pub fn new(
+        cancelled: Arc<AtomicBool>,
+        on_event: impl Fn(Value) + Send + Sync + 'static,
+    ) -> Self {
+        Self::new_with_cancel_check(move || cancelled.load(Ordering::Acquire), on_event)
+    }
+
+    pub(crate) fn new_with_cancel_check(
+        is_cancelled: impl Fn() -> bool + Send + Sync + 'static,
+        on_event: impl Fn(Value) + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            is_cancelled: Arc::new(is_cancelled),
+            on_event: Arc::new(on_event),
+            cancel_grace: Duration::from_secs(2),
+            defer_success_recording: false,
+            accept_cancelled_result: false,
+        }
+    }
+
+    pub fn with_deferred_success_recording(mut self) -> Self {
+        self.defer_success_recording = true;
+        self
+    }
+
+    /// Allows a cancellation-aware capability to return its validated partial
+    /// result before the host tears down the process. The process is still
+    /// terminated after the response so cancellation never leaves a session.
+    pub fn with_cancelled_result(mut self) -> Self {
+        self.accept_cancelled_result = true;
+        self
+    }
+}
+
 /// Invokes a code-plugin capability. This is the only process-runtime entry
 /// point; callers on application start/project open/save paths must never call
 /// it because it may start a process and wait up to the manifest timeout.
@@ -146,12 +197,51 @@ pub fn invoke_plugin(
     method: &str,
     params: Value,
 ) -> Result<Value, PluginCallError> {
+    invoke_plugin_with_state(app_data_dir, plugin_id, method, params, false, None)
+}
+
+pub fn invoke_plugin_with_hooks(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    method: &str,
+    params: Value,
+    hooks: &PluginCallHooks,
+) -> Result<Value, PluginCallError> {
+    invoke_plugin_with_state(app_data_dir, plugin_id, method, params, false, Some(hooks))
+}
+
+/// Invokes only `config.migrate`, including while the registry entry is in the
+/// pending-migration state. Safe mode and explicit/automatic disablement still
+/// prevent process startup.
+pub fn invoke_plugin_config_migration(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    params: Value,
+) -> Result<Value, PluginCallError> {
+    invoke_plugin_with_state(
+        app_data_dir,
+        plugin_id,
+        "config.migrate",
+        params,
+        true,
+        None,
+    )
+}
+
+fn invoke_plugin_with_state(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    method: &str,
+    params: Value,
+    allow_pending_migration: bool,
+    hooks: Option<&PluginCallHooks>,
+) -> Result<Value, PluginCallError> {
     let control = runtime_manager()
         .lock()
         .map_err(|_| internal_call_error(text::PLUGIN_RUNTIME_LOCK_POISONED))?
         .control_token(plugin_id);
     let entry = get_registered_plugin(app_data_dir, plugin_id).map_err(registry_call_error)?;
-    ensure_invocable(app_data_dir, &entry)?;
+    ensure_invocable(app_data_dir, &entry, allow_pending_migration)?;
     let timeout = Duration::from_millis(u64::from(entry.timeout_ms));
     let session = runtime_manager()
         .lock()
@@ -174,17 +264,21 @@ pub fn invoke_plugin(
         method,
         params,
         timeout,
+        hooks,
     );
     match result {
         Ok(value) => {
-            if entry.failure_count > 0 {
+            if entry.failure_count > 0 && hooks.is_none_or(|hooks| !hooks.defer_success_recording) {
                 record_plugin_runtime_success(app_data_dir, plugin_id)
                     .map_err(registry_call_error)?;
             }
             Ok(value)
         }
         Err(error) => {
-            if error.counts_as_failure {
+            if error.code == "CANCELLED" {
+                drop(session_guard);
+                remove_matching_session(plugin_id, &session);
+            } else if error.counts_as_failure {
                 let persisted =
                     record_plugin_runtime_failure(app_data_dir, plugin_id, &error.message);
                 drop(session_guard);
@@ -328,6 +422,7 @@ fn maintenance_coordinator() -> &'static PluginMaintenanceCoordinator {
 fn ensure_invocable(
     app_data_dir: &Path,
     entry: &PluginRegistryEntry,
+    allow_pending_migration: bool,
 ) -> Result<(), PluginCallError> {
     if entry.extension_kind == PluginExtensionKind::LabelPreset || entry.entry.is_none() {
         return Err(call_error(
@@ -348,6 +443,7 @@ fn ensure_invocable(
             "PLUGIN_AUTO_DISABLED",
             text::PLUGIN_RUNTIME_AUTO_DISABLED,
         )),
+        PluginState::PendingMigration if allow_pending_migration => Ok(()),
         PluginState::PendingMigration => Err(call_error(
             "CONFIG_MIGRATION_REQUIRED",
             text::PLUGIN_CONFIG_MIGRATION_REQUIRED,
@@ -472,6 +568,7 @@ impl PluginRuntimeManager {
                 method,
                 params,
                 timeout,
+                None,
             );
         if result.as_ref().is_err_and(|error| error.counts_as_failure) {
             if let Some(removed) = self.remove(&entry.id) {
@@ -529,6 +626,21 @@ struct PluginSession {
     messages: Receiver<Result<PluginMessage, PluginCallError>>,
     negotiated: Option<NegotiatedSession>,
     permissions: FileProxyPolicy,
+    max_line_bytes: usize,
+}
+
+#[derive(Clone, Copy)]
+struct CallExecution<'a> {
+    deadline: Instant,
+    hooks: Option<&'a PluginCallHooks>,
+}
+
+#[derive(Clone, Copy)]
+struct ActiveCallHooks<'a> {
+    hooks: &'a PluginCallHooks,
+    progress: bool,
+    cancel: bool,
+    accept_cancelled_result: bool,
 }
 
 #[derive(Debug, Default)]
@@ -571,14 +683,8 @@ impl PluginSession {
             .entry
             .as_ref()
             .ok_or_else(|| call_error("INVALID_ARGUMENT", text::PLUGIN_RUNTIME_ENTRY_MISSING))?;
-        #[cfg(test)]
-        let is_test_system_command = declared.command == "powershell.exe";
-        #[cfg(not(test))]
-        let is_test_system_command = false;
         let executable = if matches!(declared.command.as_str(), "python" | "python3" | "py") {
             PathBuf::from(&declared.command)
-        } else if is_test_system_command {
-            PathBuf::from("powershell")
         } else {
             package_root.join(&declared.command)
         };
@@ -587,8 +693,13 @@ impl PluginSession {
             RuntimeProcess::spawn(&executable, &declared.args, &package_root, &plugin_dir)
                 .map_err(|message| runtime_call_error("RUNTIME_UNAVAILABLE", &message))?;
         let process = Arc::new(Mutex::new(process));
+        let max_line_bytes = if entry.extension_kind == PluginExtensionKind::Exporter {
+            MAX_EXPORTER_NDJSON_LINE_BYTES
+        } else {
+            MAX_NDJSON_LINE_BYTES
+        };
         let (sender, receiver) = mpsc::sync_channel(RUNTIME_MESSAGE_QUEUE_CAPACITY);
-        thread::spawn(move || read_stdout(stdout, sender));
+        thread::spawn(move || read_stdout(stdout, sender, max_line_bytes));
         let stderr_lines = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_LOG_LINES)));
         let reader_lines = Arc::clone(&stderr_lines);
         thread::spawn(move || read_stderr(stderr, reader_lines));
@@ -599,6 +710,7 @@ impl PluginSession {
                 messages: receiver,
                 negotiated: None,
                 permissions,
+                max_line_bytes,
             },
             process,
             stderr_lines,
@@ -625,6 +737,7 @@ impl PluginSession {
         method: &str,
         params: Value,
         timeout: Duration,
+        hooks: Option<&PluginCallHooks>,
     ) -> Result<Value, PluginCallError> {
         let deadline = Instant::now() + timeout;
         let watchdog = CallWatchdog::start(Arc::clone(&self.process), timeout);
@@ -634,8 +747,8 @@ impl PluginSession {
             declared_capabilities,
             method,
             params,
-            deadline,
             &mut proxy_budget,
+            CallExecution { deadline, hooks },
         );
         if watchdog.finish() {
             Err(runtime_call_error("TIMEOUT", text::PLUGIN_RUNTIME_TIMEOUT))
@@ -650,14 +763,33 @@ impl PluginSession {
         declared_capabilities: &PluginCapabilities,
         method: &str,
         params: Value,
-        deadline: Instant,
         proxy_budget: &mut ProxyCallBudget,
+        execution: CallExecution<'_>,
     ) -> Result<Value, PluginCallError> {
         if self.negotiated.is_none() {
-            self.handshake_before(deadline, proxy_budget)?;
+            self.handshake_before(execution.deadline, proxy_budget)?;
         }
-        self.ensure_capability(extension_kind, declared_capabilities, method)?;
-        self.call(method, params, deadline, proxy_budget)
+        self.ensure_capability(extension_kind, declared_capabilities, method, &params)?;
+        let active_hooks = execution.hooks.map(|hooks| {
+            let negotiated = &self
+                .negotiated
+                .as_ref()
+                .expect("handshake completed before capability dispatch")
+                .capabilities;
+            ActiveCallHooks {
+                hooks,
+                progress: declared_capabilities.progress && negotiated.progress,
+                cancel: declared_capabilities.cancel && negotiated.cancel,
+                accept_cancelled_result: hooks.accept_cancelled_result,
+            }
+        });
+        self.call(
+            method,
+            params,
+            execution.deadline,
+            proxy_budget,
+            active_hooks,
+        )
     }
 
     fn ensure_capability(
@@ -665,6 +797,7 @@ impl PluginSession {
         extension_kind: &PluginExtensionKind,
         declared_capabilities: &PluginCapabilities,
         method: &str,
+        params: &Value,
     ) -> Result<(), PluginCallError> {
         let capabilities = &self
             .negotiated
@@ -676,7 +809,13 @@ impl PluginSession {
                 *extension_kind == PluginExtensionKind::Exporter && capabilities.exporter
             }
             "prelabel.run" => {
-                *extension_kind == PluginExtensionKind::Prelabel && capabilities.prelabel
+                let is_batch = params
+                    .get("imagePaths")
+                    .and_then(Value::as_array)
+                    .is_some_and(|paths| paths.len() > 1);
+                *extension_kind == PluginExtensionKind::Prelabel
+                    && capabilities.prelabel
+                    && (!is_batch || (declared_capabilities.batch && capabilities.batch))
             }
             "config.migrate" => {
                 declared_capabilities.config_migration && capabilities.config_migration
@@ -699,6 +838,7 @@ impl PluginSession {
         params: Value,
         deadline: Instant,
         proxy_budget: &mut ProxyCallBudget,
+        hooks: Option<ActiveCallHooks<'_>>,
     ) -> Result<Value, PluginCallError> {
         let id = next_request_id("call");
         self.send(&PluginMessage::Request {
@@ -707,7 +847,7 @@ impl PluginSession {
             method: method.to_string(),
             params,
         })?;
-        match self.receive_response(&id, deadline, proxy_budget)? {
+        match self.receive_response_with_hooks(&id, deadline, proxy_budget, hooks)? {
             PluginMessage::Response {
                 outcome: ResponseOutcome::Result(value),
                 ..
@@ -724,7 +864,8 @@ impl PluginSession {
     }
 
     fn send(&mut self, message: &PluginMessage) -> Result<(), PluginCallError> {
-        let encoded = encode_message(message).map_err(protocol_call_error)?;
+        let encoded =
+            encode_message_with_limit(message, self.max_line_bytes).map_err(protocol_call_error)?;
         self.stdin
             .write_all(encoded.as_bytes())
             .and_then(|_| self.stdin.write_all(b"\n"))
@@ -740,10 +881,41 @@ impl PluginSession {
         deadline: Instant,
         proxy_budget: &mut ProxyCallBudget,
     ) -> Result<PluginMessage, PluginCallError> {
+        self.receive_response_with_hooks(expected_id, deadline, proxy_budget, None)
+    }
+
+    fn receive_response_with_hooks(
+        &mut self,
+        expected_id: &str,
+        deadline: Instant,
+        proxy_budget: &mut ProxyCallBudget,
+        hooks: Option<ActiveCallHooks<'_>>,
+    ) -> Result<PluginMessage, PluginCallError> {
+        let mut effective_deadline = deadline;
+        let mut cancel_sent = false;
         loop {
-            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            if !cancel_sent && hooks.is_some_and(|hooks| (hooks.hooks.is_cancelled)()) {
+                let hooks = hooks.expect("hooks checked above");
+                if !hooks.cancel {
+                    self.terminate();
+                    return Err(call_error("CANCELLED", text::PLUGIN_RUNTIME_CANCELLED));
+                }
+                self.send(&PluginMessage::Control {
+                    v: PLUGIN_PROTOCOL_VERSION,
+                    id: Some(expected_id.to_string()),
+                    action: ControlAction::Cancel,
+                })?;
+                cancel_sent = true;
+                effective_deadline =
+                    effective_deadline.min(Instant::now() + hooks.hooks.cancel_grace);
+            }
+            let Some(remaining) = effective_deadline.checked_duration_since(Instant::now()) else {
                 self.terminate();
-                return Err(runtime_call_error("TIMEOUT", text::PLUGIN_RUNTIME_TIMEOUT));
+                return if cancel_sent {
+                    Err(call_error("CANCELLED", text::PLUGIN_RUNTIME_CANCELLED))
+                } else {
+                    Err(runtime_call_error("TIMEOUT", text::PLUGIN_RUNTIME_TIMEOUT))
+                };
             };
             match self
                 .messages
@@ -753,9 +925,37 @@ impl PluginSession {
                     PluginMessage::Response { ref id, .. }
                         if id.as_deref() == Some(expected_id) =>
                     {
+                        if cancel_sent {
+                            self.terminate();
+                            if hooks.is_some_and(|hooks| hooks.accept_cancelled_result)
+                                && matches!(
+                                    message,
+                                    PluginMessage::Response {
+                                        outcome: ResponseOutcome::Result(_),
+                                        ..
+                                    }
+                                )
+                            {
+                                return Ok(message);
+                            }
+                            return Err(call_error("CANCELLED", text::PLUGIN_RUNTIME_CANCELLED));
+                        }
                         return Ok(message);
                     }
-                    PluginMessage::Event { .. } => {}
+                    PluginMessage::Event { event, payload, .. } => {
+                        if let Some(hooks) = hooks
+                            .filter(|hooks| !matches!(event, EventKind::Progress) || hooks.progress)
+                        {
+                            let event_name = match event {
+                                EventKind::Progress => "progress",
+                                EventKind::Log => "log",
+                            };
+                            (hooks.hooks.on_event)(serde_json::json!({
+                                "event": event_name,
+                                "payload": payload,
+                            }));
+                        }
+                    }
                     PluginMessage::Request {
                         id: Some(id),
                         method,
@@ -764,7 +964,7 @@ impl PluginSession {
                     } => {
                         let outcome = if proxy_budget.reserve(&method, &params) {
                             let Some(proxy_timeout) =
-                                deadline.checked_duration_since(Instant::now())
+                                effective_deadline.checked_duration_since(Instant::now())
                             else {
                                 self.terminate();
                                 return Err(runtime_call_error(
@@ -906,8 +1106,9 @@ type SessionParts = (
 fn read_stdout(
     mut stdout: Box<dyn Read + Send>,
     sender: mpsc::SyncSender<Result<PluginMessage, PluginCallError>>,
+    max_line_bytes: usize,
 ) {
-    let mut decoder = NdjsonDecoder::default();
+    let mut decoder = NdjsonDecoder::with_max_line_bytes(max_line_bytes);
     let mut buffer = [0_u8; 8192];
     loop {
         match stdout.read(&mut buffer) {
@@ -1004,6 +1205,11 @@ impl RuntimeProcess {
             executable,
             arguments,
             working_directory,
+            PluginSandbox {
+                identity: plugin_dir,
+                package_root: working_directory,
+                allow_network: false,
+            },
             &[
                 ("MY_LABEL_TOOL_PLUGIN_DIR", plugin_dir),
                 OFFLINE_ENVIRONMENT_OVERRIDES[0],
@@ -1176,7 +1382,7 @@ mod tests {
         registry::{clear_registered_plugin_failures, get_registered_plugin},
     };
     use std::sync::atomic::AtomicUsize;
-    use std::sync::{MutexGuard, OnceLock};
+    use std::sync::MutexGuard;
     use std::time::SystemTime;
 
     #[test]
@@ -1220,16 +1426,21 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn runtime_test_fixture_does_not_depend_on_powershell_modules() {
+        let entry = test_entry("dev.test.nativefixture", "success", 2_000);
+        assert_ne!(
+            entry.entry.expect("code entry").command,
+            "powershell.exe",
+            "runtime tests must use a packaged native protocol fixture"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn process_session_handshakes_reuses_and_exposes_plugin_directory() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("reuse");
-        let entry = test_entry(
-            "dev.test.reuse",
-            powershell_plugin(
-                "$script:count++; $result = @{ count = $script:count; pluginDir = $env:MY_LABEL_TOOL_PLUGIN_DIR; value = $msg.params.value }",
-            ),
-            2_000,
-        );
+        let entry = test_entry("dev.test.reuse", "reuse", 2_000);
         create_package(&root, &entry.id);
         let mut manager = PluginRuntimeManager::default();
 
@@ -1267,38 +1478,24 @@ mod tests {
     #[test]
     fn timeout_crash_and_garbage_remove_the_session() {
         let _runtime_test_guard = runtime_test_guard();
-        for (name, body, expected, timeout) in [
-            (
-                "timeout",
-                "Start-Sleep -Seconds 30",
-                "TIMEOUT",
-                Duration::from_millis(100),
-            ),
-            (
-                "crash",
-                "Stop-Process -Id $PID -Force",
-                "INTERNAL_ERROR",
-                Duration::from_secs(2),
-            ),
+        for (name, fixture, expected, timeout) in [
+            ("timeout", "timeout", "TIMEOUT", Duration::from_millis(100)),
+            ("crash", "crash", "INTERNAL_ERROR", Duration::from_secs(2)),
         ] {
             let root = test_directory(name);
-            let entry = test_entry(&format!("dev.test.{name}"), powershell_plugin(body), 100);
+            let entry = test_entry(&format!("dev.test.{name}"), fixture, 100);
             create_package(&root, &entry.id);
             let mut manager = PluginRuntimeManager::default();
             let error = manager
                 .invoke(&root, &entry, "exporter.export", Value::Null, timeout)
                 .expect_err("broken plugin must fail");
-            assert_eq!(error.code, expected);
+            assert_eq!(error.code, expected, "{}", error.message);
             assert!(!manager.sessions.contains_key(&entry.id));
             fs::remove_dir_all(root).expect("remove fixture");
         }
 
         let root = test_directory("garbage");
-        let entry = test_entry(
-            "dev.test.garbage",
-            "while (($line = [Console]::In.ReadLine()) -ne $null) { [Console]::Out.WriteLine('not-json') }".to_string(),
-            1_000,
-        );
+        let entry = test_entry("dev.test.garbage", "garbage", 1_000);
         create_package(&root, &entry.id);
         let mut manager = PluginRuntimeManager::default();
         let error = manager
@@ -1320,12 +1517,7 @@ mod tests {
     fn timeout_terminates_the_parent_and_descendant_processes() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("timeout-tree");
-        let process_ids = root.join("process-ids.txt");
-        let escaped_path = process_ids.to_string_lossy().replace('\'', "''");
-        let body = format!(
-            "$child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; [System.IO.File]::WriteAllText('{escaped_path}', \"$PID`n$($child.Id)\"); Start-Sleep -Seconds 30"
-        );
-        let entry = test_entry("dev.test.timeouttree", powershell_plugin(&body), 1_000);
+        let entry = test_entry("dev.test.timeouttree", "timeout-tree", 1_000);
         create_package(&root, &entry.id);
         let mut manager = PluginRuntimeManager::default();
         let error = manager
@@ -1338,9 +1530,11 @@ mod tests {
             )
             .expect_err("timeout must fail");
         assert_eq!(error.code, "TIMEOUT");
-        let ids = fs::read_to_string(&process_ids)
+        let ids = manager
+            .diagnostics
+            .get(&entry.id)
             .expect("plugin and child process IDs")
-            .lines()
+            .iter()
             .map(|value| value.parse::<u32>().expect("numeric process ID"))
             .collect::<Vec<_>>();
         assert_eq!(ids.len(), 2);
@@ -1357,15 +1551,115 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn progress_hook_can_cancel_exporter_and_prelabel_processes() {
+        let _runtime_test_guard = runtime_test_guard();
+        for (suffix, extension_kind, method) in [
+            ("export", PluginExtensionKind::Exporter, "exporter.export"),
+            ("prelabel", PluginExtensionKind::Prelabel, "prelabel.run"),
+        ] {
+            let root = test_directory(&format!("cancel-{suffix}"));
+            let mut entry = test_entry(&format!("dev.test.cancel{suffix}"), "cancel", 10_000);
+            entry.extension_kind = extension_kind;
+            if entry.extension_kind == PluginExtensionKind::Prelabel {
+                entry.capabilities.annotation_types =
+                    vec![super::super::manifest::PluginAnnotationType::Rect];
+            }
+            entry.capabilities.progress = true;
+            entry.capabilities.cancel = true;
+            create_package(&root, &entry.id);
+            write_registry(&root, std::slice::from_ref(&entry));
+
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let callback_cancelled = Arc::clone(&cancelled);
+            let events = Arc::new(Mutex::new(Vec::new()));
+            let callback_events = Arc::clone(&events);
+            let hooks = PluginCallHooks::new(cancelled, move |event| {
+                callback_events.lock().expect("events").push(event);
+                callback_cancelled.store(true, Ordering::Release);
+            });
+            let error = invoke_plugin_with_hooks(&root, &entry.id, method, Value::Null, &hooks)
+                .expect_err("cancelled plugin call must fail");
+            assert_eq!(error.code, "CANCELLED");
+            assert_eq!(events.lock().expect("events")[0]["event"], "progress");
+            assert!(!runtime_manager()
+                .lock()
+                .expect("runtime manager")
+                .sessions
+                .contains_key(&entry.id));
+
+            let process_id = plugin_runtime_logs(&entry.id)
+                .into_iter()
+                .find(|line| line.chars().all(|character| character.is_ascii_digit()))
+                .expect("process id diagnostic")
+                .parse::<u32>()
+                .expect("numeric process id");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while process_exists(process_id) && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(50));
+            }
+            assert!(
+                !process_exists(process_id),
+                "cancel left the plugin process alive"
+            );
+            fs::remove_dir_all(root).expect("remove fixture");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cancellation_aware_prelabel_can_return_partial_result_before_termination() {
+        let _runtime_test_guard = runtime_test_guard();
+        let root = test_directory("cancel-partial-prelabel");
+        let mut entry = test_entry("dev.test.cancelpartial", "cancel-partial", 10_000);
+        entry.extension_kind = PluginExtensionKind::Prelabel;
+        entry.capabilities.annotation_types =
+            vec![super::super::manifest::PluginAnnotationType::Rect];
+        entry.capabilities.batch = true;
+        entry.capabilities.progress = true;
+        entry.capabilities.cancel = true;
+        create_package(&root, &entry.id);
+        write_registry(&root, std::slice::from_ref(&entry));
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let callback_cancelled = Arc::clone(&cancelled);
+        let hooks = PluginCallHooks::new(cancelled, move |_| {
+            callback_cancelled.store(true, Ordering::Release);
+        })
+        .with_cancelled_result();
+        let result = invoke_plugin_with_hooks(
+            &root,
+            &entry.id,
+            "prelabel.run",
+            serde_json::json!({ "imagePaths": ["images/a.jpg", "images/b.jpg"] }),
+            &hooks,
+        )
+        .expect("partial cancellation result");
+        assert_eq!(result["cancelled"], true);
+        assert_eq!(result["completedImagePaths"][0], "images/a.jpg");
+
+        let process_id = plugin_runtime_logs(&entry.id)
+            .into_iter()
+            .find(|line| line.chars().all(|character| character.is_ascii_digit()))
+            .expect("process id diagnostic")
+            .parse::<u32>()
+            .expect("numeric process id");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while process_exists(process_id) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            !process_exists(process_id),
+            "cancel left a plugin process alive"
+        );
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn timeout_covers_a_blocked_stdin_write_after_hello() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("blocked-stdin");
-        let marker = root.join("hello-complete.txt");
-        let escaped = marker.to_string_lossy().replace('\'', "''");
-        let script = format!(
-            "$line = [Console]::In.ReadLine(); $msg = $line | ConvertFrom-Json; $response = @{{ v = 1; id = $msg.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ exporter = $true }} }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush(); [System.IO.File]::WriteAllText('{escaped}', 'ready'); Start-Sleep -Seconds 30"
-        );
-        let entry = test_entry("dev.test.blockedstdin", script, 1_500);
+        let entry = test_entry("dev.test.blockedstdin", "blocked-stdin", 1_500);
         create_package(&root, &entry.id);
         let mut manager = PluginRuntimeManager::default();
         let started = Instant::now();
@@ -1379,7 +1673,13 @@ mod tests {
             )
             .expect_err("blocked stdin write must time out");
         assert_eq!(error.code, "TIMEOUT");
-        assert!(marker.is_file(), "hello must complete before stdin blocks");
+        assert!(
+            manager
+                .diagnostics
+                .get(&entry.id)
+                .is_some_and(|lines| lines.iter().any(|line| line == "hello-ready")),
+            "hello must complete before stdin blocks"
+        );
         assert!(started.elapsed() < Duration::from_secs(4));
         fs::remove_dir_all(root).expect("remove fixture");
     }
@@ -1389,11 +1689,7 @@ mod tests {
     fn exited_process_restarts_on_the_next_call() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("restart");
-        let entry = test_entry(
-            "dev.test.restart",
-            powershell_plugin("$result = @{ count = 1 }; $exitAfterResponse = $true"),
-            2_000,
-        );
+        let entry = test_entry("dev.test.restart", "restart", 2_000);
         create_package(&root, &entry.id);
         let mut manager = PluginRuntimeManager::default();
         manager
@@ -1424,19 +1720,11 @@ mod tests {
     fn failures_auto_disable_and_a_later_success_clears_the_counter() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("failures");
-        let failing = test_entry(
-            "dev.test.failures",
-            powershell_plugin("Start-Sleep -Seconds 30"),
-            75,
-        );
+        let failing = test_entry("dev.test.failures", "timeout", 75);
         let recovering = PluginRegistryEntry {
             failure_count: 2,
             last_error: Some("旧失败".to_string()),
-            ..test_entry(
-                "dev.test.recovery",
-                powershell_plugin("$result = @{ ok = $true }"),
-                2_000,
-            )
+            ..test_entry("dev.test.recovery", "success", 2_000)
         };
         create_package(&root, &failing.id);
         create_package(&root, &recovering.id);
@@ -1473,11 +1761,7 @@ mod tests {
     fn negotiated_capabilities_gate_calls_and_business_errors_do_not_break_the_session() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("capability-gate");
-        let unavailable = test_entry(
-            "dev.test.capabilitygate",
-            powershell_plugin_with_exporter("$result = @{ ok = $true }", false),
-            2_000,
-        );
+        let unavailable = test_entry("dev.test.capabilitygate", "no-exporter", 2_000);
         create_package(&root, &unavailable.id);
         let mut manager = PluginRuntimeManager::default();
         let error = manager
@@ -1494,11 +1778,7 @@ mod tests {
         assert!(manager.sessions.contains_key(&unavailable.id));
         manager.remove(&unavailable.id);
 
-        let business_error = test_entry(
-            "dev.test.businesserror",
-            powershell_error_plugin("INVALID_ARGUMENT"),
-            2_000,
-        );
+        let business_error = test_entry("dev.test.businesserror", "business-error", 2_000);
         create_package(&root, &business_error.id);
         for _ in 0..3 {
             let error = manager
@@ -1516,11 +1796,7 @@ mod tests {
         assert!(manager.sessions.contains_key(&business_error.id));
         manager.remove(&business_error.id);
 
-        let undeclared_migration = test_entry(
-            "dev.test.migrationgate",
-            powershell_plugin_with_capabilities("$result = @{ ok = $true }", true, true),
-            2_000,
-        );
+        let undeclared_migration = test_entry("dev.test.migrationgate", "success", 2_000);
         create_package(&root, &undeclared_migration.id);
         let error = manager
             .invoke(
@@ -1546,7 +1822,7 @@ mod tests {
         fs::create_dir_all(&allowed).expect("create allowed directory");
         fs::create_dir_all(&outside).expect("create outside directory");
         fs::write(outside.join("secret.txt"), "never-disclose-this").expect("write secret file");
-        let mut entry = test_entry("dev.test.fileproxy", powershell_file_proxy_plugin(), 2_000);
+        let mut entry = test_entry("dev.test.fileproxy", "file-proxy", 2_000);
         entry.grants = vec![crate::plugins::permissions::PluginPermissionGrant {
             permission: "fs.read".to_string(),
             target: Some(allowed.to_string_lossy().into_owned()),
@@ -1576,15 +1852,7 @@ mod tests {
     fn out_of_band_termination_interrupts_a_long_call_without_waiting_for_timeout() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("out-of-band-stop");
-        let marker = root.join("started.txt");
-        let escaped = marker.to_string_lossy().replace('\'', "''");
-        let entry = test_entry(
-            "dev.test.outofband",
-            powershell_plugin(&format!(
-                "[System.IO.File]::WriteAllText('{escaped}', 'started'); Start-Sleep -Seconds 30"
-            )),
-            30_000,
-        );
+        let entry = test_entry("dev.test.outofband", "long-call", 30_000);
         create_package(&root, &entry.id);
         let session = ManagedSession::spawn(&root, &entry).expect("spawn session");
         let calling = Arc::clone(&session);
@@ -1596,13 +1864,17 @@ mod tests {
                 "exporter.export",
                 Value::Null,
                 Duration::from_secs(30),
+                None,
             )
         });
         let deadline = Instant::now() + Duration::from_secs(5);
-        while !marker.is_file() && Instant::now() < deadline {
+        while !session.logs().iter().any(|line| line == "started") && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(25));
         }
-        assert!(marker.is_file(), "plugin call did not start");
+        assert!(
+            session.logs().iter().any(|line| line == "started"),
+            "plugin call did not start"
+        );
         let started = Instant::now();
         session.terminate().expect("terminate session");
         assert!(started.elapsed() < Duration::from_secs(1));
@@ -1645,11 +1917,7 @@ mod tests {
     fn control_generation_prevents_a_waiting_call_from_spawning_after_state_change() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("state-generation");
-        let entry = test_entry(
-            "dev.test.stategeneration",
-            powershell_plugin("$result = @{ ok = $true }"),
-            2_000,
-        );
+        let entry = test_entry("dev.test.stategeneration", "success", 2_000);
         create_package(&root, &entry.id);
         let mut manager = PluginRuntimeManager::default();
         let stale_control = manager.control_token(&entry.id);
@@ -1678,11 +1946,7 @@ mod tests {
     fn maintenance_gate_serializes_termination_and_the_whole_package_transaction() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("maintenance-gate");
-        let entry = test_entry(
-            "dev.test.maintenancegate",
-            powershell_plugin("$result = @{ ok = $true }"),
-            2_000,
-        );
+        let entry = test_entry("dev.test.maintenancegate", "success", 2_000);
         create_package(&root, &entry.id);
         let session = ManagedSession::spawn(&root, &entry).expect("spawn session");
         let process = Arc::clone(&session.process);
@@ -1759,11 +2023,7 @@ mod tests {
     fn maintenance_aborts_and_releases_the_gate_when_termination_fails() {
         let _runtime_test_guard = runtime_test_guard();
         let root = test_directory("maintenance-termination-failure");
-        let entry = test_entry(
-            "dev.test.maintenancefailure",
-            powershell_plugin("$result = @{ ok = $true }"),
-            2_000,
-        );
+        let entry = test_entry("dev.test.maintenancefailure", "success", 2_000);
         create_package(&root, &entry.id);
         let session = ManagedSession::spawn(&root, &entry).expect("spawn session");
         let process = Arc::clone(&session.process);
@@ -1824,6 +2084,23 @@ mod tests {
         assert!(lines[0].ends_with(text::PLUGIN_RUNTIME_STDERR_TRUNCATED));
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn pending_migration_allows_only_the_config_migration_entry_point() {
+        let _runtime_test_guard = runtime_test_guard();
+        let root = test_directory("pending-migration-gate");
+        let mut entry = test_entry("dev.test.pendingmigration", "success", 2_000);
+        entry.state = PluginState::PendingMigration;
+
+        let normal = ensure_invocable(&root, &entry, false)
+            .expect_err("normal capability calls must remain disabled");
+        assert_eq!(normal.code, "CONFIG_MIGRATION_REQUIRED");
+        ensure_invocable(&root, &entry, true)
+            .expect("the dedicated config migration path must be retryable");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn stdout_reader_applies_backpressure_when_the_bounded_queue_is_full() {
         let _runtime_test_guard = runtime_test_guard();
@@ -1834,7 +2111,8 @@ mod tests {
             line: b"{\"v\":1,\"id\":null,\"type\":\"control\",\"action\":\"heartbeat\"}\n",
         };
         let (sender, receiver) = mpsc::sync_channel(RUNTIME_MESSAGE_QUEUE_CAPACITY);
-        let worker = thread::spawn(move || read_stdout(Box::new(reader), sender));
+        let worker =
+            thread::spawn(move || read_stdout(Box::new(reader), sender, MAX_NDJSON_LINE_BYTES));
         let deadline = Instant::now() + Duration::from_secs(2);
         while reads.load(Ordering::Acquire) < RUNTIME_MESSAGE_QUEUE_CAPACITY + 1
             && Instant::now() < deadline
@@ -1874,50 +2152,11 @@ mod tests {
     }
 
     fn runtime_test_guard() -> MutexGuard<'static, ()> {
-        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        TEST_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::process_control::windows_isolation_test_guard()
     }
 
     #[cfg(windows)]
-    fn powershell_plugin(call_body: &str) -> String {
-        powershell_plugin_with_exporter(call_body, true)
-    }
-
-    #[cfg(windows)]
-    fn powershell_plugin_with_exporter(call_body: &str, exporter: bool) -> String {
-        powershell_plugin_with_capabilities(call_body, exporter, false)
-    }
-
-    #[cfg(windows)]
-    fn powershell_plugin_with_capabilities(
-        call_body: &str,
-        exporter: bool,
-        config_migration: bool,
-    ) -> String {
-        let exporter = if exporter { "$true" } else { "$false" };
-        let config_migration = if config_migration { "$true" } else { "$false" };
-        format!(
-            "$script:count = 0; while (($line = [Console]::In.ReadLine()) -ne $null) {{ $msg = $line | ConvertFrom-Json; $exitAfterResponse = $false; if ($msg.method -eq 'hello') {{ $result = @{{ protocolVersion = 1; capabilities = @{{ exporter = {exporter}; configMigration = {config_migration} }} }} }} else {{ {call_body} }}; $response = @{{ v = 1; id = $msg.id; type = 'response'; result = $result }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush(); if ($exitAfterResponse) {{ Stop-Process -Id $PID -Force }} }}"
-        )
-    }
-
-    #[cfg(windows)]
-    fn powershell_error_plugin(code: &str) -> String {
-        format!(
-            "while (($line = [Console]::In.ReadLine()) -ne $null) {{ $msg = $line | ConvertFrom-Json; if ($msg.method -eq 'hello') {{ $response = @{{ v = 1; id = $msg.id; type = 'response'; result = @{{ protocolVersion = 1; capabilities = @{{ exporter = $true }} }} }} }} else {{ $response = @{{ v = 1; id = $msg.id; type = 'response'; error = @{{ code = '{code}'; message = 'expected business error' }} }} }}; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush() }}"
-        )
-    }
-
-    #[cfg(windows)]
-    fn powershell_file_proxy_plugin() -> String {
-        "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $helloLine = [Console]::In.ReadLine(); $hello = $helloLine | ConvertFrom-Json; $helloResponse = @{ v = 1; id = $hello.id; type = 'response'; result = @{ protocolVersion = 1; capabilities = @{ exporter = $true } } }; [Console]::Out.WriteLine(($helloResponse | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush(); $callLine = [Console]::In.ReadLine(); $call = $callLine | ConvertFrom-Json; $proxy = @{ v = 1; id = 'proxy-read'; type = 'request'; method = 'fs.read'; params = @{ path = $call.params.path } }; [Console]::Out.WriteLine(($proxy | ConvertTo-Json -Compress -Depth 5)); [Console]::Out.Flush(); $proxyLine = [Console]::In.ReadLine(); $proxyResponse = $proxyLine | ConvertFrom-Json; $response = @{ v = 1; id = $call.id; type = 'response'; result = $proxyResponse }; [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress -Depth 8)); [Console]::Out.Flush(); Start-Sleep -Seconds 30".to_string()
-    }
-
-    #[cfg(windows)]
-    fn test_entry(id: &str, script: String, timeout_ms: u32) -> PluginRegistryEntry {
+    fn test_entry(id: &str, fixture: impl Into<String>, timeout_ms: u32) -> PluginRegistryEntry {
         let capability = PluginCapabilityVersion {
             api_version: PluginApiVersionTarget { min: 1 },
         };
@@ -1927,14 +2166,11 @@ mod tests {
             version: "1.0.0".to_string(),
             extension_kind: PluginExtensionKind::Exporter,
             entry: Some(PluginEntry {
-                command: "powershell.exe".to_string(),
-                args: vec![
-                    "-NoProfile".to_string(),
-                    "-NonInteractive".to_string(),
-                    "-Command".to_string(),
-                    script,
-                ],
+                command: crate::process_control::PLUGIN_TEST_STUB_FILENAME.to_string(),
+                args: vec!["--fixture".to_string(), fixture.into()],
             }),
+            exporter_options: None,
+            prelabel_options: None,
             capabilities: PluginCapabilities {
                 annotation_types: Vec::new(),
                 batch: false,
@@ -1957,7 +2193,9 @@ mod tests {
 
     #[cfg(windows)]
     fn create_package(root: &Path, plugin_id: &str) {
-        fs::create_dir_all(root.join("plugins").join(plugin_id)).expect("create plugin package");
+        let package = root.join("plugins").join(plugin_id);
+        fs::create_dir_all(&package).expect("create plugin package");
+        crate::process_control::install_plugin_test_stub(&package);
     }
 
     #[cfg(windows)]

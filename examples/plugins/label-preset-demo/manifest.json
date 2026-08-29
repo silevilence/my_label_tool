@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.mylabeltool.labelpresetdemo",
+  "name": "示例标签预置",
+  "version": "1.0.0",
+  "apiVersion": { "min": 1 },
+  "extensionKind": "label-preset",
+  "capabilities": {},
+  "permissions": [],
+  "configVersion": 0
+}

@@ -118,13 +118,17 @@ fn run_prelabel_inference_blocking(
         return Ok(cancelled_outcome(Vec::new()));
     }
     ensure_runtime_available(runtime_directory)?;
-    on_progress(&PrelabelProgressEvent::ModelLoading);
     let key = session_cache_key(model)?;
     let cache = SESSION_CACHE.get_or_init(|| Mutex::new(None));
     let mut cache = cache
         .lock()
         .map_err(|_| text::PRELABEL_SESSION_CACHE_LOCK_FAILED.to_string())?;
-    let session = get_or_try_insert(&mut cache, key, || PrelabelSession::from_config(model))?;
+    let session = get_or_try_insert(
+        &mut cache,
+        key,
+        || PrelabelSession::from_config(model),
+        || on_progress(&PrelabelProgressEvent::ModelLoading),
+    )?;
     let total = image_paths.len();
     let mut results = Vec::new();
     let mut cancelled = false;
@@ -184,8 +188,10 @@ fn get_or_try_insert<K: PartialEq, V, E>(
     cache: &mut Option<CachedValue<K, V>>,
     key: K,
     create: impl FnOnce() -> Result<V, E>,
+    on_create: impl FnOnce(),
 ) -> Result<&mut V, E> {
     if cache.as_ref().is_none_or(|cached| cached.key != key) {
+        on_create();
         *cache = Some(CachedValue {
             key,
             value: create()?,
@@ -211,25 +217,50 @@ mod tests {
     #[test]
     fn reuses_a_cached_session_until_its_model_key_changes() {
         let loads = Cell::new(0);
+        let loading_events = Cell::new(0);
         let mut cache: Option<CachedValue<&str, usize>> = None;
-        let mut load = || -> Result<usize, ()> {
-            loads.set(loads.get() + 1);
-            Ok(loads.get())
-        };
 
         assert_eq!(
-            *get_or_try_insert(&mut cache, "model-a", &mut load).unwrap(),
+            *get_or_try_insert(
+                &mut cache,
+                "model-a",
+                || {
+                    loads.set(loads.get() + 1);
+                    Ok::<_, ()>(loads.get())
+                },
+                || loading_events.set(loading_events.get() + 1),
+            )
+            .unwrap(),
             1
         );
         assert_eq!(
-            *get_or_try_insert(&mut cache, "model-a", &mut load).unwrap(),
+            *get_or_try_insert(
+                &mut cache,
+                "model-a",
+                || {
+                    loads.set(loads.get() + 1);
+                    Ok::<_, ()>(loads.get())
+                },
+                || loading_events.set(loading_events.get() + 1),
+            )
+            .unwrap(),
             1
         );
         assert_eq!(
-            *get_or_try_insert(&mut cache, "model-b", &mut load).unwrap(),
+            *get_or_try_insert(
+                &mut cache,
+                "model-b",
+                || {
+                    loads.set(loads.get() + 1);
+                    Ok::<_, ()>(loads.get())
+                },
+                || loading_events.set(loading_events.get() + 1),
+            )
+            .unwrap(),
             2
         );
         assert_eq!(loads.get(), 2);
+        assert_eq!(loading_events.get(), 2);
     }
 
     #[test]
@@ -285,7 +316,7 @@ mod tests {
         let model_path = fixture("MY_LABEL_TOOL_YOLOV8_ONNX");
         let image_path = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
         let mut model = sample_model_with_path(model_path);
-        // This fixture uses a CPU ONNX Runtime build, so do not attempt DirectML registration.
+        // Pin this cache test to CPU so its result is independent of runner GPU availability.
         model.device = PrelabelDevice::Cpu;
 
         let first = run_prelabel_inference_blocking(

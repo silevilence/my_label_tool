@@ -47,3 +47,8 @@ prelabel 可分别通过 `capabilities.<name>.apiVersion.min` 声明目标版本
 | 2026-08-26 | 基线 | 全部   | 建立插件清单、宿主 API 与协议 v1 版本模型 |
 | 2026-08-26 | 增量 | manifest schema v1 | 新增可选 `timeoutMs`，缺省 30000、上限 300000；保持 schema v1 |
 | 2026-08-26 | 增量 | 宿主 API v1 | 新增 `fs.read` / `fs.write` 权限代理；协议消息形状与协议 v1 不变 |
+| 2026-08-27 | 增量 | 宿主 API v1 | 新增 `config.migrate` 逐级配置迁移方法；整体/能力/协议/schema 版本均保持 1 |
+| 2026-08-27 | 落地 | 数据契约 v1 | 落地 `label-preset` 包根 `labels.json` 契约；既有扩展类型语义未变，整体/能力/协议/manifest schema 版本均保持 1 |
+| 2026-08-27 | 落地 | exporter 能力 v1 | 落地既有 `exporter.export`，新增可选 `exporterOptions` 静态格式声明；协议信封、整体/能力/manifest schema 版本均保持 1 |
+| 2026-08-27 | 增量 | NDJSON 协议 v1 | 保留 16 MiB 基线，为 exporter 进程增加能力限定的 72 MiB 收发上限以容纳 50 MiB 文件；消息形状与协议版本保持 1 |
+| 2026-08-27 | 增量 | prelabel API v1 | 落地 `prelabel.run`、静态类名提示、批量路由、取消时可选部分结果与二进制项目文件代理；均为既有 v1 能力的可选/落地字段，版本号保持 1 |

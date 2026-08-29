@@ -1,4 +1,5 @@
 use super::*;
+use crate::plugins::label_preset::load_plugin_label_presets;
 use crate::plugins::manifest::parse_plugin_manifest;
 use crate::plugins::runtime::{save_plugin_runtime_settings, PluginRuntimeSettings};
 use serde_json::{json, Value};
@@ -36,6 +37,7 @@ fn prepares_authorizes_and_persists_a_valid_archive() {
 
     assert_eq!(entry.state, PluginState::Enabled);
     assert!(root.join("plugins/dev.acme.labels/manifest.json").is_file());
+    assert!(root.join("plugins/dev.acme.labels/labels.json").is_file());
     assert!(!root
         .join("plugins/.pending")
         .join(preview.install_token)
@@ -43,6 +45,71 @@ fn prepares_authorizes_and_persists_a_valid_archive() {
     let loaded = load_plugin_registry(&root);
     assert_eq!(loaded.warning, None);
     assert_eq!(loaded.plugins, vec![entry]);
+    cleanup(root);
+}
+
+#[test]
+fn label_preset_install_requires_valid_root_labels_file() {
+    let root = temp_dir("label-preset-contract");
+    let manifest = serde_json::to_vec(&label_manifest(0)).expect("manifest");
+    let missing = write_entries(&root, "missing-labels.zip", &[("manifest.json", &manifest)]);
+    let error = prepare_plugin_install(&root, &missing).expect_err("missing labels must fail");
+    assert_eq!(error.code, "INVALID_PACKAGE");
+    assert!(error.message.contains("labels.json"));
+
+    let invalid = write_entries(
+        &root,
+        "invalid-labels.zip",
+        &[
+            ("manifest.json", &manifest),
+            ("labels.json", br#"{"id":"x"}"#),
+        ],
+    );
+    let error = prepare_plugin_install(&root, &invalid).expect_err("invalid labels must fail");
+    assert_eq!(error.code, "INVALID_PACKAGE");
+    assert!(error.message.contains("labels.json"));
+
+    let labels = label_preset_bytes(&label_manifest(0));
+    let extra = write_entries(
+        &root,
+        "extra-entry.zip",
+        &[
+            ("manifest.json", &manifest),
+            ("labels.json", &labels),
+            ("plugin/main.exe", b"not executable"),
+        ],
+    );
+    let error = prepare_plugin_install(&root, &extra).expect_err("data plugin must stay data-only");
+    assert_eq!(error.code, "INVALID_PACKAGE");
+    assert!(error.message.contains("只能包含"));
+    cleanup(root);
+}
+
+#[test]
+fn enabled_label_presets_restore_after_restart_and_follow_plugin_lifecycle() {
+    let root = temp_dir("label-preset-lifecycle");
+    let archive = write_manifest_archive(&root, "labels.zip", label_manifest(0));
+    let preview = prepare_plugin_install(&root, &archive).expect("prepare");
+    authorize_plugin_install(&root, &preview.install_token, Some(preview.permissions))
+        .expect("authorize")
+        .expect("entry");
+
+    let first = load_plugin_label_presets(&root);
+    assert_eq!(first.warning, None);
+    assert_eq!(first.presets.len(), 1);
+    assert_eq!(first.presets[0].plugin_id, "dev.acme.labels");
+    assert_eq!(first.presets[0].template.labels[0].name, "目标");
+    assert_eq!(load_plugin_label_presets(&root), first);
+
+    set_registered_plugin_enabled(&root, "dev.acme.labels", false).expect("disable");
+    assert!(load_plugin_label_presets(&root).presets.is_empty());
+    set_registered_plugin_enabled(&root, "dev.acme.labels", true).expect("enable");
+    assert_eq!(load_plugin_label_presets(&root).presets.len(), 1);
+
+    let snapshot = first.presets[0].template.clone();
+    uninstall_registered_plugin(&root, "dev.acme.labels").expect("uninstall");
+    assert!(load_plugin_label_presets(&root).presets.is_empty());
+    assert_eq!(snapshot.labels[0].name, "目标");
     cleanup(root);
 }
 
@@ -591,6 +658,25 @@ fn enable_disable_status_and_failure_clear_round_trip() {
 }
 
 #[test]
+fn pending_migration_state_can_be_persisted_and_completed() {
+    let root = installed_registry("migration-state");
+
+    let pending = mark_plugin_pending_migration(&root, "dev.acme.labels", "migration failed")
+        .expect("mark pending");
+    assert_eq!(pending.state, PluginState::PendingMigration);
+    assert_eq!(pending.last_error.as_deref(), Some("migration failed"));
+    assert!(set_registered_plugin_enabled(&root, "dev.acme.labels", true).is_err());
+
+    let completed =
+        complete_plugin_config_migration(&root, "dev.acme.labels").expect("complete migration");
+    assert_eq!(completed.state, PluginState::Enabled);
+    assert_eq!(completed.failure_count, 0);
+    assert_eq!(completed.last_error, None);
+    assert_eq!(load_plugin_registry(&root).plugins, vec![completed]);
+    cleanup(root);
+}
+
+#[test]
 fn five_install_failures_are_actionable_repeatable_and_clean() {
     let root = temp_dir("failures");
     let corrupt = root.join("corrupt.zip");
@@ -769,7 +855,35 @@ fn installed_registry(suffix: &str) -> PathBuf {
 
 fn write_manifest_archive(root: &Path, name: &str, manifest: Value) -> PathBuf {
     let content = serde_json::to_vec(&manifest).expect("manifest JSON");
-    write_entries(root, name, &[("manifest.json", &content)])
+    if manifest.get("extensionKind").and_then(Value::as_str) == Some("label-preset") {
+        let labels = label_preset_bytes(&manifest);
+        write_entries(
+            root,
+            name,
+            &[("manifest.json", &content), ("labels.json", &labels)],
+        )
+    } else {
+        write_entries(root, name, &[("manifest.json", &content)])
+    }
+}
+
+fn label_preset_bytes(manifest: &Value) -> Vec<u8> {
+    let plugin_id = manifest
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("dev.acme.labels");
+    serde_json::to_vec(&json!({
+        "id": format!("{plugin_id}.default"),
+        "name": "默认预置",
+        "labels": [{
+            "id": format!("{plugin_id}.object"),
+            "name": "目标",
+            "color": "#38bdf8",
+            "shortcut": "1",
+            "shapeType": "rect"
+        }]
+    }))
+    .expect("labels JSON")
 }
 
 fn write_entries(root: &Path, name: &str, entries: &[(&str, &[u8])]) -> PathBuf {

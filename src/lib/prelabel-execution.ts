@@ -1,15 +1,22 @@
 import type { AnnotationShape } from "../types/annotation";
 import type { ImageFile } from "./tauri-api";
-import type { PrelabelImageInference, PrelabelInferenceOutcome } from "../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../i18n/prelabel.zh-CN";
 
-interface ExecutePrelabelBatchOptions {
+interface BatchInferenceOutcome<TResult> {
+  results: TResult[];
+  cancelled: boolean;
+}
+
+interface ExecutePrelabelBatchOptions<TResult> {
   images: ImageFile[];
   chunkSize: number;
   /** Runs one chunk. The backend may cancel it mid-chunk, in which case it resolves with
    * `{ cancelled: true }` and the results processed so far are still committed. */
-  infer: (imagePaths: string[]) => Promise<PrelabelInferenceOutcome>;
-  toAnnotations: (result: PrelabelImageInference) => AnnotationShape[];
+  infer: (
+    imagePaths: string[],
+    processedBeforeChunk: number,
+  ) => Promise<BatchInferenceOutcome<TResult>>;
+  toEntry: (result: TResult) => { imagePath: string; annotations: AnnotationShape[] };
   commit: (entries: Array<{ imagePath: string; annotations: AnnotationShape[] }>) => void;
   shouldCommit?: (entry: { imagePath: string; annotations: AnnotationShape[] }) => boolean;
   isContextCurrent?: () => boolean;
@@ -38,17 +45,17 @@ export function chunkPrelabelImages(images: ImageFile[], chunkSize: number): Ima
   return chunks;
 }
 
-export async function executePrelabelBatch({
+export async function executePrelabelBatch<TResult>({
   images,
   chunkSize,
   infer,
-  toAnnotations,
+  toEntry,
   commit,
   shouldCommit = () => true,
   isContextCurrent = () => true,
   isCancelled,
   onProgress,
-}: ExecutePrelabelBatchOptions): Promise<{
+}: ExecutePrelabelBatchOptions<TResult>): Promise<{
   processed: number;
   annotationCount: number;
   cancelled: boolean;
@@ -58,14 +65,14 @@ export async function executePrelabelBatch({
   let annotationCount = 0;
   let skippedConflictCount = 0;
   for (const chunk of chunkPrelabelImages(images, chunkSize)) {
-    const { results, cancelled } = await infer(chunk.map((image) => image.path));
+    const { results, cancelled } = await infer(
+      chunk.map((image) => image.path),
+      processed,
+    );
     if (!isContextCurrent()) {
       throw new Error(text.executionContextChanged);
     }
-    const entries = results.map((result) => {
-      const annotations = toAnnotations(result);
-      return { imagePath: result.imagePath, annotations };
-    });
+    const entries = results.map(toEntry);
     const committableEntries = entries.filter(shouldCommit);
     skippedConflictCount += entries.length - committableEntries.length;
     annotationCount += committableEntries.reduce(
@@ -73,7 +80,9 @@ export async function executePrelabelBatch({
       0,
     );
     commit(committableEntries);
-    processed += results.length;
+    // Cancellation-aware plugin batches may return only the images completed
+    // before the control message was observed.
+    processed += entries.length;
     onProgress(processed);
     if (cancelled || isCancelled()) {
       return { processed, annotationCount, cancelled: true, skippedConflictCount };

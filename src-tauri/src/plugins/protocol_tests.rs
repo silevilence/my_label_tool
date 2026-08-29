@@ -152,6 +152,27 @@ fn oversized_line_is_discarded_and_the_next_line_is_decoded() {
 }
 
 #[test]
+fn encoder_enforces_baseline_and_capability_scoped_line_limits() {
+    let message = PluginMessage::Request {
+        v: PLUGIN_PROTOCOL_VERSION,
+        id: Some("large".to_string()),
+        method: "exporter.export".to_string(),
+        params: json!({ "padding": "x".repeat(MAX_NDJSON_LINE_BYTES) }),
+    };
+    assert_eq!(
+        encode_message(&message).expect_err("baseline limit").code,
+        ProtocolErrorCode::ProtocolError
+    );
+    let encoded = encode_message_with_limit(&message, MAX_EXPORTER_NDJSON_LINE_BYTES)
+        .expect("exporter-scoped limit");
+    assert!(encoded.len() > MAX_NDJSON_LINE_BYTES);
+    assert!(encoded.len() <= MAX_EXPORTER_NDJSON_LINE_BYTES);
+    let mut decoder = NdjsonDecoder::with_max_line_bytes(MAX_EXPORTER_NDJSON_LINE_BYTES);
+    assert_eq!(decoder.push(encoded.as_bytes()), Vec::new());
+    assert_eq!(decoder.finish(), vec![Ok(message)]);
+}
+
+#[test]
 fn a_valid_line_at_the_exact_size_limit_is_accepted() {
     let prefix = br#"{"v":1,"id":"limit","type":"request","method":"test","params":{"padding":""#;
     let suffix = br#""}}"#;

@@ -1,7 +1,7 @@
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
-import type { TextExportFile } from "../types/export";
+import type { ExportData, TextExportFile } from "../types/export";
 import type { ShortcutMap } from "./defaults/shortcuts";
 import type {
   ModelValidationReport,
@@ -24,10 +24,22 @@ import type {
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
 import type {
   PluginInstallPreview,
+  PluginExportFormatSnapshot,
+  PluginExportResult,
+  PluginExportEvent,
+  PluginExportCancellationResult,
+  PluginLabelPresetSnapshot,
+  PluginConfig,
+  PluginConfigMigrationReport,
   PluginPermissionGrant,
   PluginRegistryEntry,
   PluginRegistrySnapshot,
   PluginRuntimeSettings,
+  PluginPrelabelCancellationResult,
+  PluginPrelabelClassMapping,
+  PluginPrelabelEvent,
+  PluginPrelabelResult,
+  PluginPrelabelSourceSnapshot,
 } from "../types/plugin";
 
 export interface ImageFile {
@@ -42,6 +54,8 @@ export interface TextFileEntry {
 }
 
 export interface AnnotationExportImage extends ImageFile {
+  width: number;
+  height: number;
   annotations: AnnotationShape[];
 }
 
@@ -293,7 +307,79 @@ export function listPlugins(): Promise<PluginRegistrySnapshot> {
   return invoke<PluginRegistrySnapshot>("list_plugins");
 }
 
-export function setPluginEnabled(pluginId: string, enabled: boolean): Promise<PluginRegistryEntry> {
+export function loadPluginLabelPresets(): Promise<PluginLabelPresetSnapshot> {
+  return invoke<PluginLabelPresetSnapshot>("load_plugin_label_presets");
+}
+
+export function loadPluginExportFormats(): Promise<PluginExportFormatSnapshot> {
+  return invoke<PluginExportFormatSnapshot>("load_plugin_export_formats");
+}
+
+export function runPluginExport(
+  pluginId: string,
+  formatId: string,
+  exportData: ExportData,
+  options: Record<string, unknown>,
+  outputBaseName: string,
+  outputDir: string,
+  exportId: string,
+  onEvent: (event: PluginExportEvent) => void,
+): Promise<PluginExportResult> {
+  const eventChannel = new Channel<PluginExportEvent>();
+  eventChannel.onmessage = onEvent;
+  return invoke<PluginExportResult>("run_plugin_export", {
+    request: {
+      pluginId,
+      formatId,
+      exportData,
+      options,
+      outputBaseName,
+      outputDir,
+      exportId,
+    },
+    onEvent: eventChannel,
+  });
+}
+
+export function cancelPluginExport(
+  exportId: string,
+): Promise<PluginExportCancellationResult> {
+  return invoke<PluginExportCancellationResult>("cancel_plugin_export", { exportId });
+}
+
+export function loadPluginPrelabelSources(
+  projectFolder: string | null,
+): Promise<PluginPrelabelSourceSnapshot> {
+  return invoke<PluginPrelabelSourceSnapshot>("load_plugin_prelabel_sources", { projectFolder });
+}
+
+export function runPluginPrelabel(
+  pluginId: string,
+  projectFolder: string,
+  imagePaths: string[],
+  classMappings: PluginPrelabelClassMapping[],
+  params: Record<string, unknown>,
+  operationId: string,
+  onEvent: (event: PluginPrelabelEvent) => void,
+): Promise<PluginPrelabelResult> {
+  const eventChannel = new Channel<PluginPrelabelEvent>();
+  eventChannel.onmessage = onEvent;
+  return invoke<PluginPrelabelResult>("run_plugin_prelabel", {
+    request: { pluginId, projectFolder, imagePaths, classMappings, params, operationId },
+    onEvent: eventChannel,
+  });
+}
+
+export function cancelPluginPrelabel(
+  operationId: string,
+): Promise<PluginPrelabelCancellationResult> {
+  return invoke<PluginPrelabelCancellationResult>("cancel_plugin_prelabel", { operationId });
+}
+
+export function setPluginEnabled(
+  pluginId: string,
+  enabled: boolean,
+): Promise<PluginRegistryEntry> {
   return invoke<PluginRegistryEntry>("set_plugin_enabled", { pluginId, enabled });
 }
 
@@ -315,4 +401,10 @@ export function setPluginSafeMode(safeMode: boolean): Promise<PluginRuntimeSetti
 
 export function getPluginRuntimeLogs(pluginId: string): Promise<string[]> {
   return invoke<string[]>("get_plugin_runtime_logs", { pluginId });
+}
+
+export function migratePluginConfigs(
+  configs: PluginConfig[],
+): Promise<PluginConfigMigrationReport> {
+  return invoke<PluginConfigMigrationReport>("migrate_plugin_configs", { configs });
 }

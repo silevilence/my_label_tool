@@ -102,9 +102,7 @@ export interface PtConversionCommandError {
   message: string;
 }
 
-export interface PtCancellationResult {
-  status: "accepted" | "already-completed";
-}
+export type PtCancellationResult = CancellationResult;
 
 export type PtConversionEvent =
   | {

@@ -48,6 +48,19 @@ const DOWNLOAD_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// headers would stall the download indefinitely on a weak link.
 const DOWNLOAD_HEADERS_TIMEOUT: Duration = Duration::from_secs(30);
 
+#[derive(Clone, Copy)]
+struct DownloadTimeouts {
+    connect: Duration,
+    headers: Duration,
+    chunk: Duration,
+}
+
+const DOWNLOAD_TIMEOUTS: DownloadTimeouts = DownloadTimeouts {
+    connect: DOWNLOAD_CONNECT_TIMEOUT,
+    headers: DOWNLOAD_HEADERS_TIMEOUT,
+    chunk: DOWNLOAD_CHUNK_TIMEOUT,
+};
+
 /// A single file that makes up the installed ONNX Runtime directory.
 #[derive(Clone, Copy, Debug)]
 struct RuntimeAsset {
@@ -331,14 +344,30 @@ async fn download_checked_asset(
     on_progress: Channel<RuntimeDownloadEvent>,
 ) -> Result<Option<Vec<u8>>, String> {
     let url = format!("{RELEASE_BASE_URL}/{}", asset.file_name);
+    download_checked_asset_from_url(handle, asset, &url, DOWNLOAD_TIMEOUTS, move |event| {
+        let _ = on_progress.send(event);
+    })
+    .await
+}
+
+async fn download_checked_asset_from_url<F>(
+    handle: &AsyncCancellation,
+    asset: &RuntimeAsset,
+    url: &str,
+    timeouts: DownloadTimeouts,
+    mut on_progress: F,
+) -> Result<Option<Vec<u8>>, String>
+where
+    F: FnMut(RuntimeDownloadEvent),
+{
     let client = reqwest::Client::builder()
-        .connect_timeout(DOWNLOAD_CONNECT_TIMEOUT)
+        .connect_timeout(timeouts.connect)
         .build()
         .map_err(text::runtime_download_failed)?;
     let response = tokio::select! {
         biased;
         _ = handle.cancelled() => return Ok(None),
-        send = tokio::time::timeout(DOWNLOAD_HEADERS_TIMEOUT, client.get(&url).send()) => {
+        send = tokio::time::timeout(timeouts.headers, client.get(url).send()) => {
             send.map_err(|_| text::runtime_download_timed_out(asset.file_name))?
                 .map_err(text::runtime_download_failed)?
                 .error_for_status()
@@ -353,7 +382,7 @@ async fn download_checked_asset(
         tokio::select! {
             biased;
             _ = handle.cancelled() => return Ok(None),
-            next_chunk = tokio::time::timeout(DOWNLOAD_CHUNK_TIMEOUT, stream.next()) => {
+            next_chunk = tokio::time::timeout(timeouts.chunk, stream.next()) => {
                 match next_chunk {
                     Err(_) => {
                         return Err(text::runtime_download_timed_out(asset.file_name));
@@ -362,7 +391,7 @@ async fn download_checked_asset(
                     Ok(Some(chunk)) => {
                         let chunk = chunk.map_err(text::runtime_download_failed)?;
                         downloaded += chunk.len() as u64;
-                        let _ = on_progress.send(RuntimeDownloadEvent::Progress {
+                        on_progress(RuntimeDownloadEvent::Progress {
                             file_name: asset.file_name,
                             downloaded,
                             total,
@@ -483,18 +512,20 @@ pub fn cancel_download(
 mod tests {
     use std::{
         fs,
+        io::{Read, Write},
+        net::{TcpListener, TcpStream},
         path::PathBuf,
         sync::Arc,
-        task::Poll,
-        time::{Duration, SystemTime, UNIX_EPOCH},
+        thread,
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
-    use futures_util::{stream, Stream, StreamExt};
     use sha2::{Digest, Sha256};
 
     use super::{
-        install_entry, install_runtime_files, read_runtime_file, validate_model_file,
-        verify_sha256, PROVIDERS_DLL, RUNTIME_DLL,
+        download_checked_asset_from_url, install_entry, install_runtime_files, read_runtime_file,
+        validate_model_file, verify_sha256, DownloadTimeouts, RuntimeAsset, DML_DLL, PROVIDERS_DLL,
+        RUNTIME_DLL,
     };
     use crate::{
         media::prelabel::{
@@ -517,20 +548,24 @@ mod tests {
     }
 
     #[test]
-    fn runtime_pair_is_verified_before_existing_files_are_replaced() {
+    fn runtime_set_is_verified_before_existing_files_are_replaced() {
         let root = temporary_directory("verified-replacement");
         let target = root.join("1.24.3");
         fs::create_dir_all(&target).unwrap();
         fs::write(target.join(RUNTIME_DLL), b"old-runtime").unwrap();
         fs::write(target.join(PROVIDERS_DLL), b"old-provider").unwrap();
+        fs::write(target.join(DML_DLL), b"old-directml").unwrap();
         let runtime = b"new-runtime";
         let provider = b"new-provider";
+        let directml = b"new-directml";
         let runtime_hash = format!("{:x}", Sha256::digest(runtime));
         let provider_hash = format!("{:x}", Sha256::digest(provider));
+        let directml_hash = format!("{:x}", Sha256::digest(directml));
 
         let files = vec![
             install_entry(RUNTIME_DLL, runtime.to_vec(), &runtime_hash),
-            install_entry(PROVIDERS_DLL, provider.to_vec(), "invalid-provider-hash"),
+            install_entry(PROVIDERS_DLL, provider.to_vec(), &provider_hash),
+            install_entry(DML_DLL, directml.to_vec(), "invalid-directml-hash"),
         ];
         let error = install_runtime_files(&target, &files).unwrap_err();
         assert!(error.contains("SHA-256"));
@@ -539,14 +574,17 @@ mod tests {
             fs::read(target.join(PROVIDERS_DLL)).unwrap(),
             b"old-provider"
         );
+        assert_eq!(fs::read(target.join(DML_DLL)).unwrap(), b"old-directml");
 
         let files = vec![
             install_entry(RUNTIME_DLL, runtime.to_vec(), &runtime_hash),
             install_entry(PROVIDERS_DLL, provider.to_vec(), &provider_hash),
+            install_entry(DML_DLL, directml.to_vec(), &directml_hash),
         ];
         install_runtime_files(&target, &files).unwrap();
         assert_eq!(fs::read(target.join(RUNTIME_DLL)).unwrap(), runtime);
         assert_eq!(fs::read(target.join(PROVIDERS_DLL)).unwrap(), provider);
+        assert_eq!(fs::read(target.join(DML_DLL)).unwrap(), directml);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -561,46 +599,134 @@ mod tests {
         assert!(error.contains(PROVIDERS_DLL));
     }
 
-    /// A stream that never yields, modelling a download that stalls after the connection is up (a
-    /// mirror that stops sending bytes). Lives here so the fixture-free test below can exercise the
-    /// same cancellation/timeout `select!` shape the real chunk pump uses.
-    fn stalled() -> impl Stream<Item = Result<Vec<u8>, String>> {
-        stream::poll_fn(|_| Poll::<Option<Result<Vec<u8>, String>>>::Pending)
+    fn spawn_http_server(
+        serve: impl FnOnce(TcpStream) + Send + 'static,
+    ) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        stream.set_nonblocking(false).unwrap();
+                        serve(stream);
+                        return;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "test client did not connect");
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("test server accept failed: {error}"),
+                }
+            }
+        });
+        (format!("http://{address}/runtime.dll"), server)
+    }
+
+    fn test_asset() -> RuntimeAsset {
+        RuntimeAsset {
+            file_name: RUNTIME_DLL,
+            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        }
+    }
+
+    fn read_request(stream: &mut TcpStream) {
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request).unwrap();
+    }
+
+    fn short_timeouts() -> DownloadTimeouts {
+        DownloadTimeouts {
+            connect: Duration::from_secs(1),
+            headers: Duration::from_millis(30),
+            chunk: Duration::from_millis(30),
+        }
     }
 
     #[tokio::test]
-    async fn stalled_download_is_interrupted_by_cancel_and_timeout() {
-        // (1) Cancelling the handle must wake the select! even though the stream is stalled — this is
-        // what bounds the download when the response is up but body bytes have stopped flowing.
+    async fn header_stall_is_interrupted_by_timeout() {
+        let (url, server) = spawn_http_server(|mut stream| {
+            read_request(&mut stream);
+            thread::sleep(Duration::from_millis(150));
+        });
+        let error = download_checked_asset_from_url(
+            &AsyncCancellation::new(),
+            &test_asset(),
+            &url,
+            short_timeouts(),
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+        server.join().unwrap();
+
+        assert!(error.contains("超时"));
+    }
+
+    #[tokio::test]
+    async fn header_stall_is_interrupted_by_cancellation() {
         let handle = Arc::new(AsyncCancellation::new());
         let wake = Arc::clone(&handle);
-        let spawned = tokio::spawn(async move {
-            tokio::task::yield_now().await;
+        let (url, server) = spawn_http_server(move |mut stream| {
+            read_request(&mut stream);
             wake.cancel();
+            thread::sleep(Duration::from_millis(150));
         });
-        let outcome = {
-            let mut stream = Box::pin(stalled());
-            tokio::select! {
-                biased;
-                _ = handle.cancelled() => "cancelled",
-                _ = tokio::time::timeout(Duration::from_secs(5), stream.next()) => "timeout",
-            }
-        };
-        spawned.await.unwrap();
-        assert_eq!(outcome, "cancelled");
+        let outcome =
+            download_checked_asset_from_url(&handle, &test_asset(), &url, short_timeouts(), |_| {})
+                .await
+                .unwrap();
+        server.join().unwrap();
 
-        // (2) Without a cancellation, a stalled stream is still cut off by the stall timeout rather
-        // than hanging forever (the weak-network hang the PR fixes).
-        let handle = AsyncCancellation::new();
-        let outcome = {
-            let mut stream = Box::pin(stalled());
-            tokio::select! {
-                biased;
-                _ = handle.cancelled() => "cancelled",
-                _ = tokio::time::timeout(Duration::from_millis(20), stream.next()) => "timeout",
-            }
-        };
-        assert_eq!(outcome, "timeout");
+        assert!(outcome.is_none());
+    }
+
+    #[tokio::test]
+    async fn body_stall_is_interrupted_by_timeout() {
+        let (url, server) = spawn_http_server(|mut stream| {
+            read_request(&mut stream);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n")
+                .unwrap();
+            stream.flush().unwrap();
+            thread::sleep(Duration::from_millis(150));
+        });
+        let error = download_checked_asset_from_url(
+            &AsyncCancellation::new(),
+            &test_asset(),
+            &url,
+            short_timeouts(),
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+        server.join().unwrap();
+
+        assert!(error.contains("超时"));
+    }
+
+    #[tokio::test]
+    async fn body_stall_is_interrupted_by_cancellation() {
+        let handle = Arc::new(AsyncCancellation::new());
+        let wake = Arc::clone(&handle);
+        let (url, server) = spawn_http_server(move |mut stream| {
+            read_request(&mut stream);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n")
+                .unwrap();
+            stream.flush().unwrap();
+            wake.cancel();
+            thread::sleep(Duration::from_millis(150));
+        });
+        let outcome =
+            download_checked_asset_from_url(&handle, &test_asset(), &url, short_timeouts(), |_| {})
+                .await
+                .unwrap();
+        server.join().unwrap();
+
+        assert!(outcome.is_none());
     }
 
     #[test]

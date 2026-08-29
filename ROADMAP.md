@@ -131,57 +131,57 @@
   - [x] 授权弹窗：安装时逐项列出权限（含占位符解析后的实际路径预览），用户逐项勾选确认；禁止授予 manifest 未声明的权限
   - 验收：权限判定纯函数单测（未授权路径、授权目录内/外、`..` 穿越、占位符解析、重复声明）；集成验证——插件越权读项目外文件返回 `PERMISSION_DENIED`，协议响应不包含未授权文件内容
 
-- [ ] **插件配置存储与迁移**
-  - [ ] 目标：项目文件保存插件状态，版本落后时经协议迁移；`src-tauri/src/plugins/config.rs`（迁移编排）+ `src/types/plugin.ts` 扩展 ProjectConfig 类型
-  - [ ] `ProjectConfig` 新增可选字段 `pluginConfigs?: { pluginId, configVersion, config: unknown }[]`——`config` 对宿主不透明，宿主不解释内容；旧项目配置加载不受影响（可选字段 + 加载时过滤未知插件 id）
-  - [ ] 保存/加载：项目保存时把内存中的插件配置写入 ProjectConfig；打开项目按插件 id 匹配注册表，已卸载插件的配置保留在项目文件中但不可用（不删除，防重装丢失）
-  - [ ] 迁移流程：打开项目发现某插件 `configVersion` < 插件当前声明 → 调用 `config.migrate`（params `{ fromVersion, toVersion, config }`）→ 插件返回新配置 → 写回内存（不自动写盘，随下次项目保存落盘）；链式迁移逐级调用直到目标版本
-  - [ ] 迁移失败：超时/崩溃/返回非法结构 → 配置标记「待迁移」（`pending-migration`）、该插件能力降级（导出/预打标入口置灰显示「配置待迁移」）、项目照常打开；用户可重试
-  - [ ] 插件未声明 `configMigration` 能力时，宿主发现版本落后直接进入 `pending-migration`，不发起调用
+- [x] **插件配置存储与迁移**
+  - [x] 目标：项目文件保存插件状态，版本落后时经协议迁移；`src-tauri/src/plugins/config.rs`（迁移编排）+ `src/types/plugin.ts` 扩展 ProjectConfig 类型
+  - [x] `ProjectConfig` 新增可选字段 `pluginConfigs?: { pluginId, configVersion, config: unknown }[]`——`config` 对宿主不透明，宿主不解释内容；旧项目配置加载不受影响（可选字段 + 加载时过滤未知插件 id）
+  - [x] 保存/加载：项目保存时把内存中的插件配置写入 ProjectConfig；打开项目按插件 id 匹配注册表，已卸载插件的配置保留在项目文件中但不可用（不删除，防重装丢失）
+  - [x] 迁移流程：打开项目发现某插件 `configVersion` < 插件当前声明 → 调用 `config.migrate`（params `{ fromVersion, toVersion, config }`）→ 插件返回新配置 → 写回内存（不自动写盘，随下次项目保存落盘）；链式迁移逐级调用直到目标版本
+  - [x] 迁移失败：超时/崩溃/返回非法结构 → 配置标记「待迁移」（`pending-migration`）、该插件能力降级（导出/预打标入口置灰显示「配置待迁移」）、项目照常打开；用户可重试
+  - [x] 插件未声明 `configMigration` 能力时，宿主发现版本落后直接进入 `pending-migration`，不发起调用
   - 验收：三条路径——迁移成功（版本与内容正确写回并随项目保存）、迁移失败（项目正常打开、入口置灰、重试成功）、跨多版本链式迁移（v1→v2→v3 逐级调用且参数正确）；无 `pluginConfigs` 的旧项目加载行为不变
 
-- [ ] **插件 SDK 与开发者工具**
-  - [ ] 目标：让第三方开发者能独立产出合规插件；文档 + 示例 + 校验工具 + conformance 环境
-  - [ ] `docs/plugins.md`：用户侧（安装、授权、安全模式、故障排查）+ 开发者侧（manifest 编写、协议实现要点、错误码、打包、调试——stderr 日志查看与打印式排查）
-  - [ ] 示例插件两个：`examples/plugins/label-preset-demo`（纯数据：manifest + labels.json）与 `examples/plugins/prelabel-demo`（Python：manifest + main.py，实现 hello/预打标/进度/取消，仅用标准库）
-  - [ ] 校验器 CLI：`src-tauri/src/bin/plugin-validator.rs`（cargo 内置 bin）——输入插件 zip 或目录，输出 manifest 校验结果与权限清单预览，退出码区分通过/失败；离线可用
-  - [ ] 打包脚本 `scripts/package-plugin.mjs`（Node）：把 manifest + 资源打成 zip（后缀可指定），默认白名单 `manifest.json` + `plugin/` 目录，多余顶层文件报错，体积超限报错
-  - [ ] conformance 测试环境：`src-tauri/tests/plugin_conformance.rs` 集成测试——用测试桩进程（同仓库 Rust bin）跑完协议全部用例（消息格式、错误码、握手、进度、取消、16MiB 上限），桩进程代码即「独立 exe 示例」参考实现
-  - [ ] `docs/plugin-manifest.schema.json` 与 `docs/plugin-protocol.md` 由前序任务产出，本任务校验其与示例/工具一致
+- [x] **插件 SDK 与开发者工具**
+  - [x] 目标：让第三方开发者能独立产出合规插件；文档 + 示例 + 校验工具 + conformance 环境
+  - [x] `docs/plugins.md`：用户侧（安装、授权、安全模式、故障排查）+ 开发者侧（manifest 编写、协议实现要点、错误码、打包、调试——stderr 日志查看与打印式排查）
+  - [x] 示例插件两个：`examples/plugins/label-preset-demo`（纯数据：manifest + labels.json）与 `examples/plugins/prelabel-demo`（Python：manifest + main.py，实现 hello/预打标/进度/取消，仅用标准库）
+  - [x] 校验器 CLI：`src-tauri/src/bin/plugin-validator.rs`（cargo 内置 bin）——输入插件 zip 或目录，输出 manifest 校验结果与权限清单预览，退出码区分通过/失败；离线可用
+  - [x] 打包脚本 `scripts/package-plugin.mjs`（Node）：把 manifest + 资源打成 zip（后缀可指定），默认白名单 `manifest.json` + `plugin/` 目录，多余顶层文件报错，体积超限报错
+  - [x] conformance 测试环境：`src-tauri/tests/plugin_conformance.rs` 集成测试——用测试桩进程（同仓库 Rust bin）跑完协议全部用例（消息格式、错误码、握手、进度、取消、16MiB 上限），桩进程代码即「独立 exe 示例」参考实现
+  - [x] `docs/plugin-manifest.schema.json` 与 `docs/plugin-protocol.md` 由前序任务产出，本任务校验其与示例/工具一致
   - 验收：按 `docs/plugins.md` 从零做出示例插件，校验器 CLI 通过、打包脚本产出 zip、本地 conformance 自测通过
 
-- [ ] **实现预置标签插件支持（数据型，扩展类型 label-preset）**
-  - [ ] 目标：把标签模板作为纯数据插件接入现有模板体系（安全模式保留数据型插件的依据）
-  - [ ] 数据文件：包根 `labels.json`，结构复用 `LabelTemplate`（`{ id, name, labels: LabelConfig[] }`）；缺失/解析失败 = 安装校验失败；manifest 校验 `label-preset` 禁止 `entry`/`runtime`
-  - [ ] 前端接入：安装启用后出现在「加载预置模板」列表，来源标注「插件：<name>」；点击加载复用现有模板加载逻辑（合并/覆盖语义不变）
-  - [ ] 生命周期：模板快照进项目配置（现有 template 机制）——插件卸载/更新/禁用不影响已加载模板的项目标注；更新后模板列表用新数据，已加载项目不受影响
-  - [ ] 文案进 i18n
+- [x] **实现预置标签插件支持（数据型，扩展类型 label-preset）**
+  - [x] 目标：把标签模板作为纯数据插件接入现有模板体系（安全模式保留数据型插件的依据）
+  - [x] 数据文件：包根 `labels.json`，结构复用 `LabelTemplate`（`{ id, name, labels: LabelConfig[] }`）；缺失/解析失败 = 安装校验失败；manifest 校验 `label-preset` 禁止 `entry`/`runtime`
+  - [x] 前端接入：安装启用后出现在「加载预置模板」列表，来源标注「插件：<name>」；点击加载复用现有模板加载逻辑（合并/覆盖语义不变）
+  - [x] 生命周期：模板快照进项目配置（现有 template 机制）——插件卸载/更新/禁用不影响已加载模板的项目标注；更新后模板列表用新数据，已加载项目不受影响
+  - [x] 文案进 i18n
   - 验收：安装 → 加载模板 → 画布可用新标签 → 卸载插件 → 项目标注与导出不受影响；重启后插件模板列表恢复
 
-- [ ] **实现导出格式插件支持（代码型，扩展类型 exporter）**
-  - [ ] 目标：把导出格式扩展为外部进程插件；复用协议/运行时/权限层，宿主负责写盘
-  - [ ] manifest 扩展：`exporterOptions?: { formats: { id, displayName, extensions: string[], multiFile: boolean }[] }`（v1 固定走 manifest 声明，不做动态格式声明）
-  - [ ] 协议方法 `exporter.export`：params `{ formatId, exportData: AnnotationExport, options: Record<string, unknown>, outputBaseName }`（AnnotationExport 为现有内部导出结构；图片路径以相对项目路径传）；响应 `{ files: [{ relativePath, contentUtf8? | contentBase64? }] }`（单文件上限 50MB）；宿主校验 relativePath 安全（无绝对路径/`..`/空）后写盘到用户选择目录
-  - [ ] 导出面板：格式列表加入已启用插件格式（分组「插件格式」并标注插件名）；插件失败/超时/禁用/`pending-migration` 时入口置灰并显示原因；导出完成提示与现有导出一致
-  - [ ] 进度/取消：插件声明 `progress` 时进度事件驱动现有进度条；声明 `cancel` 时导出中可取消（control cancel + 宽限期杀进程，返回 `CANCELLED`）
-  - [ ] 内置 COCO/VOC/YOLO/custom 格式不变，插件格式只增不减
+- [x] **实现导出格式插件支持（代码型，扩展类型 exporter）**
+  - [x] 目标：把导出格式扩展为外部进程插件；复用协议/运行时/权限层，宿主负责写盘
+  - [x] manifest 扩展：`exporterOptions?: { formats: { id, displayName, extensions: string[], multiFile: boolean }[] }`（v1 固定走 manifest 声明，不做动态格式声明）
+  - [x] 协议方法 `exporter.export`：params `{ formatId, exportData: AnnotationExport, options: Record<string, unknown>, outputBaseName }`（AnnotationExport 为现有内部导出结构；图片路径以相对项目路径传）；响应 `{ files: [{ relativePath, contentUtf8? | contentBase64? }] }`（单文件上限 50MB）；宿主校验 relativePath 安全（无绝对路径/`..`/空）后写盘到用户选择目录
+  - [x] 导出面板：格式列表加入已启用插件格式（分组「插件格式」并标注插件名）；插件失败/超时/禁用/`pending-migration` 时入口置灰并显示原因；导出完成提示与现有导出一致
+  - [x] 进度/取消：插件声明 `progress` 时进度事件驱动现有进度条；声明 `cancel` 时导出中可取消（control cancel + 宽限期杀进程，返回 `CANCELLED`）
+  - [x] 内置 COCO/VOC/YOLO/custom 格式不变，插件格式只增不减
   - 验收：示例导出插件（LabelMe JSON，Python 实现）走通「选图目录 → 选格式 → 导出」完整流程且产物可被外部工具解析；插件返回 `../evil.txt` 等越权路径被宿主拒绝且不写盘；导出中取消无残留进程
 
-- [ ] **实现外部预打标程序插件支持（代码型，扩展类型 prelabel）**
-  - [ ] 目标：第三方预打标程序以插件形式接入现有预打标链路，与内置 ONNX 管线并存
-  - [ ] manifest：`prelabel` 必须声明非空 `annotationTypes`；`batch`/`progress`/`cancel` 可选声明
-  - [ ] 协议方法 `prelabel.run`：params `{ imagePaths: string[]（%PROJECT% 内相对路径）, classMappings: [{ modelClass, labelId, labelName }], params: Record<string, unknown> }`；响应 `{ shapes: AnnotationShape[] }`——`points` 必须为原图像素坐标（rect `[x,y,width,height]`、polygon 顶点序列、point `[x,y]`），`labelId` 必须存在于映射结果，`attributes.confidence?` 可选；宿主校验坐标合法后合并
-  - [ ] 批量与进度：声明 `batch` 时可一次传多图，否则逐图调用；声明 `progress` 时进度事件驱动现有批量进度条（复用无百分比进度语义）；声明 `cancel` 时批量可中断，中断后已完成图片的标注保留（与内置管线语义一致）
-  - [ ] 复用现有预打标链路：预打标执行层抽象「预打标来源」接口（内置 ONNX 管线与插件实现同一接口）；结果合并、每图一个撤销事务、`attributes.confidence` 记录、跳过已有标注/强制覆盖选项全部复用现有实现
-  - [ ] 入口：预打标面板「模型来源」选择（内置模型 / 插件名）；插件来源的类别映射 UI 复用现有映射面板
-  - [ ] 图片访问：插件经权限模型读图（`fs.read:<%PROJECT%>` 授权），宿主不传图片字节
+- [x] **实现外部预打标程序插件支持（代码型，扩展类型 prelabel）**
+  - [x] 目标：第三方预打标程序以插件形式接入现有预打标链路，与内置 ONNX 管线并存
+  - [x] manifest：`prelabel` 必须声明非空 `annotationTypes`；`batch`/`progress`/`cancel` 可选声明
+  - [x] 协议方法 `prelabel.run`：params `{ imagePaths: string[]（%PROJECT% 内相对路径）, classMappings: [{ modelClass, labelId, labelName }], params: Record<string, unknown> }`；响应 `{ shapes: AnnotationShape[] }`——`points` 必须为原图像素坐标（rect `[x,y,width,height]`、polygon 顶点序列、point `[x,y]`），`labelId` 必须存在于映射结果，`attributes.confidence?` 可选；宿主校验坐标合法后合并
+  - [x] 批量与进度：声明 `batch` 时可一次传多图，否则逐图调用；声明 `progress` 时进度事件驱动现有批量进度条（复用无百分比进度语义）；声明 `cancel` 时批量可中断，中断后已完成图片的标注保留（与内置管线语义一致）
+  - [x] 复用现有预打标链路：预打标执行层抽象「预打标来源」接口（内置 ONNX 管线与插件实现同一接口）；结果合并、每图一个撤销事务、`attributes.confidence` 记录、跳过已有标注/强制覆盖选项全部复用现有实现
+  - [x] 入口：预打标面板「模型来源」选择（内置模型 / 插件名）；插件来源的类别映射 UI 复用现有映射面板
+  - [x] 图片访问：插件经权限模型读图（`fs.read:<%PROJECT%>` 授权），宿主不传图片字节
   - 验收：示例预打标插件（Python，实现 hello/run/进度/取消）跑通单图与批量；批量中取消后已完成图片标注保留且进程无残留；非法坐标/未知 labelId 返回 `INVALID_ARGUMENT` 且不产生脏数据；与内置 ONNX 管线切换无状态串扰
 
-- [ ] **插件系统整体验收与文档**
-  - [ ] 端到端验收清单（全部通过才算完成）：坏插件隔离（启动即崩/死循环/垃圾输出）、权限拒绝（越权读、未授权网络）、超时与取消（30s 超时、control 取消）、自动禁用（3 次后 + 手动恢复）、安全模式（代码型全禁、数据型保留）、迁移失败降级（项目正常打开、重试成功）、卸载清理（目录/注册表清理、项目不受影响）、更新流程（保留授权与配置、configVersion 变化触发迁移）
-  - [ ] 手动验证清单：启用/禁用插件后导出面板与预打标入口状态正确；重启后注册表、授权、插件配置完整恢复；安全模式开关即时生效
-  - [ ] 文档核对：`docs/plugins.md`、`docs/plugin-protocol.md`、`docs/plugin-manifest.schema.json` 与实现一致；CONTEXT.md 术语与 ADR 无冲突
-  - [ ] 自动化：`npm run typecheck`、`npm run lint`、`npm run test:coverage`（插件纯逻辑保持 90% 行覆盖）、`cargo clippy`、`cargo test`（含 conformance 与权限单测）全部通过
+- [x] **插件系统整体验收与文档**
+  - [x] 端到端验收清单（全部通过才算完成）：坏插件隔离（启动即崩/死循环/垃圾输出）、权限拒绝（越权读、未授权网络）、超时与取消（30s 超时、control 取消）、自动禁用（3 次后 + 手动恢复）、安全模式（代码型全禁、数据型保留）、迁移失败降级（项目正常打开、重试成功）、卸载清理（目录/注册表清理、项目不受影响）、更新流程（保留授权与配置、configVersion 变化触发迁移）
+  - [x] 手动验证清单：启用/禁用插件后导出面板与预打标入口状态正确；重启后注册表、授权、插件配置完整恢复；安全模式开关即时生效
+  - [x] 文档核对：`docs/plugins.md`、`docs/plugin-protocol.md`、`docs/plugin-manifest.schema.json` 与实现一致；CONTEXT.md 术语与 ADR 无冲突
+  - [x] 自动化：`npm run typecheck`、`npm run lint`、`npm run test:coverage`（插件纯逻辑保持 90% 行覆盖）、`cargo clippy`、`cargo test`（含 conformance 与权限单测）全部通过
   - 验收：坏插件/权限/超时/取消/自动禁用/安全模式/迁移/卸载八类场景各有一份可复现的记录（截图或日志）
 
 ## ✅ 已完成 (Completed)

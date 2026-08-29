@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://my-label-tool.local/schema/project-config-v1.json",
+  "title": "my_label_tool Project Config v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "format",
+    "annotationPath",
+    "exportedAt",
+    "imageFolder",
+    "labels"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "format": { "enum": ["json", "coco", "voc", "yolo"] },
+    "annotationPath": { "type": "string", "minLength": 1 },
+    "exportedAt": { "type": "string" },
+    "imageFolder": { "type": "string" },
+    "labels": { "type": "array", "items": { "$ref": "#/$defs/label" } },
+    "template": { "$ref": "#/$defs/template" },
+    "exportOptions": { "$ref": "#/$defs/exportOptions" },
+    "prelabelMappings": { "type": "object", "additionalProperties": { "type": "array" } },
+    "pluginConfigs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pluginConfig" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "label": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "color": { "type": "string", "minLength": 1 },
+        "shortcut": { "type": "string" },
+        "shapeType": { "enum": ["any", "rect", "polygon", "point"] }
+      },
+      "additionalProperties": true
+    },
+    "template": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "exportOptions": {
+      "type": "object",
+      "properties": {
+        "format": { "enum": ["json", "coco", "voc", "yolo", "custom"] }
+      },
+      "additionalProperties": true
+    },
+    "pluginConfig": {
+      "type": "object",
+      "required": ["pluginId", "configVersion", "config"],
+      "properties": {
+        "pluginId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(\\.[a-z0-9]+){1,}$"
+        },
+        "configVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "config": {}
+      },
+      "additionalProperties": true
+    }
+  }
+}

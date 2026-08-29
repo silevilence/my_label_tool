@@ -20,8 +20,9 @@ use windows::{
 };
 
 use super::{
-    close_handle, create_kill_on_close_job, wide_null, windows_command_line,
-    windows_environment_block_filtered,
+    app_container::AppContainerLaunch, close_handle, create_kill_on_close_job,
+    resolve_windows_executable, wide_null, windows_command_line,
+    windows_environment_block_filtered, PluginSandbox,
 };
 use crate::i18n::zh_cn as text;
 
@@ -32,6 +33,7 @@ pub(crate) struct PipedJobProcess {
     stdout: Option<File>,
     stderr: Option<File>,
     terminated: bool,
+    _sandbox: AppContainerLaunch,
 }
 
 // SAFETY: every HANDLE is uniquely owned by this guard. Moving the guard to
@@ -43,11 +45,13 @@ impl PipedJobProcess {
         executable: &Path,
         arguments: &[String],
         working_directory: &Path,
+        sandbox: PluginSandbox<'_>,
         environment_overrides: &[(&str, &str)],
         environment_removals: &[&str],
     ) -> Result<Self, String> {
-        let display = executable.to_string_lossy();
-        let mut command_line = windows_command_line(executable.as_os_str(), arguments)?;
+        let executable = resolve_windows_executable(executable)?;
+        let display = executable.path.to_string_lossy();
+        let mut command_line = windows_command_line(executable.path.as_os_str(), arguments)?;
         let current_directory = wide_null(working_directory.as_os_str())?;
         let environment =
             windows_environment_block_filtered(environment_overrides, environment_removals)?;
@@ -56,6 +60,13 @@ impl PipedJobProcess {
             bInheritHandle: true.into(),
             ..Default::default()
         };
+        let mut app_container = AppContainerLaunch::prepare(
+            sandbox.identity,
+            sandbox.package_root,
+            executable.runtime_root.as_deref(),
+            sandbox.allow_network,
+        )?;
+        let mut security_capabilities = app_container.security_capabilities();
 
         // SAFETY: only the three child pipe endpoints are inherited. The child
         // stays suspended until it belongs to the kill-on-close Job Object.
@@ -100,7 +111,7 @@ impl PipedJobProcess {
             }
 
             let mut attribute_size = 0;
-            let _ = InitializeProcThreadAttributeList(None, 1, None, &mut attribute_size);
+            let _ = InitializeProcThreadAttributeList(None, 2, None, &mut attribute_size);
             if attribute_size == 0 {
                 let error = windows::core::Error::from_win32();
                 close_many(&[
@@ -119,7 +130,7 @@ impl PipedJobProcess {
                 LPPROC_THREAD_ATTRIBUTE_LIST(attribute_storage.as_mut_ptr().cast());
             if let Err(error) = InitializeProcThreadAttributeList(
                 Some(attribute_list),
-                1,
+                2,
                 None,
                 &mut attribute_size,
             ) {
@@ -155,6 +166,32 @@ impl PipedJobProcess {
                     job,
                 ]);
                 return Err(text::process_stdio_setup_failed(error));
+            }
+            if let Err(error) = UpdateProcThreadAttribute(
+                attribute_list,
+                0,
+                windows::Win32::System::Threading::PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES
+                    as usize,
+                Some(
+                    (&mut security_capabilities
+                        as *mut windows::Win32::Security::SECURITY_CAPABILITIES)
+                        .cast(),
+                ),
+                size_of::<windows::Win32::Security::SECURITY_CAPABILITIES>(),
+                None,
+                None,
+            ) {
+                DeleteProcThreadAttributeList(attribute_list);
+                close_many(&[
+                    stdin_read,
+                    stdin_write,
+                    stdout_read,
+                    stdout_write,
+                    stderr_read,
+                    stderr_write,
+                    job,
+                ]);
+                return Err(text::plugin_sandbox_launch_failed(error));
             }
             let startup = STARTUPINFOEXW {
                 StartupInfo: windows::Win32::System::Threading::STARTUPINFOW {
@@ -219,6 +256,7 @@ impl PipedJobProcess {
                 stdout: Some(File::from_raw_handle(stdout_read.0)),
                 stderr: Some(File::from_raw_handle(stderr_read.0)),
                 terminated: false,
+                _sandbox: app_container,
             })
         }
     }
@@ -297,5 +335,155 @@ unsafe fn close_many(handles: &[HANDLE]) {
         // SAFETY: callers pass only uniquely owned handles and never use them
         // after this cleanup helper returns.
         unsafe { close_handle(*handle) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        io::{BufRead, BufReader},
+        net::TcpListener,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    #[test]
+    fn appcontainer_denies_direct_file_escape_and_unauthorized_network() {
+        let _isolation = super::super::windows_isolation_test_guard();
+        let root = std::env::temp_dir().join(format!(
+            "my-label-tool-appcontainer-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let package = root.join("plugin");
+        fs::create_dir_all(&package).expect("create package");
+        let packaged_executable = package.join("plugin-probe.exe");
+        let system_powershell = resolve_windows_executable(Path::new("powershell.exe"))
+            .expect("resolve PowerShell")
+            .path;
+        fs::copy(system_powershell, &packaged_executable).expect("copy packaged executable");
+        let inside = package.join("inside.txt");
+        let outside = root.join("outside.txt");
+        fs::write(&inside, "package-visible").expect("write package file");
+        fs::write(&outside, "host-secret").expect("write outside file");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind host listener");
+        let port = listener
+            .local_addr()
+            .expect("listener address")
+            .port()
+            .to_string();
+        let inside_value = inside.to_string_lossy().into_owned();
+        let outside_value = outside.to_string_lossy().into_owned();
+        let script = concat!(
+            "$inside = try { [IO.File]::ReadAllText($env:SANDBOX_INSIDE).Trim() } ",
+            "catch { 'INSIDE_DENIED' }; ",
+            "$outside = try { [IO.File]::ReadAllText($env:SANDBOX_OUTSIDE).Trim() } ",
+            "catch { 'OUTSIDE_DENIED' }; ",
+            "$client = [Net.Sockets.TcpClient]::new(); ",
+            "$network = try { $client.Connect('127.0.0.1', [int]$env:SANDBOX_PORT); ",
+            "'NETWORK_ALLOWED' } catch { 'NETWORK_DENIED' }; ",
+            "$client.Dispose(); ",
+            "[Console]::Out.WriteLine(\"$inside|$outside|$network\")"
+        );
+        let arguments = vec![
+            "-NoProfile".to_string(),
+            "-NonInteractive".to_string(),
+            "-Command".to_string(),
+            script.to_string(),
+        ];
+        let mut process = PipedJobProcess::spawn(
+            &packaged_executable,
+            &arguments,
+            &package,
+            PluginSandbox {
+                identity: &root.to_string_lossy(),
+                package_root: &package,
+                allow_network: false,
+            },
+            &[
+                ("SANDBOX_INSIDE", &inside_value),
+                ("SANDBOX_OUTSIDE", &outside_value),
+                ("SANDBOX_PORT", &port),
+            ],
+            &[],
+        )
+        .expect("spawn isolated probe");
+        drop(process.take_stdin());
+        let mut output = String::new();
+        BufReader::new(process.take_stdout().expect("stdout"))
+            .read_line(&mut output)
+            .expect("read probe output");
+        assert_eq!(
+            output.trim(),
+            "package-visible|OUTSIDE_DENIED|NETWORK_DENIED"
+        );
+        drop(listener);
+        drop(process);
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn appcontainer_runs_system_python_without_host_secrets() {
+        let _isolation = super::super::windows_isolation_test_guard();
+        static ENVIRONMENT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _environment = ENVIRONMENT_LOCK.lock().expect("lock environment");
+        let root = std::env::temp_dir().join(format!(
+            "my-label-tool-python-appcontainer-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let package = root.join("plugin");
+        fs::create_dir_all(&package).expect("create package");
+        let script = package.join("main.py");
+        fs::write(
+            &script,
+            concat!(
+                "import os\n",
+                "secret = os.environ.get('MY_LABEL_TOOL_TEST_SECRET')\n",
+                "print('PYTHON_OK|' + ('SECRET_HIDDEN' if secret is None else secret))\n",
+            ),
+        )
+        .expect("write Python plugin");
+        // SAFETY: the process-wide mutation is serialized by ENVIRONMENT_LOCK
+        // and restored before releasing that lock.
+        unsafe { std::env::set_var("MY_LABEL_TOOL_TEST_SECRET", "SECRET_LEAKED") };
+        let result = (|| {
+            let arguments = vec![script.to_string_lossy().into_owned()];
+            let mut process = PipedJobProcess::spawn(
+                Path::new("python"),
+                &arguments,
+                &package,
+                PluginSandbox {
+                    identity: &root.to_string_lossy(),
+                    package_root: &package,
+                    allow_network: false,
+                },
+                &[],
+                &[],
+            )?;
+            drop(process.take_stdin());
+            let mut output = String::new();
+            BufReader::new(
+                process
+                    .take_stdout()
+                    .ok_or_else(|| "missing stdout".to_string())?,
+            )
+            .read_line(&mut output)
+            .map_err(|error| error.to_string())?;
+            drop(process);
+            Ok::<String, String>(output)
+        })();
+        // SAFETY: restore the variable while still holding ENVIRONMENT_LOCK.
+        unsafe { std::env::remove_var("MY_LABEL_TOOL_TEST_SECRET") };
+        let output = result.expect("run isolated Python plugin");
+        assert_eq!(output.trim(), "PYTHON_OK|SECRET_HIDDEN");
+        fs::remove_dir_all(root).expect("remove fixture");
     }
 }

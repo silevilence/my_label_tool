@@ -499,13 +499,13 @@ fn output_fixture_command() -> (&'static str, Vec<String>) {
 fn process_tree_fixture_command(process_id_path: &Path) -> (&'static str, Vec<String>) {
     let process_id_path = process_id_path.to_string_lossy().replace('\'', "''");
     (
-            "powershell",
-            vec![
-                "-NoProfile".to_string(),
-                "-Command".to_string(),
-                format!("$child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; Set-Content -LiteralPath '{process_id_path}' -Value $child.Id; Wait-Process -Id $child.Id"),
-            ],
-        )
+        "powershell",
+        vec![
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            format!("$child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; Set-Content -Encoding ascii -LiteralPath '{process_id_path}' -Value $child.Id; Wait-Process -Id $child.Id"),
+        ],
+    )
 }
 
 #[cfg(windows)]
@@ -545,12 +545,12 @@ fn output_fixture_command() -> (&'static str, Vec<String>) {
 fn process_tree_fixture_command(process_id_path: &Path) -> (&'static str, Vec<String>) {
     let process_id_path = process_id_path.to_string_lossy().replace('\'', "'\\''");
     (
-            "sh",
-            vec![
-                "-c".to_string(),
-                format!("sleep 30 & child=$!; printf '%s\\n' \"$child\" > '{process_id_path}'; wait \"$child\""),
-            ],
-        )
+        "sh",
+        vec![
+            "-c".to_string(),
+            format!("sleep 30 & child=$!; printf '%s\\n' \"$child\" > '{process_id_path}'; wait \"$child\""),
+        ],
+    )
 }
 
 #[cfg(not(windows))]
