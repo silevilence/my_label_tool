@@ -85,7 +85,6 @@ fn handle_fixture_message(
         PluginMessage::Request {
             id: Some(id),
             method,
-            params: _,
             ..
         } if method == "hello" => {
             if fixture == "garbage" {
