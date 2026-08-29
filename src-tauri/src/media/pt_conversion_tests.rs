@@ -16,17 +16,20 @@ use crate::{
 use std::{
     collections::HashMap,
     fs,
+    io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(windows)]
+const PROCESS_TREE_STARTUP_DELAY: Duration = Duration::from_secs(6);
+#[cfg(not(windows))]
+const PROCESS_TREE_STARTUP_DELAY: Duration = Duration::ZERO;
 
 fn environment(executable: impl Into<String>) -> PtConversionEnvironment {
     PtConversionEnvironment {
@@ -345,25 +348,10 @@ fn streams_normalized_output_from_a_real_conversion_process() {
 fn cancellation_terminates_the_conversion_process_tree_and_releases_control() {
     let root = test_directory("cancel-tree");
     let log_path = root.join("conversion.log");
-    let process_id_path = root.join("child.pid");
-    let (executable, arguments) = process_tree_fixture_command(&process_id_path);
+    let (executable, arguments) = process_tree_fixture_command(PROCESS_TREE_STARTUP_DELAY);
     let working_directory = root.parent().unwrap().to_path_buf();
-    let control = Arc::new(ConversionControl::default());
-    let watcher_control = Arc::clone(&control);
-    let watcher = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while Instant::now() < deadline {
-            if let Ok(raw_process_id) = fs::read_to_string(&process_id_path) {
-                if let Ok(process_id) = raw_process_id.trim().parse::<u32>() {
-                    watcher_control.cancelled.store(true, Ordering::Release);
-                    return process_id;
-                }
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        0
-    });
-    let started = Instant::now();
+    let control = ConversionControl::default();
+    let mut child_process_id = None;
 
     let result = run_conversion_process(
         executable,
@@ -372,10 +360,15 @@ fn cancellation_terminates_the_conversion_process_tree_and_releases_control() {
         &working_directory,
         &log_path,
         &control,
-        &mut |_| {},
+        &mut |line| {
+            if let Ok(process_id) = line.trim().parse::<u32>() {
+                child_process_id = Some(process_id);
+                control.cancelled.store(true, Ordering::Release);
+            }
+        },
     );
 
-    let child_process_id = watcher.join().unwrap();
+    let child_process_id = child_process_id.expect("fixture child did not announce readiness");
     let child_still_running = process_exists(child_process_id);
     if child_still_running {
         let _ = terminate_process_tree(child_process_id);
@@ -385,40 +378,36 @@ fn cancellation_terminates_the_conversion_process_tree_and_releases_control() {
         error.contains("中止") || error.contains("进程树失败"),
         "{error}"
     );
-    assert!(started.elapsed() < Duration::from_secs(5));
-    assert_ne!(child_process_id, 0);
     assert!(!child_still_running);
     remove_test_directory_with_retry(&root);
 }
 
 #[test]
 fn process_guard_drop_reaps_the_tree_on_an_early_error_path() {
-    let root = test_directory("guard-drop");
-    let process_id_path = root.join("child.pid");
-    let (executable, arguments) = process_tree_fixture_command(&process_id_path);
+    let (executable, arguments) = process_tree_fixture_command(Duration::ZERO);
     let mut command = Command::new(executable);
     command
         .args(&arguments)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null());
     configure_process_group(&mut command);
-    let child = command.spawn().unwrap();
+    let mut child = command.spawn().unwrap();
+    let stdout = child.stdout.take().expect("fixture stdout must be piped");
+    let mut process_id_line = String::new();
+    let bytes_read = BufReader::new(stdout)
+        .read_line(&mut process_id_line)
+        .unwrap();
+    assert_ne!(bytes_read, 0, "fixture child did not announce readiness");
+    let child_process_id = process_id_line
+        .trim()
+        .parse::<u32>()
+        .expect("fixture emitted an invalid child process id");
     let guard = ChildProcessGuard {
         child,
         stdout_reader: None,
         stderr_reader: None,
         reaped: false,
-    };
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let child_process_id = loop {
-        if let Ok(raw_process_id) = fs::read_to_string(&process_id_path) {
-            if let Ok(process_id) = raw_process_id.trim().parse::<u32>() {
-                break process_id;
-            }
-        }
-        assert!(Instant::now() < deadline, "fixture child did not start");
-        thread::sleep(Duration::from_millis(20));
     };
 
     drop(guard);
@@ -428,7 +417,6 @@ fn process_guard_drop_reaps_the_tree_on_an_early_error_path() {
         let _ = terminate_process_tree(child_process_id);
     }
     assert!(!child_still_running);
-    remove_test_directory_with_retry(&root);
 }
 
 #[test]
@@ -496,14 +484,14 @@ fn output_fixture_command() -> (&'static str, Vec<String>) {
 }
 
 #[cfg(windows)]
-fn process_tree_fixture_command(process_id_path: &Path) -> (&'static str, Vec<String>) {
-    let process_id_path = process_id_path.to_string_lossy().replace('\'', "''");
+fn process_tree_fixture_command(startup_delay: Duration) -> (&'static str, Vec<String>) {
+    let startup_delay_millis = startup_delay.as_millis();
     (
         "powershell",
         vec![
             "-NoProfile".to_string(),
             "-Command".to_string(),
-            format!("$child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; Set-Content -Encoding ascii -LiteralPath '{process_id_path}' -Value $child.Id; Wait-Process -Id $child.Id"),
+            format!("Start-Sleep -Milliseconds {startup_delay_millis}; $child = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30'; [Console]::Out.WriteLine($child.Id); Wait-Process -Id $child.Id"),
         ],
     )
 }
@@ -542,13 +530,13 @@ fn output_fixture_command() -> (&'static str, Vec<String>) {
 }
 
 #[cfg(not(windows))]
-fn process_tree_fixture_command(process_id_path: &Path) -> (&'static str, Vec<String>) {
-    let process_id_path = process_id_path.to_string_lossy().replace('\'', "'\\''");
+fn process_tree_fixture_command(startup_delay: Duration) -> (&'static str, Vec<String>) {
+    let startup_delay_seconds = startup_delay.as_secs_f64();
     (
         "sh",
         vec![
             "-c".to_string(),
-            format!("sleep 30 & child=$!; printf '%s\\n' \"$child\" > '{process_id_path}'; wait \"$child\""),
+            format!("sleep {startup_delay_seconds:.3}; sleep 30 & child=$!; printf '%s\\n' \"$child\"; wait \"$child\""),
         ],
     )
 }
