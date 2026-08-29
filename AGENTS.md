@@ -80,26 +80,30 @@ my_label_tool/
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
 │   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态）
 │   ├── types/                      # 核心类型（annotation、export、prelabel、plugin）
-│   ├── lib/                        # tauri-api 封装、导入导出、工具函数
+│   ├── lib/                        # tauri-api 封装、导入导出、插件契约、工具函数
 │   │   ├── defaults/               # 导出模板、标签、快捷键、显示设置默认值
 │   │   ├── exporters/              # COCO / VOC / YOLO / 自定义导出
 │   │   ├── importers.ts            # 多格式导入 + 项目配置（ProjectConfig）解析
 │   │   ├── image-search.ts         # 图片表达式搜索语法解析与匹配
 │   │   ├── prelabel-*.ts           # 预打标模型库 / 类别映射 / 执行
+│   │   ├── plugin-*.ts             # 插件契约：配置迁移 / 预置标签 / 导出与预打标来源
 │   │   ├── tauri-api.ts            # 所有 Tauri command 调用封装
 │   │   └── app-utils.ts            # 路径、图片尺寸、项目配置等工具函数
-│   ├── i18n/                       # 前端用户可见文案（prelabel.zh-CN.ts）
+│   ├── i18n/                       # 前端用户可见文案（prelabel.zh-CN.ts、plugin.zh-CN.ts）
 │   └── hooks/                      # 画布交互、图片加载、预打标、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
-│   ├── src/                        # 入口、commands（含 prelabel*.rs）、models
+│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs）、models、bin（插件校验/测试桩）
 │   │   ├── media/                  # 图像/模型处理：onnx_metadata.rs、pt_conversion.rs、prelabel/（runtime、pipeline、inference）
 │   │   ├── plugins/                # 插件框架：manifest、protocol、runtime、permissions、registry、config
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
+│   ├── tests/                      # 插件协议集成测试（plugin_conformance.rs）
 │   ├── capabilities/               # Tauri 权限（core/dialog/process/updater:default）
 │   ├── Cargo.toml
 │   └── tauri.conf.json
+├── examples/plugins/               # 插件开发示例（label-preset-demo / exporter-labelme-demo / prelabel-demo）
+├── scripts/                        # 插件打包与验证脚本（package-plugin.mjs、verify-plugin-*.ps1）
 ├── .github/workflows/              # GitHub Actions：ci.yml、official-models.yml、release.yml
-├── docs/                           # 文档（build.md、adr/：ONNX Runtime 决策记录）
+├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、插件 JSON Schema、verification/、adr/）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md
 └── package.json
@@ -107,7 +111,7 @@ my_label_tool/
 
 **原则**：标注数据结构（`AnnotationShape`、`LabelConfig`、`LabelTemplate` 等）必须在 `src/types/` 中先定义清楚，Rust 端 `models/` 保持字段一一对应，避免前后端数据结构漂移。
 
-**Tauri 命令清单**（`src-tauri/src/commands/mod.rs`，前端经 `lib/tauri-api.ts` 调用，组件内禁止直接 `invoke`）：
+**Tauri 命令清单**（定义于 `src-tauri/src/commands/`（含 `plugin.rs`、`prelabel*.rs`），在 `src-tauri/src/lib.rs` 的 `invoke_handler` 注册；前端经 `lib/tauri-api.ts` 调用，组件内禁止直接 `invoke`）：
 
 | 命令 | 作用 |
 | --- | --- |
@@ -132,6 +136,13 @@ my_label_tool/
 | `preview_pt_conversion_command` | 预览转换计划（执行命令、超时等），供用户在弹窗中确认 |
 | `convert_pt_to_onnx` | 按转换计划执行 `.pt` 转 ONNX，实时回调输出事件 |
 | `cancel_pt_conversion` | 按 conversion_id 取消进行中的转换；应用退出时自动终止全部未完成转换 |
+| `install_plugin` / `authorize_plugin` | 安装插件包：静态校验与权限解析，按 install_token 授权后注册 |
+| `uninstall_plugin` / `list_plugins` / `set_plugin_enabled` / `get_plugin_status` / `clear_plugin_failures` | 插件注册表：卸载、列出、启停、状态查询、清除故障计数 |
+| `get_plugin_runtime_settings` / `set_plugin_safe_mode` / `get_plugin_runtime_logs` | 插件运行时设置、安全模式开关、失败诊断日志 |
+| `load_plugin_label_presets` | 枚举已启用插件的预置标签模板 |
+| `load_plugin_export_formats` / `run_plugin_export` / `cancel_plugin_export` | 插件导出格式：列出、执行（进度/取消事件）、取消 |
+| `load_plugin_prelabel_sources` / `run_plugin_prelabel` / `cancel_plugin_prelabel` | 插件预打标来源：列出、执行（进度/取消事件）、取消 |
+| `migrate_plugin_configs` | 按插件的 configVersion 逐级迁移插件配置 |
 
 ---
 
@@ -202,13 +213,13 @@ interface LabelTemplate {
 ### 通用
 
 - 快捷键、标签、导出模板的默认值放在 `src/lib/defaults/` 或对应 Rust 端常量文件中，禁止散落在组件代码里硬编码。
-- 所有用户可见文案（按钮、提示）放入 i18n 结构：前端新增文案放 `src/i18n/`（参考 `prelabel.zh-CN.ts`），Rust 端错误提示放 `src-tauri/src/i18n/zh_cn.rs`（通过 `use crate::i18n::zh_cn as text` 引用），禁止散落在组件或 command 中硬编码；当前只有中文一种语言。
+- 所有用户可见文案（按钮、提示）放入 i18n 结构：前端新增文案放 `src/i18n/`（参考 `prelabel.zh-CN.ts`、`plugin.zh-CN.ts`），Rust 端错误提示放 `src-tauri/src/i18n/zh_cn.rs`（通过 `use crate::i18n::zh_cn as text` 引用），禁止散落在组件或 command 中硬编码；当前只有中文一种语言。
 - 无特殊情况下，单文件代码禁止超过 1000 行；超过时优先按功能模块拆分到不同文件。
 - 如确实需要单文件超过 1000 行，必须在文件开头用注释说明原因和理由。
 
 ## 7. 测试要求
 
-- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、ONNX 元数据解析、预打标推理管线、PT 转换等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、预打标模型库/类别映射/执行等纯逻辑。
+- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、ONNX 元数据解析、预打标推理管线、PT 转换等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、预打标模型库/类别映射/执行、插件契约（`src/types/plugin*.test.ts`、`src/lib/plugin-*.test.ts`）与插件管理 UI（`plugin-ui.acceptance.test.tsx`）等纯逻辑。插件协议集成测试：`cargo test --manifest-path src-tauri/Cargo.toml --test plugin_conformance`（独立桩进程覆盖握手、全部错误码、进度、取消与行上限）；插件改动的快速验证脚本：`scripts/verify-plugin-system.ps1`、`scripts/verify-plugin-sdk.ps1`。
 - 预打标真实模型验收：`.github/workflows/official-models.yml` 在 CI 下载官方 YOLOv5n / YOLOv8n / YOLO11n 权重并导出 ONNX，运行被 `#[ignore]` 隔离的元数据、运行时、真实推理与 `.pt` 转换测试；仅当预打标模块、Rust 依赖或工作流本身变化时触发，也可手动触发。涉及预打标推理改动时，先确认这些测试仍能通过。
 - **覆盖率目标**：前端可黑盒测试的纯逻辑层（导入/导出、store、几何计算、配置解析等）通过 `npm run test:coverage` 保持 90% 以上行覆盖率；Tauri API 封装、更新器、UI 组件、纯默认配置等特殊文件可在覆盖率配置中排除，但新增复杂逻辑时必须补测。
 - 新功能必须补充相关测试；问题修复尽可能补充回归测试，避免只修当前手动路径。
@@ -293,7 +304,7 @@ Refs: ROADMAP OPDS 书源服务构建与分发
 
 ## 10. 插件系统开发约束
 
-插件层是独立于标注核心的扩展层，也是对外公开的稳定契约边界。所有开发（核心功能与插件自身）都必须遵守以下约束：核心改动若触及插件契约，必须同步评估并更新 Schema、校验与文档；插件改动适用同一套规则。
+插件层当前为实验性能力（自 V0.6.0 起在发布说明中标注），对外契约可能继续演进，改动时必须同步本文档与契约文档。插件层是独立于标注核心的扩展层，也是对外公开的稳定契约边界。所有开发（核心功能与插件自身）都必须遵守以下约束：核心改动若触及插件契约，必须同步评估并更新 Schema、校验与文档；插件改动适用同一套规则。
 
 - **契约先行**：插件域数据类型（Manifest、能力、权限、协议消息、插件配置）先在 `src/types/plugin.ts` 定义并带版本号，Rust 端 `src-tauri/src/plugins/` 模型保持字段一一对应；对外 Schema（manifest、协议、导入导出数据、预打标请求/结果）必须提供 JSON Schema 文件与校验测试。这些契约的修改无论源自核心侧还是插件侧，都必须同步更新校验与文档。
 - **边界影响评估**：任何涉及标注数据模型（`AnnotationShape`/`LabelConfig`/`LabelTemplate`）、项目配置（`ProjectConfig`）、导出结构、预打标请求/结果或 Tauri commands 的改动，必须先评估对插件层契约的影响；有影响时同步更新 Schema、兼容性说明与 conformance 测试，禁止改完核心后才发现插件契约被破坏。
@@ -313,4 +324,4 @@ Refs: ROADMAP OPDS 书源服务构建与分发
 - `plugin-review`（`.agents/skills/plugin-review/SKILL.md`）：插件相关代码审查时必须使用——插件实现、契约改动、Schema 校验的审查与验收。
 - `plugin-api-versioning`（`.agents/skills/plugin-api-versioning/SKILL.md`）：插件 API 版本号与契约文档维护时必须使用——主程序发版前的插件契约核对、增量/破坏性变更判定、版本 bump 与文档同步。
 
-技能内容以本文件 §10、`CONTEXT.md` 插件术语表与 `docs/adr/0003-0006` 为基准。约束文档变更时必须同步更新技能（或按 §10 逐点确认流程先改约束再改技能），禁止技能与约束脱节。
+技能内容以本文件 §10、`CONTEXT.md` 插件术语表与 `docs/adr/0003-0007` 为基准。约束文档变更时必须同步更新技能（或按 §10 逐点确认流程先改约束再改技能），禁止技能与约束脱节。

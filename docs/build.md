@@ -85,23 +85,26 @@ powershell -NoProfile -Command "npm.cmd run tauri -- signer generate -w $env:USE
 
 ## ONNX Runtime 按需安装
 
-预打标功能使用 ONNX Runtime 1.24.3。运行时不打进应用安装包；发布工作流从
-Microsoft 官方 `onnxruntime` Python wheel 提取以下文件，校验固定 SHA-256 后作为独立
-Release assets 上传：
+预打标功能使用 ONNX Runtime 1.24.3（DirectML 构建，显示版本为 `1.24.3-dml`）。
+运行时不打进应用安装包；发布工作流从 Microsoft 官方 `onnxruntime-directml`
+Python wheel 提取以下文件，校验固定 SHA-256 后作为独立 Release assets 上传：
 
-- `onnxruntime.dll`：`e6abe8b3fe7eb38e0424fa366eb7edac2090ac2d211592c26d674f928b44f785`
-- `onnxruntime_providers_shared.dll`：`1647771b4593c729df99a4a86e66aad6a77c9e6e3c8efd97322ef42ef9b1cc0b`
+- `onnxruntime.dll`：`6169297EE0BBB3A3BA8D2C7EA8033E6D13D1E0C0F57EA849D7904C2F9F5B87A0`
+- `onnxruntime_providers_shared.dll`：`CA503E4C86C729326512401BE672DC33B717A2641DE78E28A40A54A59F033CD9`
+- `DirectML.dll`：`2D1D0C0E7362D5F52062510AE454474F18044B570A175F34BE05F4717A5904CC`
 
 用户首次校验或运行模型前，在“预打标模型”设置中选择一种安装方式：
 
-1. 确认后从本项目最新 GitHub Release 下载，应用会再次校验 SHA-256。
-2. 离线获取同版本的两个 DLL，放在同一目录，点击“手动选择 DLL”并选择
-   `onnxruntime.dll`。应用会要求 provider DLL 同时存在，并对两者执行相同的固定
-   SHA-256 校验后再成对安装。
+1. 确认后从本项目最新 GitHub Release 下载（下载中显示进度，可随时取消；应用会再次校验 SHA-256）。
+2. 离线获取同版本的 DLL 放在同一目录，点击“手动选择 DLL”并选择
+   `onnxruntime.dll`。应用要求 provider DLL 同时存在，并对两者执行相同的固定
+   SHA-256 校验后再成对安装；同目录存在 `DirectML.dll` 时一并安装，安装后即可
+   启用 GPU 加速（缺失 DirectML 不影响 CPU 推理）。
 
 目标目录会显示在设置页中，结构为应用数据目录下的
-`onnxruntime/1.24.3/`。直接把两个 DLL 复制到该目录后无需重启，点击“重新检测”即可
-校验并加载；通过“手动选择 DLL”安装时则会在安装完成后立即更新状态。
+`onnxruntime/1.24.3/`。直接把所需的 DLL 复制到该目录后无需重启，点击“重新检测”即可
+校验并加载（`DirectML.dll` 同目录放置即可启用 GPU 加速）；通过“手动选择 DLL”
+安装时则会在安装完成后立即更新状态。
 运行时动态加载是进程级操作；若要替换已加载的 DLL 版本，应先退出应用。
 
 `.github/workflows/official-models.yml` 仅在预打标 Rust 模块、Rust 依赖或工作流本身

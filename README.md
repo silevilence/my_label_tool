@@ -43,9 +43,17 @@
 **AI 预打标（可选）**
 
 - **模型库**：添加标准 YOLO 模型（ONNX）或 PyTorch 的 `.pt` 模型，自动识别模型格式、类别数与输入尺寸；`.pt` 模型可在应用内一键转换为 ONNX 并校验：优先使用本机已装的 yolo CLI / ultralytics 环境，未安装时也可经 uvx 自动获取运行环境（首次运行需联网）；转换前可预览命令、调整输入尺寸与简化选项，过程中实时显示输出并可随时取消
-- **ONNX Runtime 按需安装**：推理运行时（约 40–90MB）不随安装包分发，可在设置中一键下载（自动 SHA-256 校验）或手动放置 DLL，放置后即时可用，保持核心安装包轻量
+- **ONNX Runtime 按需安装**：推理运行时（约 40–90MB）不随安装包分发，可在设置中一键下载（自动 SHA-256 校验；下载中显示进度并可随时取消）或手动放置 DLL，放置后即时可用，保持核心安装包轻量
+- **GPU 加速**：随附的 DirectML 构建支持可选 GPU 加速，当前运行时是否支持在设置中明确提示
 - **类别映射**：模型类别与项目标签按名称自动匹配，也支持手动绑定已有标签、从类名新建标签或排除类别；未映射的类别运行时自动跳过
-- **单图与批量预打标**：对当前图片追加标注或批量处理整组图片；默认跳过已有标注的图片，可开启强制覆盖；任务可随时中断，每张图片的结果可独立撤销
+- **单图与批量预打标**：对当前图片追加标注或批量处理整组图片；默认跳过已有标注的图片，可开启强制覆盖；任务可随时中断，支持取消单张图片的推理且已完成的结果保留，每张图片的结果可独立撤销
+- **插件预打标来源**：可在模型库中选择已安装的预打标插件执行推理，与内置 YOLO 模型并列展示（见下方「插件系统」）
+
+**插件系统（实验性）**
+
+- **插件管理**：在「设置 → 插件管理」安装 ZIP 插件包，安装时逐项确认声明的文件读写权限（网络权限 v1 始终拒绝）；插件可启用、停用、更新或卸载，连续失败自动停用并保留诊断日志；安全模式可一键禁止所有代码型插件
+- **插件扩展类型**：预置标签（提供只读标签模板，加载后写入项目标签快照）、自定义导出格式（在导出面板「插件格式」分组中选择）、外部预打标程序（作为预打标来源与内置模型并列）
+- **插件开发**：提供三类示例（`examples/plugins/`，含标签预置 / 导出器 / 预打标）、manifest 契约与 NDJSON 协议文档、离线校验器与打包脚本；插件为实验性能力，接口可能随版本演进，详见 `docs/plugins.md`
 
 **操作与效率**
 
@@ -102,6 +110,9 @@ cargo clippy --manifest-path src-tauri/Cargo.toml  # Rust lint
 # Rust 后端单元测试（覆盖图片识别、JSON 导出、文本文件导出/列举、PT 转换等）
 cargo test --manifest-path src-tauri/Cargo.toml
 
+# 插件协议集成测试（独立桩进程覆盖握手、错误码、进度、取消与行上限）
+cargo test --manifest-path src-tauri/Cargo.toml --test plugin_conformance
+
 # 前端单元测试（Vitest，覆盖导入/导出、store、几何计算、标签模板同步等纯逻辑层）
 npm test
 
@@ -117,7 +128,7 @@ npm run test:coverage
 
 1. 从 `changelog.md` 读取对应版本章节作为 Release 说明
 2. 执行前端构建与 Tauri 打包，生成 Windows 安装包（NSIS `.exe` / MSI）
-3. 将安装包上传并发布到对应的 GitHub Release；同时从官方 wheel 提取并校验 ONNX Runtime DLL（`onnxruntime.dll` 等）作为独立 Release 资源上传，供应用内「预打标模型」设置下载运行时
+3. 将安装包上传并发布到对应的 GitHub Release；同时从官方 wheel 提取并校验 ONNX Runtime DLL（`onnxruntime.dll`、`onnxruntime_providers_shared.dll`、`DirectML.dll`，DirectML 构建支持可选 GPU 加速）作为独立 Release 资源上传，供应用内「预打标模型」设置下载运行时
 
 发布前需确保 `changelog.md` 中已有该 Tag 对应的版本章节，且 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 三处版本号已同步。
 
@@ -128,26 +139,31 @@ my_label_tool/
 ├── src/                            # React 前端
 │   ├── components/                 # 画布、设置面板、侧边栏、工具栏组件
 │   │   ├── canvas/                 # Konva 画布、几何计算、交互类型
-│   │   ├── settings/               # 导出面板、标签设置、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置
+│   │   ├── settings/               # 导出面板、标签设置、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置、插件管理
 │   │   └── sidebar/                # 应用侧边栏、图片搜索弹窗
 │   ├── store/                      # Zustand 状态管理（标注数据 + 全局状态）
-│   ├── types/                      # 核心类型定义（annotation、export、prelabel）
-│   ├── lib/                        # Tauri API 封装、导入导出、默认配置
+│   ├── types/                      # 核心类型定义（annotation、export、prelabel、plugin）
+│   ├── lib/                        # Tauri API 封装、导入导出、默认配置、插件契约
 │   │   ├── defaults/               # 导出模板、标签、快捷键默认值
 │   │   ├── exporters/              # COCO / VOC / YOLO / 自定义导出
 │   │   ├── image-search.ts         # 图片表达式搜索语法与匹配
-│   │   └── prelabel-*.ts           # 预打标模型库、类别映射、执行逻辑
-│   ├── i18n/                       # 前端用户可见文案（prelabel.zh-CN.ts）
+│   │   ├── prelabel-*.ts           # 预打标模型库、类别映射、执行逻辑
+│   │   └── plugin-*.ts             # 插件配置迁移、预置标签、导出/预打标来源
+│   ├── i18n/                       # 前端用户可见文案（prelabel / plugin 等 zh-CN 文件）
 │   └── hooks/                      # 画布交互、图片加载、预打标、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
-│   ├── src/                        # 入口、commands（含 prelabel*.rs）、models
+│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs）、models、bin（插件校验/测试桩）
 │   │   ├── media/                  # ONNX 元数据识别、预打标推理管线、PT 转换
+│   │   ├── plugins/                # 插件运行时：manifest、protocol、permissions、registry、config
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
+│   ├── tests/                      # 插件协议集成测试（plugin_conformance.rs）
 │   ├── capabilities/               # Tauri 权限配置
 │   ├── Cargo.toml
 │   └── tauri.conf.json
+├── examples/plugins/               # 三种插件示例（标签预置 / 导出器 / 预打标）
+├── scripts/                        # 插件打包与验证脚本（package-plugin.mjs、verify-plugin-*.ps1）
 ├── .github/workflows/              # ci.yml、official-models.yml、release.yml
-├── docs/                           # 文档（build.md、adr/ 含 ONNX Runtime 决策记录）
+├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、插件 JSON Schema、adr/）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md                       # AI 开发指南
 └── package.json
@@ -164,5 +180,6 @@ my_label_tool/
 | 样式 | Tailwind CSS 3.x | utility-first CSS |
 | 构建工具 | Vite 7 | 前端打包，开发端口固定 1420 |
 | 后端 | Rust + Tauri commands | 文件系统读写、JSON 导出、标签/模板/快捷键持久化、预打标推理调度 |
+| 插件系统 | 独立子进程 + NDJSON stdio 协议 | 标签预置 / 自定义导出格式 / 外部预打标三类扩展（实验性），隔离在 AppContainer 中 |
 | 可选运行时 | ONNX Runtime（`ort` 动态加载） | 预打标推理用，应用内按需下载/手动放置，不随安装包分发 |
 | 配置持久化 | 本地 JSON 文件 | 保存在 app data 目录（含预打标模型库），不引入数据库 |
