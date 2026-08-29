@@ -8,7 +8,7 @@ use crate::{
         pipeline::{decode_outputs, preprocess_image, Detection, RawTensor},
         runtime::{validate_session_contract, MAX_PRELABEL_OUTPUT_ELEMENTS},
     },
-    models::prelabel::{PrelabelModelConfig, YoloModelFormat},
+    models::prelabel::{PrelabelDevice, PrelabelModelConfig, YoloModelFormat},
 };
 
 pub struct PrelabelSession {
@@ -22,13 +22,59 @@ pub struct PrelabelSession {
 
 const MAX_ENCODED_IMAGE_BYTES: usize = 128 * 1024 * 1024;
 
+/// How an inference session selects its execution provider.
+enum DmlPolicy {
+    /// No DirectML provider; CPU-only session.
+    Disabled,
+    /// DirectML is required; any registration/commit failure is fatal.
+    Strict,
+    /// Prefer DirectML but treat failure as a signal to fall back to CPU (Auto).
+    Fallback,
+}
+
 impl PrelabelSession {
     pub fn from_config(config: &PrelabelModelConfig) -> Result<Self, String> {
         validate_config_basics(config)?;
-        let session = Session::builder()
-            .map_err(text::runtime_session_failed)?
-            .commit_from_file(&config.path)
-            .map_err(text::model_session_failed)?;
+        match config.device {
+            PrelabelDevice::Cpu => Self::build_session(config, DmlPolicy::Disabled),
+            PrelabelDevice::Gpu => Self::build_session(config, DmlPolicy::Strict),
+            // Auto prefers DirectML but must *guarantee* a CPU fallback: even when the DML provider
+            // registers cleanly, creating the session can still fail (e.g. no usable D3D12 device),
+            // so a failed DML build is retried with a pure-CPU session.
+            PrelabelDevice::Auto => match Self::build_session(config, DmlPolicy::Fallback) {
+                Ok(session) => Ok(session),
+                Err(_) => Self::build_session(config, DmlPolicy::Disabled),
+            },
+        }
+    }
+
+    fn build_session(config: &PrelabelModelConfig, dml: DmlPolicy) -> Result<Self, String> {
+        let mut builder = Session::builder().map_err(text::runtime_session_failed)?;
+        match dml {
+            DmlPolicy::Disabled => {}
+            DmlPolicy::Strict | DmlPolicy::Fallback => {
+                let dispatch = ort::ep::DirectML::default().build();
+                builder = if matches!(dml, DmlPolicy::Strict) {
+                    // GPU-only: a DML registration failure is fatal so the user gets a clear message.
+                    match builder.with_execution_providers([dispatch.clone().error_on_failure()]) {
+                        Ok(builder) => builder,
+                        Err(_) => return Err(text::prelabel_gpu_unavailable()),
+                    }
+                } else {
+                    // Auto: DML registration failure is silent so ORT falls back to CPU.
+                    builder
+                        .with_execution_providers([dispatch])
+                        .map_err(text::runtime_session_failed)?
+                };
+            }
+        }
+        let session = builder.commit_from_file(&config.path).map_err(|error| {
+            if matches!(dml, DmlPolicy::Strict) {
+                text::prelabel_gpu_unavailable()
+            } else {
+                text::model_session_failed(error)
+            }
+        })?;
         let contract = validate_session_contract(&session, Some(config.format.clone()))?;
         validate_contract_class_count(config, contract.class_count)?;
         let [input_width, input_height] =
@@ -182,7 +228,7 @@ mod tests {
     };
     use crate::{
         media::prelabel::runtime::{load_runtime, ModelTensorContract},
-        models::prelabel::{PrelabelModelConfig, YoloModelFormat},
+        models::prelabel::{PrelabelDevice, PrelabelModelConfig, YoloModelFormat},
     };
 
     #[test]
@@ -239,6 +285,45 @@ mod tests {
         );
         assert!((v5_first[0].confidence - 0.812_13).abs() < 0.02);
         assert_box_close(v5_first[0].points, [49.944, 398.806, 156.785, 498.689], 5.0);
+    }
+
+    #[test]
+    #[ignore = "requires a DirectML ONNX Runtime build and official YOLOv8/image fixtures"]
+    fn auto_device_prefers_gpu_but_falls_back_to_cpu() {
+        let runtime = fixture("MY_LABEL_TOOL_ORT_DLL");
+        let image = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
+        load_runtime(&runtime).unwrap();
+
+        let mut model = config(
+            fixture("MY_LABEL_TOOL_YOLOV8_ONNX"),
+            YoloModelFormat::YoloV8,
+            0.25,
+        );
+        model.device = PrelabelDevice::Auto;
+        // On a DirectML runtime without a usable GPU the DML session build may fail after the
+        // provider registers; Auto must fall back to a pure-CPU session and still produce results
+        // rather than surfacing an error the user can't act on.
+        let mut session = PrelabelSession::from_config(&model).unwrap();
+        let detections = session.infer_file(&image).unwrap();
+        assert!(!detections.is_empty());
+    }
+
+    #[test]
+    #[ignore = "requires a DirectML ONNX Runtime build, a usable GPU, and official fixtures"]
+    fn gpu_device_runs_inference_with_directml_when_available() {
+        let runtime = fixture("MY_LABEL_TOOL_ORT_DLL");
+        let image = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
+        load_runtime(&runtime).unwrap();
+
+        let mut model = config(
+            fixture("MY_LABEL_TOOL_YOLOV8_ONNX"),
+            YoloModelFormat::YoloV8,
+            0.25,
+        );
+        model.device = PrelabelDevice::Gpu;
+        let mut session = PrelabelSession::from_config(&model).unwrap();
+        let detections = session.infer_file(&image).unwrap();
+        assert!(!detections.is_empty());
     }
 
     #[test]
@@ -321,6 +406,8 @@ mod tests {
             confidence_threshold: confidence,
             iou_threshold: 0.7,
             added_at: "2026-08-20T00:00:00.000Z".to_string(),
+            // These fixture tests run inference on a CPU ONNX Runtime build, so pin to CPU.
+            device: PrelabelDevice::Cpu,
         }
     }
 

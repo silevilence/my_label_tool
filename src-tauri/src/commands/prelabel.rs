@@ -146,6 +146,7 @@ mod tests {
                 confidence_threshold: 0.25,
                 iou_threshold: 0.45,
                 added_at: "2026-08-20T00:00:00.000Z".to_string(),
+                device: crate::models::prelabel::PrelabelDevice::Auto,
             }],
         }
     }

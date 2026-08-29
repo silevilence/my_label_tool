@@ -735,7 +735,40 @@ pub(crate) fn opened_file_path(file: &fs::File) -> std::io::Result<PathBuf> {
     }
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
+pub(crate) fn opened_file_path(file: &fs::File) -> std::io::Result<PathBuf> {
+    use std::{
+        ffi::c_void,
+        os::{fd::AsRawFd, unix::ffi::OsStringExt},
+    };
+
+    let descriptor = file.as_raw_fd();
+    let mut buffer = [0_u8; 1024];
+    // macOS has no /proc, and /dev/fd/N readlink is unreliable there, so resolve the canonical path
+    // of the already-open file with F_GETPATH. This keeps the opened-path TOCTOU check (which
+    // guards against symlink swaps) working on macOS instead of failing the proxy.
+    // SAFETY: `buffer` is a writable buffer large enough for any real path; F_GETPATH writes a
+    // NUL-terminated path into it and returns 0 on success.
+    let result = unsafe {
+        libc::fcntl(
+            descriptor,
+            libc::F_GETPATH,
+            buffer.as_mut_ptr() as *mut c_void,
+        )
+    };
+    if result < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let end = buffer
+        .iter()
+        .position(|&byte| byte == 0)
+        .unwrap_or(buffer.len());
+    Ok(PathBuf::from(std::ffi::OsString::from_vec(
+        buffer[..end].to_vec(),
+    )))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 pub(crate) fn opened_file_path(file: &fs::File) -> std::io::Result<PathBuf> {
     use std::os::fd::AsRawFd;
 
@@ -1069,12 +1102,15 @@ mod tests {
         ])
         .expect("permission policy");
 
+        // Grants are stored canonicalized (`canonicalize_intended`), so the request path must be
+        // canonicalized too before comparison — on macOS the temp dir goes through a `/var →
+        // /private/var` symlink that would otherwise leave a non-canonical request outside the grant.
+        let read_target =
+            fs::canonicalize(read_root.join("input.txt")).expect("canonical read target");
+        let write_target =
+            fs::canonicalize(write_root.join("output.txt")).expect("canonical write target");
         assert_eq!(
-            handle_file_proxy_request(
-                &policy,
-                "fs.read",
-                &json!({ "path": read_root.join("input.txt") }),
-            ),
+            handle_file_proxy_request(&policy, "fs.read", &json!({ "path": read_target }),),
             ResponseOutcome::Result(json!({ "contentUtf8": "hello" }))
         );
         assert_eq!(
@@ -1082,7 +1118,7 @@ mod tests {
                 &policy,
                 "fs.write",
                 &json!({
-                    "path": write_root.join("output.txt"),
+                    "path": write_target,
                     "contentUtf8": "saved",
                 }),
             ),

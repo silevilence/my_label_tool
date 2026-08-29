@@ -36,8 +36,10 @@ pub fn run() {
             commands::get_onnx_runtime_status,
             commands::install_onnx_runtime_from_file,
             commands::download_onnx_runtime,
+            commands::cancel_onnx_runtime_download,
             commands::validate_prelabel_model,
             commands::run_prelabel_inference,
+            commands::cancel_prelabel_inference,
             commands::detect_pt_conversion_environment,
             commands::preview_pt_conversion_command,
             commands::convert_pt_to_onnx,
@@ -69,6 +71,8 @@ pub fn run() {
                 tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
             ) {
                 commands::cancel_all_pt_conversions_and_wait();
+                commands::cancel_all_prelabel_tasks();
+                commands::cancel_all_runtime_downloads();
                 plugins::runtime::shutdown_all_plugin_processes();
             }
         });

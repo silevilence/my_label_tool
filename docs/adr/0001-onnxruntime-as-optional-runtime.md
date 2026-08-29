@@ -13,4 +13,6 @@
 **Consequences**
 - 预打标功能默认不可用，需用户主动获取运行时；UI 必须提供清晰引导（缺失检测、下载入口、放置路径提示）
 - 运行时版本需与 `ort` crate 兼容；发布流程需在 Release 附带 DLL 资源并带校验（如哈希），避免损坏下载
-- 下载是联网且用户显式确认的一次性行为，不违背“运行期离线”原则；获取后即完全离线可用
+- 下载是联网且用户显式确认的一次性行为，不违背”运行期离线”原则；获取后即完全离线可用
+
+**Amendment（2026-08，DirectML 运行时）**：预打标可选 GPU 加速后，分发的运行时由 `onnxruntime`（仅 CPU）切换为 `onnxruntime-directml` 1.24.3。该构建内联 CPU 与 DirectML 两个执行提供程序，CPU-only 机器行为不变；推理设备为「GPU」或「自动」时在会话上附加 DirectML EP（`DirectML.dll` 需与 `onnxruntime.dll` 同目录，纳入运行时三件套分发）。`RUNTIME_VERSION` 升级为 `1.24.3-dml` 使已装旧 CPU 运行时的用户重新下载。执行提供程序由 `ort` crate 的 `load-dynamic` 在运行时解析，构建期仍不下载任何二进制；至少需要一个目标的机器才能用 GPU，失败时「自动」静默回退 CPU、「仅 GPU」返回明确错误。

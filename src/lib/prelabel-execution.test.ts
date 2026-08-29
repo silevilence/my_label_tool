@@ -19,10 +19,9 @@ describe("prelabel execution planning", () => {
       "b.jpg": [],
     };
 
-    expect(selectPrelabelBatchImages(images, annotations, false).map((image) => image.path)).toEqual([
-      "b.jpg",
-      "c.jpg",
-    ]);
+    expect(
+      selectPrelabelBatchImages(images, annotations, false).map((image) => image.path),
+    ).toEqual(["b.jpg", "c.jpg"]);
     expect(selectPrelabelBatchImages(images, annotations, true)).toEqual(images);
   });
 
@@ -39,11 +38,13 @@ describe("prelabel execution planning", () => {
     const summary = await executePrelabelBatch({
       images,
       chunkSize: 2,
-      infer: async (paths) =>
-        paths.map((imagePath) => ({
+      infer: async (paths) => ({
+        cancelled: false,
+        results: paths.map((imagePath) => ({
           imagePath,
           detections: [{ classIndex: 0, confidence: 0.9, points: [1, 2, 3, 4] }],
         })),
+      }),
       toEntry: (result) => ({
         imagePath: result.imagePath,
         annotations: [
@@ -73,7 +74,10 @@ describe("prelabel execution planning", () => {
       executePrelabelBatch({
         images: [images[0]],
         chunkSize: 1,
-        infer: async () => [{ imagePath: "a.jpg", detections: [] }],
+        infer: async () => ({
+          cancelled: false,
+          results: [{ imagePath: "a.jpg", detections: [] }],
+        }),
         toEntry: (result) => ({ imagePath: result.imagePath, annotations: [] }),
         commit: () => {
           throw new Error("must not commit");
@@ -85,19 +89,57 @@ describe("prelabel execution planning", () => {
     ).rejects.toThrow("项目、标签或模型已在执行期间改变");
   });
 
+  it("commits partial results and stops when cancelled mid-chunk", async () => {
+    const committed: string[][] = [];
+    const progress: number[] = [];
+    let inferCalls = 0;
+
+    const summary = await executePrelabelBatch({
+      images,
+      chunkSize: 3,
+      infer: async (paths) => {
+        inferCalls += 1;
+        // Simulate a backend abort completing only the first image of the chunk.
+        return {
+          cancelled: true,
+          results: [{ imagePath: paths[0], detections: [] }],
+        };
+      },
+      toEntry: (result) => ({ imagePath: result.imagePath, annotations: [] }),
+      commit: (entries) => committed.push(entries.map((entry) => entry.imagePath)),
+      isCancelled: () => false,
+      onProgress: (processed) => progress.push(processed),
+    });
+
+    expect(inferCalls).toBe(1);
+    expect(committed).toEqual([["a.jpg"]]);
+    expect(progress).toEqual([1]);
+    expect(summary).toEqual({
+      processed: 1,
+      annotationCount: 0,
+      cancelled: true,
+      skippedConflictCount: 0,
+    });
+  });
+
   it("keeps prior chunks when a later inference fails and skips edited-image conflicts", async () => {
     const committed: string[][] = [];
+    const processedBeforeChunks: number[] = [];
     let callCount = 0;
     await expect(
       executePrelabelBatch({
         images,
         chunkSize: 2,
-        infer: async (paths) => {
+        infer: async (paths, processedBeforeChunk) => {
+          processedBeforeChunks.push(processedBeforeChunk);
           callCount += 1;
           if (callCount === 2) {
             throw new Error("inference failed");
           }
-          return paths.map((imagePath) => ({ imagePath, detections: [] }));
+          return {
+            cancelled: false,
+            results: paths.map((imagePath) => ({ imagePath, detections: [] })),
+          };
         },
         toEntry: (result) => ({ imagePath: result.imagePath, annotations: [] }),
         commit: (entries) => committed.push(entries.map((entry) => entry.imagePath)),
@@ -108,6 +150,7 @@ describe("prelabel execution planning", () => {
       }),
     ).rejects.toThrow("inference failed");
     expect(committed).toEqual([["a.jpg"]]);
+    expect(processedBeforeChunks).toEqual([0, 2]);
   });
 
   it("commits only completed images returned by a cancelled batch", async () => {
@@ -115,7 +158,10 @@ describe("prelabel execution planning", () => {
     const summary = await executePrelabelBatch({
       images: images.slice(0, 2),
       chunkSize: 2,
-      infer: async () => [{ imagePath: "a.jpg", detections: [] }],
+      infer: async () => ({
+        cancelled: true,
+        results: [{ imagePath: "a.jpg", detections: [] }],
+      }),
       toEntry: (result) => ({ imagePath: result.imagePath, annotations: [] }),
       commit: (entries) => committed.push(...entries.map((entry) => entry.imagePath)),
       isContextCurrent: () => true,

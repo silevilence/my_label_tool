@@ -59,27 +59,28 @@ jobs:
           python -m pip install setuptools==80.9.0 numpy==1.26.4 torch==2.5.1 torchvision==0.20.1
           python -m pip install ultralytics==8.4.123 onnx==1.22.0 pandas==2.2.3 seaborn==0.13.2 ipython==8.32.0 gitpython==3.1.45 thop==0.1.1.post2209072238 tqdm==4.67.1
 
-      - name: Prepare official ONNX Runtime
+      - name: Prepare official ONNX Runtime DirectML
         shell: pwsh
         run: |
           $packageDir = Join-Path $env:RUNNER_TEMP "onnxruntime-package"
           $assetDir = Join-Path $env:RUNNER_TEMP "onnxruntime-assets"
-          python -m pip download onnxruntime==1.24.3 --only-binary=:all: --no-deps --dest $packageDir
+          python -m pip download onnxruntime-directml==1.24.3 --only-binary=:all: --no-deps --dest $packageDir
           $wheel = Get-ChildItem $packageDir -Filter "*.whl" | Select-Object -First 1
           if (-not $wheel) {
-            throw "ONNX Runtime wheel was not downloaded."
+            throw "ONNX Runtime DirectML wheel was not downloaded."
           }
           Copy-Item $wheel.FullName (Join-Path $packageDir "onnxruntime.zip")
           Expand-Archive (Join-Path $packageDir "onnxruntime.zip") (Join-Path $packageDir "extracted")
           New-Item -ItemType Directory -Force $assetDir | Out-Null
           $expected = @{
-            "onnxruntime.dll" = "E6ABE8B3FE7EB38E0424FA366EB7EDAC2090AC2D211592C26D674F928B44F785"
-            "onnxruntime_providers_shared.dll" = "1647771B4593C729DF99A4A86E66AAD6A77C9E6E3C8EFD97322EF42EF9B1CC0B"
+            "onnxruntime.dll" = "6169297EE0BBB3A3BA8D2C7EA8033E6D13D1E0C0F57EA849D7904C2F9F5B87A0"
+            "onnxruntime_providers_shared.dll" = "CA503E4C86C729326512401BE672DC33B717A2641DE78E28A40A54A59F033CD9"
+            "DirectML.dll" = "2D1D0C0E7362D5F52062510AE454474F18044B570A175F34BE05F4717A5904CC"
           }
           foreach ($name in $expected.Keys) {
             $source = Get-ChildItem (Join-Path $packageDir "extracted") -Recurse -Filter $name | Select-Object -First 1
             if (-not $source) {
-              throw "Missing $name in the official ONNX Runtime wheel."
+              throw "Missing $name in the official ONNX Runtime DirectML wheel."
             }
             $actual = (Get-FileHash $source.FullName -Algorithm SHA256).Hash
             if ($actual -ne $expected[$name]) {
@@ -120,14 +121,15 @@ jobs:
       - name: Verify official metadata and runtime contract
         run: |
           cargo test --manifest-path src-tauri/Cargo.toml inspects_official_ultralytics_model_when_fixture_is_available -- --ignored
-          cargo test --manifest-path src-tauri/Cargo.toml validates_official_v8_and_yolo11_models_through_the_command_seam -- --ignored
-          cargo test --manifest-path src-tauri/Cargo.toml validates_yolov5_model_through_the_command_seam -- --ignored
+          cargo test --manifest-path src-tauri/Cargo.toml validates_official_v8_and_yolo11_models_through_the_media_seam -- --ignored
+          cargo test --manifest-path src-tauri/Cargo.toml validates_yolov5_model_through_the_media_seam -- --ignored
 
       - name: Verify official inference alignment
         run: |
           cargo test --manifest-path src-tauri/Cargo.toml reuses_a_session_and_matches_official_yolov8_expectations -- --ignored
           cargo test --manifest-path src-tauri/Cargo.toml matches_the_yolov5_fixture_expectations -- --ignored
-          cargo test --manifest-path src-tauri/Cargo.toml reuses_the_command_session_cache_across_frontend_chunks -- --ignored
+          cargo test --manifest-path src-tauri/Cargo.toml reuses_the_session_cache_across_frontend_chunks -- --ignored
+          cargo test --manifest-path src-tauri/Cargo.toml auto_device_prefers_gpu_but_falls_back_to_cpu -- --ignored
 
       - name: Verify real PT conversion paths
         run: |

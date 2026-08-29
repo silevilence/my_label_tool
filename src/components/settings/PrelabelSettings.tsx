@@ -2,6 +2,7 @@
 // orchestration together because they share one guarded mutation lifecycle and active selection.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  cancelOnnxRuntimeDownload,
   cancelPtConversion,
   confirmAction,
   convertPtToOnnx,
@@ -40,6 +41,7 @@ import type { ProjectConfig } from "../../lib/importers";
 import type { LabelConfig } from "../../types/annotation";
 import type {
   OnnxRuntimeStatus,
+  PrelabelDevice,
   PrelabelModelConfig,
   PrelabelModelLibrary,
   PrelabelClassMapping,
@@ -104,9 +106,17 @@ export function PrelabelSettings({
   const [isBusy, setIsBusy] = useState(false);
   const [runtimeStatus, setRuntimeStatus] = useState<OnnxRuntimeStatus | null>(null);
   const [isRuntimeBusy, setIsRuntimeBusy] = useState(false);
+  const [runtimeNotice, setRuntimeNotice] = useState("");
   const [modelValidation, setModelValidation] = useState("");
+  const [downloadProgress, setDownloadProgress] = useState<{
+    file: string;
+    downloaded: number;
+    total: number | null;
+  } | null>(null);
   const mutationInFlight = useRef(false);
   const cancelledConversions = useRef(new Set<string>());
+  const cancelledDownloads = useRef(new Set<string>());
+  const activeDownloadId = useRef<string | null>(null);
 
   useEffect(() => setEditingModel(currentModel), [currentModel]);
   useEffect(() => {
@@ -194,8 +204,56 @@ export function PrelabelSettings({
   }
 
   async function downloadRuntime() {
-    if (await confirmAction(text.runtimeDownloadConfirmation)) {
-      await runRuntimeAction(downloadOnnxRuntime);
+    if (isRuntimeBusy) {
+      return;
+    }
+    if (!(await confirmAction(text.runtimeDownloadConfirmation))) {
+      return;
+    }
+    const downloadId = crypto.randomUUID();
+    cancelledDownloads.current.delete(downloadId);
+    activeDownloadId.current = downloadId;
+    setIsRuntimeBusy(true);
+    setError("");
+    setRuntimeNotice("");
+    setDownloadProgress(null);
+    try {
+      const outcome = await downloadOnnxRuntime(downloadId, (event) => {
+        if (event.event === "progress") {
+          setDownloadProgress({
+            file: event.fileName,
+            downloaded: event.downloaded,
+            total: event.total,
+          });
+        }
+      });
+      if (cancelledDownloads.current.has(downloadId) || outcome.cancelled) {
+        setRuntimeNotice(text.runtimeDownloadCancelled);
+      } else {
+        setRuntimeStatus(await getOnnxRuntimeStatus());
+        setRuntimeNotice(text.runtimeCompleted);
+      }
+    } catch (reason) {
+      setError(text.runtimeOperationFailed(reason));
+    } finally {
+      if (activeDownloadId.current === downloadId) {
+        activeDownloadId.current = null;
+      }
+      setIsRuntimeBusy(false);
+      setDownloadProgress(null);
+    }
+  }
+
+  async function cancelRuntimeDownload() {
+    const downloadId = activeDownloadId.current;
+    if (!downloadId) {
+      return;
+    }
+    cancelledDownloads.current.add(downloadId);
+    try {
+      await cancelOnnxRuntimeDownload(downloadId);
+    } catch (reason) {
+      setError(text.runtimeOperationFailed(reason));
     }
   }
 
@@ -443,8 +501,12 @@ export function PrelabelSettings({
               </p>
             )}
             <RuntimeStatusPanel
+              downloadProgress={downloadProgress}
               isBusy={isRuntimeBusy}
+              isDownloading={activeDownloadId.current !== null}
+              notice={runtimeNotice}
               status={runtimeStatus}
+              onCancel={() => void cancelRuntimeDownload()}
               onDownload={() => void downloadRuntime()}
               onInstall={() => void installRuntimeManually()}
               onRefresh={() => void refreshRuntime()}
@@ -464,6 +526,7 @@ export function PrelabelSettings({
             )}
             {draft && (
               <ModelImportForm
+                gpuAvailable={runtimeStatus?.gpuAvailable}
                 model={draft}
                 submitLabel={text.addToLibrary}
                 onCancel={() => setDraft(null)}
@@ -480,6 +543,7 @@ export function PrelabelSettings({
             {!draft && !ptGuidance && editingModel && (
               <>
                 <ModelImportForm
+                  gpuAvailable={runtimeStatus?.gpuAvailable}
                   model={editingModel}
                   submitLabel={text.saveModel}
                   onCancel={() => setEditingModel(currentModel)}
@@ -772,19 +836,31 @@ function ClassMappingRow({
 }
 
 function RuntimeStatusPanel({
+  downloadProgress,
   isBusy,
+  isDownloading,
+  notice,
   status,
+  onCancel,
   onDownload,
   onInstall,
   onRefresh,
 }: {
+  downloadProgress: { file: string; downloaded: number; total: number | null } | null;
   isBusy: boolean;
+  isDownloading: boolean;
+  notice: string;
   status: OnnxRuntimeStatus | null;
+  onCancel: () => void;
   onDownload: () => void;
   onInstall: () => void;
   onRefresh: () => void;
 }) {
   const available = status?.state === "available";
+  const progressPercent =
+    downloadProgress && downloadProgress.total
+      ? Math.min(100, (downloadProgress.downloaded / downloadProgress.total) * 100)
+      : 0;
   return (
     <div className="mb-4 rounded border border-slate-700 bg-slate-950/60 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -798,6 +874,11 @@ function RuntimeStatusPanel({
               {text.runtimeDirectory(status.runtimeDirectory)}
             </p>
           )}
+          {status?.gpuAvailable != null && (
+            <p className="mt-1 text-xs text-slate-400">
+              {status.gpuAvailable ? text.runtimeGpuCapable : text.runtimeGpuAbsent}
+            </p>
+          )}
         </div>
         <span
           className={`rounded px-2 py-1 text-xs ${
@@ -807,35 +888,67 @@ function RuntimeStatusPanel({
           {available ? text.runtimeAvailable : text.runtimeUnavailable}
         </span>
       </div>
+      {notice && <p className="mt-3 text-xs text-slate-400">{notice}</p>}
       {!available && (
         <>
           <p className="mt-3 text-xs leading-5 text-slate-400">{text.runtimeDescription}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-              disabled={isBusy || status?.downloadAvailable === false}
-              type="button"
-              onClick={onDownload}
-            >
-              {isBusy ? text.runtimeDownloading : text.runtimeDownload}
-            </button>
-            <button
-              className="rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 disabled:opacity-50"
-              disabled={isBusy}
-              type="button"
-              onClick={onInstall}
-            >
-              {text.runtimeManual}
-            </button>
-            <button
-              className="rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 disabled:opacity-50"
-              disabled={isBusy}
-              type="button"
-              onClick={onRefresh}
-            >
-              {text.runtimeRefresh}
-            </button>
-          </div>
+          {isDownloading && (
+            <div className="mt-3 rounded border border-slate-700 bg-slate-900/60 p-3">
+              <div className="flex items-center justify-between text-xs text-slate-300">
+                <span>
+                  {text.runtimeDownloadingFile(downloadProgress?.file)}
+                  {downloadProgress?.total != null &&
+                    ` · ${text.runtimeDownloadBytes(
+                      downloadProgress.downloaded,
+                      downloadProgress.total,
+                    )}`}
+                </span>
+                <button
+                  className="rounded border border-slate-600 px-2 py-1 text-slate-200 hover:bg-slate-800"
+                  type="button"
+                  onClick={onCancel}
+                >
+                  {text.runtimeCancelDownload}
+                </button>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-slate-800">
+                <div
+                  className="h-full bg-sky-500 transition-all"
+                  style={{
+                    width: downloadProgress?.total ? `${progressPercent}%` : "12%",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {!isDownloading && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                disabled={isBusy || status?.downloadAvailable === false}
+                type="button"
+                onClick={onDownload}
+              >
+                {isBusy ? text.runtimeDownloading : text.runtimeDownload}
+              </button>
+              <button
+                className="rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 disabled:opacity-50"
+                disabled={isBusy}
+                type="button"
+                onClick={onInstall}
+              >
+                {text.runtimeManual}
+              </button>
+              <button
+                className="rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 disabled:opacity-50"
+                disabled={isBusy}
+                type="button"
+                onClick={onRefresh}
+              >
+                {text.runtimeRefresh}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -894,6 +1007,7 @@ function PtConversionGuidance({
 function ModelImportForm({
   model,
   submitLabel,
+  gpuAvailable,
   onCancel,
   onChange,
   onDelete,
@@ -902,6 +1016,7 @@ function ModelImportForm({
 }: {
   model: PrelabelModelConfig;
   submitLabel: string;
+  gpuAvailable?: boolean | null;
   onCancel: () => void;
   onChange: (model: PrelabelModelConfig) => void;
   onDelete?: () => void;
@@ -968,6 +1083,22 @@ function ModelImportForm({
             onChange={(event) => onChange({ ...model, iouThreshold: event.target.valueAsNumber })}
           />
         </Field>
+        <Field label={text.device}>
+          <select
+            className={inputClass}
+            value={model.device}
+            onChange={(event) =>
+              onChange({ ...model, device: event.target.value as PrelabelDevice })
+            }
+          >
+            <option value="auto">{text.deviceAuto}</option>
+            <option value="cpu">{text.deviceCpu}</option>
+            <option value="gpu">{text.deviceGpu}</option>
+          </select>
+        </Field>
+        {model.device === "gpu" && gpuAvailable === false && (
+          <p className="text-xs text-amber-300">{text.deviceGpuUnavailable}</p>
+        )}
         <Field label={text.inputWidthOverride}>
           <input
             className={inputClass}

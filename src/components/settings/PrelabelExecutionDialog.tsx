@@ -82,16 +82,14 @@ export function PrelabelExecutionDialog({
             {text.forceOverwrite}
           </label>
           <p className="text-xs leading-5 text-slate-500">{text.batchDefaultHint}</p>
-          {progress.isRunning &&
-          progress.operation === "batch" &&
-          currentSource?.supportsCancel ? (
+          {progress.isRunning && currentSource?.supportsCancel ? (
             <button
               className="w-full rounded border border-amber-500/60 px-3 py-2 text-sm font-medium text-amber-200 disabled:opacity-50"
               disabled={progress.cancelRequested}
               type="button"
               onClick={execution.cancel}
             >
-              {text.cancelBatch}
+              {progress.operation === "batch" ? text.cancelBatch : text.cancelSingle}
             </button>
           ) : (
             <button

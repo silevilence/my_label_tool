@@ -10,6 +10,17 @@ pub enum YoloModelFormat {
     Yolo11,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub enum PrelabelDevice {
+    #[serde(rename = "auto")]
+    #[default]
+    Auto,
+    #[serde(rename = "cpu")]
+    Cpu,
+    #[serde(rename = "gpu")]
+    Gpu,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrelabelModelConfig {
@@ -25,6 +36,9 @@ pub struct PrelabelModelConfig {
     pub confidence_threshold: f32,
     pub iou_threshold: f32,
     pub added_at: String,
+    /// Inference execution device for this model. Defaults to auto (use GPU when available).
+    #[serde(default)]
+    pub device: PrelabelDevice,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

@@ -2151,7 +2151,6 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
     fn runtime_test_guard() -> MutexGuard<'static, ()> {
         crate::process_control::windows_isolation_test_guard()
     }

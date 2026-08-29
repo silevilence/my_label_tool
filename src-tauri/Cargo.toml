@@ -26,11 +26,16 @@ tauri-plugin-dialog = "2.7.1"
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.1"
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "load-dynamic", "api-24"] }
-reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "stream"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "rt-multi-thread", "macros"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 sha2 = "0.10"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }
 zip = { version = "4.6.1", default-features = false, features = ["deflate"] }
 base64 = "0.22"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = [

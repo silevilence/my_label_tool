@@ -56,6 +56,10 @@ pub const PRELABEL_SOURCE_IMAGE_TOO_LARGE: &str =
 pub const PRELABEL_ENCODED_IMAGE_TOO_LARGE: &str =
     "源图片编码文件超过 128 MiB，已拒绝读取以避免内存耗尽";
 pub const PRELABEL_SESSION_CACHE_LOCK_FAILED: &str = "预打标模型会话缓存不可用，请重启应用后重试";
+pub fn prelabel_gpu_unavailable() -> String {
+    "无法启用 GPU（DirectML）推理，请检查显卡驱动与图形环境，或改用「自动」或「CPU」设备"
+        .to_string()
+}
 
 pub fn prelabel_image_decode_failed(error: impl std::fmt::Display) -> String {
     format!("图片解码失败：{error}")
@@ -158,6 +162,9 @@ pub fn runtime_download_failed(error: impl std::fmt::Display) -> String {
     format!("从项目 Release 下载 ONNX Runtime 失败：{error}")
 }
 
+pub fn runtime_download_timed_out(file_name: &str) -> String {
+    format!("下载 {file_name} 超时，请检查网络后重试")
+}
 pub fn runtime_checksum_mismatch(expected: &str, actual: &str) -> String {
     format!("ONNX Runtime SHA-256 校验失败：预期 {expected}，实际 {actual}")
 }
@@ -242,6 +249,15 @@ pub const PT_CONVERSION_IMGSZ_INVALID: &str = "转换尺寸 imgsz 必须是大�
 pub const PT_CONVERSION_CANCELLED: &str = "模型转换已中止";
 pub const PT_CONVERSION_ID_INVALID: &str = "模型转换任务 ID 不能为空";
 pub const PT_CONVERSION_PLAN_INVALID: &str = "模型转换计划无效，请重新打开参数确认弹窗";
+
+/// 通用后台任务注册表（预打标推理 / 运行时下载共用）
+pub const TASK_LOCK_FAILED: &str = "后台任务注册表不可用，请重启应用后重试";
+pub const TASK_ID_INVALID: &str = "任务 ID 不能为空";
+pub const PRELABEL_TASK_LABEL: &str = "预打标";
+pub const RUNTIME_DOWNLOAD_TASK_LABEL: &str = "ONNX Runtime 下载";
+pub fn task_id_already_running(label: &str, task_id: &str) -> String {
+    format!("{label}任务已存在：{task_id}")
+}
 
 pub const PLUGIN_MANIFEST_MUST_BE_OBJECT: &str = "插件清单必须是 JSON 对象";
 pub const PLUGIN_SCHEMA_VERSION_REQUIRED: &str = "缺少插件清单结构版本";

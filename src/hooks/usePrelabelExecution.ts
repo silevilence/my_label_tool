@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import {
+  cancelPrelabelInference,
   cancelPluginPrelabel,
   runPluginPrelabel,
   runPrelabelInference,
@@ -103,6 +104,7 @@ export function usePrelabelExecution({
   const cancelRequestedRef = useRef(false);
   const activePluginOperationIdRef = useRef<string | null>(null);
   const runningRef = useRef(false);
+  const taskIdRef = useRef<string | null>(null);
   const activeProjectConfigRef = useRef(activeProjectConfig);
   const annotationsByImageRef = useRef(annotationsByImage);
   const imagesRef = useRef(images);
@@ -169,8 +171,10 @@ export function usePrelabelExecution({
     }
     const taskContext = { activeProjectConfig, images, labels, model: currentModel, source: currentSource };
     const mappings = currentMappings;
+    const taskId = currentSource.kind === "builtin" ? crypto.randomUUID() : null;
     runningRef.current = true;
     cancelRequestedRef.current = false;
+    taskIdRef.current = taskId;
     setError("");
     setProgress({
       operation: "single",
@@ -178,30 +182,44 @@ export function usePrelabelExecution({
       cancelRequested: false,
       processed: 0,
       total: 1,
-      message: text.singleRunning,
+      message: currentSource.kind === "builtin" ? text.loadingModel : text.singleRunning,
       percent: null,
     });
     try {
-      const [result] = await inferWithSource(currentSource, [selectedPath], mappings, 0, 1);
+      const outcome = await inferWithSource(
+        currentSource,
+        [selectedPath],
+        mappings,
+        0,
+        1,
+        taskId,
+      );
       if (!isContextCurrent(taskContext)) {
         throw new Error(text.executionContextChanged);
       }
+      const result = outcome.results[0];
       const annotations = result?.annotations ?? [];
-      insertAnnotationsBatch([{ imagePath: selectedPath, annotations }], "append");
+      // An aborted run with no completed result must not create an empty annotation record.
+      if (result) {
+        insertAnnotationsBatch([{ imagePath: selectedPath, annotations }], "append");
+      }
       setProgress({
         operation: "single",
         isRunning: false,
         cancelRequested: false,
-        processed: 1,
+        processed: result ? 1 : 0,
         total: 1,
-        message: text.singleCompleted(annotations.length),
-        percent: 100,
+        message: outcome.cancelled
+          ? text.inferenceCancelled
+          : text.singleCompleted(annotations.length),
+        percent: result ? 100 : 0,
       });
     } catch (reason) {
       setError(text.inferenceFailed(reason));
       setProgress({ ...IDLE_PROGRESS, message: text.inferenceStopped });
     } finally {
       runningRef.current = false;
+      taskIdRef.current = null;
       if (currentSource.kind === "plugin") {
         void refreshPluginSources().catch((reason: unknown) => setError(text.pluginRefreshFailed(reason)));
       }
@@ -227,8 +245,10 @@ export function usePrelabelExecution({
       ]),
     );
     const historyGroupId = crypto.randomUUID();
+    const taskId = currentSource.kind === "builtin" ? crypto.randomUUID() : null;
     runningRef.current = true;
     cancelRequestedRef.current = false;
+    taskIdRef.current = taskId;
     setError("");
     setProgress({
       operation: "batch",
@@ -236,7 +256,7 @@ export function usePrelabelExecution({
       cancelRequested: false,
       processed: 0,
       total: targets.length,
-      message: text.batchRunning,
+      message: currentSource.kind === "builtin" ? text.loadingModel : text.batchRunning,
       percent: 0,
     });
     let processed = 0;
@@ -244,8 +264,15 @@ export function usePrelabelExecution({
       const summary = await executePrelabelBatch({
         images: targets,
         chunkSize: sourceChunkSize(currentSource, pluginSources),
-        infer: (imagePaths) =>
-          inferWithSource(currentSource, imagePaths, mappings, processed, targets.length),
+        infer: (imagePaths, processedBeforeChunk) =>
+          inferWithSource(
+            currentSource,
+            imagePaths,
+            mappings,
+            processedBeforeChunk,
+            targets.length,
+            taskId,
+          ),
         toEntry: (result) => result,
         commit: (entries) =>
           insertAnnotationsBatch(entries, forceOverwrite ? "replace" : "append", historyGroupId),
@@ -318,6 +345,7 @@ export function usePrelabelExecution({
       });
     } finally {
       runningRef.current = false;
+      taskIdRef.current = null;
       if (currentSource.kind === "plugin") {
         void refreshPluginSources().catch((reason: unknown) => setError(text.pluginRefreshFailed(reason)));
       }
@@ -330,14 +358,41 @@ export function usePrelabelExecution({
     mappings: ReturnType<typeof resolvePrelabelClassMappings>,
     alreadyProcessed: number,
     total: number,
-  ): Promise<Array<{ imagePath: string; annotations: AnnotationShape[] }>> {
+    taskId: string | null,
+  ): Promise<{
+    results: Array<{ imagePath: string; annotations: AnnotationShape[] }>;
+    cancelled: boolean;
+  }> {
     if (source.kind === "builtin") {
-      if (!currentModel) throw new Error(text.executionNoModel);
-      const results = await runPrelabelInference(currentModel, imagePaths);
-      return results.map((result) => ({
-        imagePath: result.imagePath,
-        annotations: mapPrelabelDetections(result.detections, mappings),
-      }));
+      if (!currentModel || !taskId) throw new Error(text.executionNoModel);
+      const outcome = await runPrelabelInference(taskId, currentModel, imagePaths, (event) => {
+        if (event.event === "modelLoading") {
+          setProgress((current) => ({ ...current, message: text.loadingModel }));
+        } else if (event.event === "started") {
+          setProgress((current) => ({
+            ...current,
+            message:
+              total === 1
+                ? text.singleProcessing
+                : text.batchProcessingImage(alreadyProcessed + event.index + 1, total),
+          }));
+        } else if (event.event === "completed") {
+          const completed = alreadyProcessed + event.index + 1;
+          setProgress((current) => ({
+            ...current,
+            processed: completed,
+            message: total === 1 ? text.singleProcessing : text.batchRunning,
+            percent: total > 0 ? (completed / total) * 100 : current.percent,
+          }));
+        }
+      });
+      return {
+        cancelled: outcome.cancelled,
+        results: outcome.results.map((result) => ({
+          imagePath: result.imagePath,
+          annotations: mapPrelabelDetections(result.detections, mappings),
+        })),
+      };
     }
     const descriptor = pluginSources.find((plugin) => plugin.selectionId === source.selectionId);
     if (!descriptor?.enabled) {
@@ -354,33 +409,33 @@ export function usePrelabelExecution({
       activePluginOperationIdRef.current = operationId;
       try {
         return await runPluginPrelabel(
-        descriptor.pluginId,
-        projectFolder,
-        paths,
-        toPluginPrelabelClassMappings(mappings, labels),
-        {},
-        operationId,
-        (event) => {
-          if (!descriptor.supportsProgress || event.event !== "progress") return;
-          const chunkPercent =
-            typeof event.payload.percent === "number"
-              ? Math.max(0, Math.min(100, event.payload.percent))
-              : null;
-          setProgress((current) => ({
-            ...current,
-            message:
-              typeof event.payload.message === "string"
-                ? event.payload.message
-                : current.message,
-            percent:
-              chunkPercent == null || total === 0
-                ? current.percent
-                : ((alreadyProcessed + progressOffset + (paths.length * chunkPercent) / 100) /
-                    total) *
-                  100,
-          }));
-        },
-      );
+          descriptor.pluginId,
+          projectFolder,
+          paths,
+          toPluginPrelabelClassMappings(mappings, labels),
+          {},
+          operationId,
+          (event) => {
+            if (!descriptor.supportsProgress || event.event !== "progress") return;
+            const chunkPercent =
+              typeof event.payload.percent === "number"
+                ? Math.max(0, Math.min(100, event.payload.percent))
+                : null;
+            setProgress((current) => ({
+              ...current,
+              message:
+                typeof event.payload.message === "string"
+                  ? event.payload.message
+                  : current.message,
+              percent:
+                chunkPercent == null || total === 0
+                  ? current.percent
+                  : ((alreadyProcessed + progressOffset + (paths.length * chunkPercent) / 100) /
+                      total) *
+                    100,
+            }));
+          },
+        );
       } finally {
         if (activePluginOperationIdRef.current === operationId) {
           activePluginOperationIdRef.current = null;
@@ -389,13 +444,19 @@ export function usePrelabelExecution({
     };
     try {
       const result = await invokePaths(relativePaths, 0);
-      return mapPluginPrelabelResults(result.images, absoluteByRelative);
+      return {
+        cancelled: cancelRequestedRef.current,
+        results: mapPluginPrelabelResults(result.images, absoluteByRelative),
+      };
     } catch (reason) {
+      if (cancelRequestedRef.current) {
+        return { cancelled: true, results: [] };
+      }
       if (relativePaths.length === 1 || !isMethodUnavailable(reason)) throw reason;
       // The manifest is an upper-bound declaration. If hello does not actually
       // negotiate batch, honor the handshake by degrading this chunk to single
       // image calls instead of treating the manifest flag as runtime truth.
-      const completed = [];
+      const completed: Array<{ imagePath: string; annotations: AnnotationShape[] }> = [];
       for (const [index, path] of relativePaths.entries()) {
         if (cancelRequestedRef.current) break;
         try {
@@ -406,7 +467,7 @@ export function usePrelabelExecution({
           throw fallbackReason;
         }
       }
-      return completed;
+      return { cancelled: cancelRequestedRef.current, results: completed };
     }
   }
 
@@ -415,6 +476,7 @@ export function usePrelabelExecution({
       return;
     }
     cancelRequestedRef.current = true;
+    const taskId = taskIdRef.current;
     const operationId = activePluginOperationIdRef.current;
     if (operationId) {
       void cancelPluginPrelabel(operationId).catch((reason: unknown) => {
@@ -424,8 +486,11 @@ export function usePrelabelExecution({
     setProgress((current) => ({
       ...current,
       cancelRequested: true,
-      message: text.batchCancelling,
+      message: current.operation === "single" ? text.cancellingInference : text.batchCancelling,
     }));
+    if (taskId) {
+      cancelPrelabelInference(taskId).catch((reason) => setError(text.inferenceFailed(reason)));
+    }
   }
 
   function isContextCurrent(taskContext: {

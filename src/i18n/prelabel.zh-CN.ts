@@ -1,3 +1,14 @@
+function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+}
+
 export const PRELABEL_ZH_CN = {
   menuLabel: "预打标模型",
   title: "预打标模型库",
@@ -64,6 +75,20 @@ export const PRELABEL_ZH_CN = {
   runtimeRefresh: "重新检测",
   runtimeDownload: "下载并安装",
   runtimeDownloading: "正在下载并校验…",
+  runtimeCancelDownload: "取消下载",
+  runtimeDownloadingFile: (file: string | undefined) => (file ? `正在下载 ${file}…` : "正在下载…"),
+  runtimeDownloadBytes: (downloaded: number, total: number) =>
+    `${formatBytes(downloaded)} / ${formatBytes(total)}`,
+  runtimeGpuCapable: "已打包 DirectML，可启用 GPU 加速。",
+  runtimeGpuAbsent: "当前运行时未打包 DirectML，GPU 加速不可用。",
+  device: "推理设备",
+  deviceAuto: "自动（优先 GPU）",
+  deviceCpu: "仅 CPU",
+  deviceGpu: "仅 GPU",
+  deviceGpuUnavailable:
+    "所选运行时时未检测到 DirectML，GPU 推理可能失败；已设为自动时会在失败时回退 CPU。",
+  runtimeDownloadCancelled: "下载已取消，未安装运行时。",
+  runtimeCompleted: "运行时已安装。",
   runtimeManual: "手动选择 DLL",
   runtimeDownloadConfirmation:
     "将从本项目 GitHub Release 下载 ONNX Runtime，并执行 SHA-256 校验。是否继续？",
@@ -118,9 +143,14 @@ export const PRELABEL_ZH_CN = {
   batchRun: "批量预打标",
   forceOverwrite: "强制覆盖已有标注",
   cancelBatch: "中断批量任务",
+  cancelSingle: "取消当前图片推理",
   batchDefaultHint: "默认跳过已有标注的图片；每张图片可独立撤销。",
   singleRunning: "正在处理当前图片…",
   batchRunning: "正在批量预打标…",
+  loadingModel: "正在加载模型…",
+  singleProcessing: "正在推理当前图片…",
+  batchProcessingImage: (index: number, total: number) => `正在处理第 ${index}/${total} 张图片…`,
+  cancellingInference: "正在取消当前图片推理…",
   batchCancelling: "正在完成当前批次，随后中断…",
   batchNothingToRun: "没有需要处理的图片。",
   singleCompleted: (count: number) => `当前图片已追加 ${count} 个标注。`,
@@ -133,6 +163,7 @@ export const PRELABEL_ZH_CN = {
   batchFailed: (processed: number, total: number) =>
     `批量停止：已保留 ${processed}/${total} 张图片的结果。`,
   inferenceStopped: "预打标未完成。",
+  inferenceCancelled: "已取消本张图片的预打标。",
   inferenceFailed: (reason: unknown) => `预打标失败：${String(reason)}`,
   executionContextChanged: "项目、标签或模型已在执行期间改变，已停止合并旧任务结果。",
 } as const;
