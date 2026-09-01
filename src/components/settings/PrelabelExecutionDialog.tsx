@@ -20,7 +20,7 @@ export function PrelabelExecutionDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 py-6">
       <section
         aria-label={text.executionTitle}
-        className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
       >
         <header className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-100">{text.executionTitle}</h2>
