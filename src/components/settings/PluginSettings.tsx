@@ -394,7 +394,7 @@ function PermissionDialog({
   const allConfirmed = confirmed.size === preview.permissions.length;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
-      <section className="w-full max-w-xl rounded-xl border border-slate-600 bg-slate-900 p-5 shadow-2xl">
+      <section className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-600 bg-slate-900 p-5 shadow-2xl">
         <h3 className="text-lg font-semibold text-slate-100">{text.permissionTitle}</h3>
         <p className="mt-1 text-sm text-slate-300">
           {preview.manifest.name} · v{preview.manifest.version}

@@ -416,7 +416,7 @@ export function PrelabelSettings({
           </button>
         </header>
 
-        <div className="grid min-h-0 flex-1 md:grid-cols-[18rem_1fr]">
+        <div className="grid min-h-0 flex-1 overflow-y-auto md:grid-cols-[18rem_1fr] md:grid-rows-[minmax(0,1fr)] md:overflow-hidden">
           <aside className="overflow-y-auto border-b border-slate-800 p-4 md:border-b-0 md:border-r">
             <button
               className="w-full rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400 disabled:opacity-50"

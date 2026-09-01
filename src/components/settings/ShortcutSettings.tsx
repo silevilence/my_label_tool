@@ -71,7 +71,7 @@ export function ShortcutSettings({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
-      <section className="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+      <section className="scrollbar-dark max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-slate-100">设置</h2>
