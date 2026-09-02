@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SetStateAction,
+} from "react";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { AppLayout } from "./components/AppLayout";
@@ -94,7 +101,24 @@ function App() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(DEFAULT_LABEL_TEMPLATES[0].id);
   const [projectTemplateId, setProjectTemplateId] = useState("");
   const [activeProjectConfigPath, setActiveProjectConfigPath] = useState("");
-  const [activeProjectConfig, setActiveProjectConfig] = useState<ProjectConfig | null>(null);
+  const [activeProjectConfig, setActiveProjectConfigState] = useState<ProjectConfig | null>(null);
+  const activeProjectConfigRef = useRef<ProjectConfig | null>(null);
+  const setActiveProjectConfig = useCallback(
+    (nextConfig: SetStateAction<ProjectConfig | null>) => {
+      if (typeof nextConfig === "function") {
+        setActiveProjectConfigState((current) => {
+          const resolved = nextConfig(current);
+          activeProjectConfigRef.current = resolved;
+          return resolved;
+        });
+        return;
+      }
+
+      activeProjectConfigRef.current = nextConfig;
+      setActiveProjectConfigState(nextConfig);
+    },
+    [],
+  );
   const [currentLabelId, setCurrentLabelId] = useState(DEFAULT_LABELS[0].id);
   const [isLabelDirty, setIsLabelDirty] = useState(false);
   const [selectedExportFormatId, setSelectedExportFormatId] = useState<ExportFormatId>("json");
@@ -168,7 +192,7 @@ function App() {
       selectedTemplateId,
     );
     const merged = mergePluginLabelPresets(
-      templates,
+      withActiveProjectTemplate(templates, activeProjectConfigRef.current),
       pluginTemplateIdsRef.current,
       snapshot.presets,
     );
@@ -445,16 +469,21 @@ function App() {
       loadPluginExportFormats(),
     ])
       .then(([savedLabels, savedTemplates, pluginSnapshot, exportSnapshot]) => {
+        const currentProject = activeProjectConfigRef.current;
         const baseTemplates = [
           ...DEFAULT_LABEL_TEMPLATES,
           ...savedTemplates.filter(
             (template) => !DEFAULT_LABEL_TEMPLATES.some((item) => item.id === template.id),
           ),
         ];
-        const merged = mergePluginLabelPresets(baseTemplates, new Set(), pluginSnapshot.presets);
+        const merged = mergePluginLabelPresets(
+          withActiveProjectTemplate(baseTemplates, currentProject),
+          new Set(),
+          pluginSnapshot.presets,
+        );
         const nextLabels = savedLabels.length > 0 ? savedLabels : DEFAULT_LABELS;
 
-        if (!cancelled && savedLabels.length > 0) {
+        if (!cancelled && !currentProject && savedLabels.length > 0) {
           setLabels(nextLabels);
           setSavedLabels(nextLabels);
           setCurrentLabelId(nextLabels[0].id);
@@ -750,3 +779,21 @@ function App() {
 }
 
 export default App;
+
+function withActiveProjectTemplate(
+  templates: LabelTemplate[],
+  projectConfig: ProjectConfig | null,
+): LabelTemplate[] {
+  if (!projectConfig) {
+    return templates;
+  }
+
+  const projectTemplate = {
+    ...projectConfig.template,
+    labels: projectConfig.labels,
+  };
+  return [
+    ...templates.filter((template) => template.id !== projectTemplate.id),
+    projectTemplate,
+  ];
+}
