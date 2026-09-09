@@ -124,12 +124,12 @@ my_label_tool/
 | `load_label_templates` / `save_label_templates` | 标签模板持久化（`label-templates.json`） |
 | `load_shortcuts` / `save_shortcuts` | 快捷键配置持久化（`shortcuts.json`） |
 | `inspect_onnx_model` / `find_converted_onnx` | 解析 YOLO ONNX 元数据；为 `.pt` 查找同目录转换产物 |
-| `load_prelabel_model_library` / `save_prelabel_model_library` | 预打标模型库持久化（`prelabel-models.json`） |
+| `load_prelabel_model_library` / `save_prelabel_model_library` | 预打标模型库持久化（`prelabel-models.json`）；原子保存成功后才清理已替换且不再被引用的受管模型文件 |
 | `get_onnx_runtime_status` | 重新检测并按需加载应用数据目录中的 ONNX Runtime |
 | `install_onnx_runtime_from_file` | 校验并安装手动选择的 Runtime DLL；同目录存在 provider / DirectML DLL 时一并安装 |
 | `download_onnx_runtime` | 经确认后下载、校验并安装项目 Release 中的 Runtime DLL |
 | `cancel_onnx_runtime_download` | 按 download_id 取消进行中的 Runtime 下载，返回取消受理状态 |
-| `download_prelabel_model` | 从用户配置的更新地址下载模型，校验 ONNX 后原子落盘到受管模型目录 |
+| `download_prelabel_model` | 从用户配置的更新地址下载模型，校验 ONNX 后原子落盘到受管模型目录；旧文件保留至模型库成功保存新路径 |
 | `cancel_prelabel_model_download` | 按 download_id 取消进行中的模型下载，返回取消受理状态 |
 | `validate_prelabel_model` | 通过 ONNX Runtime 校验模型张量契约与元数据一致性 |
 | `run_prelabel_inference` | 复用模型会话批量执行预处理、推理与后处理 |

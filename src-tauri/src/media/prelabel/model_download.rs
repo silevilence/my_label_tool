@@ -17,7 +17,7 @@ use crate::{
             task::{AsyncCancellation, CancelHandle, TaskRegistry},
         },
     },
-    models::prelabel::YoloModelFormat,
+    models::prelabel::{PrelabelModelLibrary, YoloModelFormat},
 };
 
 /// Downloads are buffered in RAM before the ONNX payload is validated, so a hard cap keeps a
@@ -75,29 +75,18 @@ pub(crate) fn managed_models_directory(app: &tauri::AppHandle) -> Result<PathBuf
 }
 
 /// Downloads the model from `source_url`, validates it is a YOLO ONNX export, and installs it
-/// atomically into the managed models directory. `previous_path` (the model's current file) is
-/// cleaned up afterwards when it points inside the managed directory, so repeated updates do
-/// not accumulate files. A cancellation surfaces as `Ok(None)` rather than an error.
+/// atomically into the managed models directory. Previous models are retained until the model
+/// library saves the new path successfully. A cancellation surfaces as `Ok(None)`.
 pub async fn download_prelabel_model_task(
     app: tauri::AppHandle,
     download_id: String,
     source_url: String,
-    previous_path: Option<String>,
     on_progress: Channel<ModelDownloadEvent>,
 ) -> Result<Option<ModelDownloadResult>, String> {
     let handle = Arc::new(AsyncCancellation::new());
     model_download_tasks().register(&download_id, Arc::clone(&handle))?;
     let outcome = match managed_models_directory(&app) {
-        Ok(directory) => {
-            download_model_file(
-                &directory,
-                &handle,
-                &source_url,
-                previous_path.as_deref(),
-                on_progress,
-            )
-            .await
-        }
+        Ok(directory) => download_model_file(&directory, &handle, &source_url, on_progress).await,
         Err(error) => Err(error),
     };
     model_download_tasks().remove(&download_id);
@@ -110,13 +99,11 @@ async fn download_model_file(
     directory: &Path,
     handle: &AsyncCancellation,
     source_url: &str,
-    previous_path: Option<&str>,
     on_progress: Channel<ModelDownloadEvent>,
 ) -> Result<Option<ModelDownloadResult>, String> {
     if handle.is_cancelled() {
         return Ok(None);
     }
-    validate_source_url(source_url)?;
     let file_name = download_file_name(source_url)?;
     let _ = on_progress.send(ModelDownloadEvent::Started {
         file_name: file_name.clone(),
@@ -124,7 +111,7 @@ async fn download_model_file(
     let bytes = download_bytes_from_url(
         HttpDownload {
             handle,
-            url: source_url,
+            url: source_url.trim(),
             timeouts: DOWNLOAD_TIMEOUTS,
             max_bytes: Some(MAX_MODEL_DOWNLOAD_BYTES),
             timed_out: || text::model_download_timed_out(&file_name),
@@ -148,10 +135,13 @@ async fn download_model_file(
     }
 
     let summary = inspect_onnx_bytes(&bytes, &file_name).map_err(text::model_onnx_invalid)?;
+    if handle.is_cancelled() {
+        return Ok(None);
+    }
+    let path = install_model_file(directory, &file_name, &bytes)?;
     let _ = on_progress.send(ModelDownloadEvent::Completed {
         file_name: file_name.clone(),
     });
-    let path = install_model_file(directory, &file_name, &bytes, previous_path)?;
     Ok(Some(ModelDownloadResult {
         path,
         format: summary.format,
@@ -162,23 +152,23 @@ async fn download_model_file(
     }))
 }
 
-fn validate_source_url(source_url: &str) -> Result<(), String> {
-    let matches = source_url.starts_with("http://") || source_url.starts_with("https://");
-    if matches && source_url.len() > "https://".len() {
-        Ok(())
-    } else {
-        Err(text::MODEL_SOURCE_URL_INVALID.to_string())
-    }
-}
-
 /// Derives the target file name from the URL path. Direct links to `.onnx` files name the file
 /// naturally; anything else is rejected so a redirect page or bare domain cannot become
 /// `model.onnx` in the managed directory.
-fn download_file_name(source_url: &str) -> Result<String, String> {
-    let path = source_url.split(['?', '#']).next().unwrap_or(source_url);
-    let file_name = path
-        .rsplit(['/', '\\'])
-        .find(|segment| !segment.is_empty())
+pub(crate) fn download_file_name(source_url: &str) -> Result<String, String> {
+    let source_url = source_url.trim();
+    let lower = source_url.to_ascii_lowercase();
+    if !lower.starts_with("http://") && !lower.starts_with("https://") {
+        return Err(text::MODEL_SOURCE_URL_INVALID.to_string());
+    }
+    let url =
+        reqwest::Url::parse(source_url).map_err(|_| text::MODEL_SOURCE_URL_INVALID.to_string())?;
+    if url.host_str().is_none() {
+        return Err(text::MODEL_SOURCE_URL_INVALID.to_string());
+    }
+    let file_name = url
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
         .unwrap_or_default();
     let valid = file_name.len() > 5 && file_name.to_ascii_lowercase().ends_with(".onnx");
     if valid {
@@ -188,16 +178,11 @@ fn download_file_name(source_url: &str) -> Result<String, String> {
     }
 }
 
-/// Writes the validated bytes to `directory` atomically (staging file + rename) and removes a
-/// previous managed file so repeated updates do not accumulate copies. An existing file with
+/// Writes validated bytes atomically (staging file + rename), retaining previous files until
+/// the model library commits the new path. An existing file with
 /// the same name is never overwritten — the new copy gets a timestamped name instead, which
 /// also sidesteps Windows file locks held by a loaded ONNX session.
-fn install_model_file(
-    directory: &Path,
-    file_name: &str,
-    bytes: &[u8],
-    previous_path: Option<&str>,
-) -> Result<String, String> {
+fn install_model_file(directory: &Path, file_name: &str, bytes: &[u8]) -> Result<String, String> {
     fs::create_dir_all(directory)
         .map_err(|error| text::model_create_dir_failed(directory, error))?;
 
@@ -226,7 +211,6 @@ fn install_model_file(
         return Err(text::model_write_failed(&target, error));
     }
 
-    remove_previous_managed_file(directory, previous_path);
     Ok(target.to_string_lossy().into_owned())
 }
 
@@ -241,26 +225,45 @@ fn unique_target(directory: &Path, file_name: &str) -> Result<PathBuf, String> {
         .unwrap_or(file_name);
     let candidate = directory.join(format!("{stem}-{nonce}.onnx"));
     if candidate.exists() {
-        return Err(text::model_write_failed(&candidate, "目标文件名已存在"));
+        return Err(text::model_write_failed(
+            &candidate,
+            text::MODEL_TARGET_EXISTS,
+        ));
     }
     Ok(candidate)
 }
 
-/// Deletes the model's previous file, but only when it lives inside the managed directory
-/// (i.e. it was itself a download). Files the user imported elsewhere are never touched;
-/// a cleanup failure is tolerated (the stale copy only wastes disk space).
-fn remove_previous_managed_file(directory: &Path, previous_path: Option<&str>) {
-    let Some(previous) = previous_path else {
+/// Called only after the new library is persisted. Only replaced, unreferenced managed files
+/// are eligible; deletion alone does not delete a user's model file. Cleanup is best effort.
+pub(crate) fn remove_replaced_managed_models(
+    directory: &Path,
+    previous: &PrelabelModelLibrary,
+    next: &PrelabelModelLibrary,
+) {
+    let Ok(managed) = directory.canonicalize() else {
         return;
     };
-    let previous = PathBuf::from(previous);
-    if previous.canonicalize().ok().is_some_and(|resolved| {
-        directory
-            .canonicalize()
-            .ok()
-            .is_some_and(|managed| resolved.starts_with(managed))
-    }) {
-        let _ = fs::remove_file(previous);
+    for old in &previous.models {
+        if !next
+            .models
+            .iter()
+            .any(|model| model.id == old.id && model.path != old.path)
+        {
+            continue;
+        }
+        let Ok(resolved) = Path::new(&old.path).canonicalize() else {
+            continue;
+        };
+        if resolved.starts_with(&managed)
+            && !next.models.iter().any(|model| {
+                model.path == old.path
+                    || Path::new(&model.path)
+                        .canonicalize()
+                        .is_ok_and(|path| path == resolved)
+            })
+        {
+            let _ = fs::remove_file(&old.path);
+        }
     }
 }
 
@@ -280,11 +283,10 @@ pub fn cancel_model_download(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, io::Write, path::Path, sync::Arc, thread, time::Duration};
+    use std::{fs, io::Write, sync::Arc};
 
     use super::{
-        download_file_name, download_model_file, install_model_file, validate_source_url,
-        MAX_MODEL_DOWNLOAD_BYTES,
+        download_file_name, download_model_file, install_model_file, MAX_MODEL_DOWNLOAD_BYTES,
     };
     use crate::media::{
         onnx_metadata::inspect_onnx_bytes,
@@ -343,7 +345,6 @@ mod tests {
             &directory,
             &AsyncCancellation::new(),
             &url,
-            None,
             tauri::ipc::Channel::new(|_message| Ok(())),
         )
         .await
@@ -377,7 +378,6 @@ mod tests {
             &directory,
             &AsyncCancellation::new(),
             &url,
-            None,
             tauri::ipc::Channel::new(|_message| Ok(())),
         )
         .await
@@ -407,7 +407,6 @@ mod tests {
             &directory,
             &AsyncCancellation::new(),
             &url,
-            None,
             tauri::ipc::Channel::new(|_message| Ok(())),
         )
         .await
@@ -429,48 +428,40 @@ mod tests {
         );
         assert!(download_file_name("https://example.com/releases/latest").is_err());
         assert!(download_file_name("https://example.com/not-a-model.bin").is_err());
+        assert!(download_file_name("https://example.com/model.onnx/download").is_err());
+        assert!(download_file_name("https://example.com/model.onnx/").is_err());
+        assert!(download_file_name("https://example.com/.onnx").is_err());
+        assert!(download_file_name("https://model.onnx").is_err());
+        assert_eq!(
+            download_file_name(" HTTPS://example.com/model.ONNX?token=abc#file ").unwrap(),
+            "model.ONNX"
+        );
     }
 
     #[test]
     fn rejects_non_http_source_urls() {
-        assert!(validate_source_url("https://example.com/a.onnx").is_ok());
-        assert!(validate_source_url("http://example.com/a.onnx").is_ok());
-        assert!(validate_source_url("file:///etc/passwd").is_err());
-        assert!(validate_source_url("ftp://example.com/a.onnx").is_err());
-        assert!(validate_source_url("https://").is_err());
+        assert!(download_file_name("https://example.com/a.onnx").is_ok());
+        assert!(download_file_name("http://example.com/a.onnx").is_ok());
+        assert!(download_file_name("file:///etc/passwd").is_err());
+        assert!(download_file_name("ftp://example.com/a.onnx").is_err());
+        assert!(download_file_name("https://").is_err());
     }
 
     #[test]
-    fn install_overwrites_nothing_and_cleans_up_previous_managed_files() {
+    fn install_retains_previous_models_until_the_library_is_saved() {
         let directory = temporary_directory("replace");
         fs::create_dir_all(&directory).unwrap();
-        let first = install_model_file(&directory, "yolo11n.onnx", b"first", None).unwrap();
+        let first = install_model_file(&directory, "yolo11n.onnx", b"first").unwrap();
         assert!(first.ends_with("yolo11n.onnx"));
 
         // Same file name must not be overwritten; the new copy gets a unique name and the
-        // previous managed file is removed.
-        let second =
-            install_model_file(&directory, "yolo11n.onnx", b"second", Some(&first)).unwrap();
+        // previous managed file is retained until the library commits the replacement.
+        let second = install_model_file(&directory, "yolo11n.onnx", b"second").unwrap();
         assert_ne!(first, second);
         assert_eq!(fs::read(&second).unwrap(), b"second");
-        assert!(!Path::new(&first).exists());
-
-        // A previous file outside the managed directory is never touched.
-        let external_dir = temporary_directory("external");
-        fs::create_dir_all(&external_dir).unwrap();
-        let external = external_dir.join("user-imported.onnx");
-        fs::write(&external, b"user file").unwrap();
-        install_model_file(
-            &directory,
-            "third.onnx",
-            b"third",
-            Some(&external.to_string_lossy()),
-        )
-        .unwrap();
-        assert_eq!(fs::read(&external).unwrap(), b"user file");
+        assert_eq!(fs::read(&first).unwrap(), b"first");
 
         fs::remove_dir_all(directory).unwrap();
-        fs::remove_dir_all(external_dir).unwrap();
     }
 
     #[tokio::test]
@@ -483,7 +474,6 @@ mod tests {
             &directory,
             &handle,
             "https://example.com/yolo11n.onnx",
-            None,
             tauri::ipc::Channel::new(|_message| Ok(())),
         )
         .await

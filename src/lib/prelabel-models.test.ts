@@ -117,7 +117,52 @@ describe("prelabel model imports", () => {
     expect(isValidModelSourceUrl("https://")).toBe(false);
     expect(isValidModelSourceUrl("")).toBe(false);
     expect(isValidModelSourceUrl("not a url")).toBe(false);
+    expect(isValidModelSourceUrl("https://example.com/model.onnx/download")).toBe(false);
+    expect(isValidModelSourceUrl("https://example.com/model.onnx/")).toBe(false);
+    expect(isValidModelSourceUrl("https://example.com/.onnx")).toBe(false);
+    expect(isValidModelSourceUrl("https://model.onnx")).toBe(false);
+    expect(isValidModelSourceUrl(" HTTPS://example.com/model.ONNX?token=abc#file ")).toBe(true);
   });
+
+  it("normalizes a saved update URL and removes a cleared URL", () => {
+    const original = baseModel();
+    const library = addModelToLibrary(EMPTY_PRELABEL_MODEL_LIBRARY, original);
+    const updated = updateModelInLibrary(library, {
+      ...original,
+      sourceUrl: "  https://example.com/new.onnx  ",
+    });
+    expect(updated.models[0].sourceUrl).toBe("https://example.com/new.onnx");
+    expect(
+      updateModelInLibrary(updated, { ...original, sourceUrl: "  " }).models[0].sourceUrl,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    { old: [640, 640], override: null, next: [0, 0], expected: [640, 640] },
+    { old: [0, 0], override: [640, 640], next: [1280, 1280], expected: null },
+    { old: [0, 0], override: [1280, 736], next: [0, 0], expected: [1280, 736] },
+    { old: [0, 0], override: [1280, 736], next: [640, 0], expected: [640, 736] },
+    { old: [0, 0], override: null, next: [0, 0], expected: [640, 640] },
+  ])(
+    "reconciles input overrides when changing $old to $next",
+    ({ old, override, next, expected }) => {
+      const original = {
+        ...baseModel(),
+        inputWidth: old[0],
+        inputHeight: old[1],
+        inputSizeOverride: override as [number, number] | null,
+      };
+      const downloaded: ModelDownloadResult = {
+        ...original,
+        path: "C:/app/models/new.onnx",
+        inputWidth: next[0],
+        inputHeight: next[1],
+      };
+      const updated = applyModelDownloadResult(original, downloaded);
+      expect(updated.inputSizeOverride).toEqual(expected);
+      expect(original.inputSizeOverride).toEqual(override);
+    },
+  );
 
   it("applies a download result onto the model config and stamps the update time", () => {
     const model = baseModel();

@@ -2,7 +2,7 @@
 //! tests and builders for minimal ONNX protobuf samples.
 
 use std::{
-    io::{Read, Write},
+    io::Read,
     net::{TcpListener, TcpStream},
     thread,
     time::{Duration, Instant},

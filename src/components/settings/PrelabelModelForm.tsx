@@ -13,6 +13,7 @@ export interface ModelDownloadUiState {
 
 export function ModelImportForm({
   mode,
+  disabled = false,
   model,
   submitLabel,
   gpuAvailable,
@@ -26,6 +27,7 @@ export function ModelImportForm({
   onValidate,
 }: {
   mode: "create" | "edit";
+  disabled?: boolean;
   model: PrelabelModelConfig;
   submitLabel: string;
   gpuAvailable?: boolean | null;
@@ -49,7 +51,8 @@ export function ModelImportForm({
     model.iouThreshold > 1 ||
     !(model.inputSizeOverride ?? [model.inputWidth, model.inputHeight]).every(
       (dimension) => Number.isSafeInteger(dimension) && dimension > 0,
-    );
+    ) ||
+    (Boolean(model.sourceUrl?.trim()) && !isValidModelSourceUrl(model.sourceUrl ?? ""));
   const sourceUrl = model.sourceUrl ?? "";
   const canUpdate = Boolean(update && onUpdateFromUrl) && isValidModelSourceUrl(sourceUrl);
   const progressPercent =
@@ -67,7 +70,7 @@ export function ModelImportForm({
           {formatLabel(model.format)}
         </span>
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <fieldset disabled={disabled} className="mt-4 grid gap-3 sm:grid-cols-2">
         <Field label={text.modelName}>
           <input
             className={inputClass}
@@ -150,9 +153,12 @@ export function ModelImportForm({
             }
           />
         </Field>
-      </div>
+      </fieldset>
       <h4 className="mt-5 text-sm font-medium text-slate-200">{text.classNames}</h4>
-      <div className="mt-2 grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
+      <fieldset
+        disabled={disabled}
+        className="mt-2 grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2"
+      >
         {model.classNames.map((name, index) => (
           <label className="grid grid-cols-[3rem_1fr] items-center gap-2" key={index}>
             <span className="text-right text-xs text-slate-500">{index}</span>
@@ -170,7 +176,7 @@ export function ModelImportForm({
             />
           </label>
         ))}
-      </div>
+      </fieldset>
       {mode === "edit" && update && (
         <div className="mt-5 rounded border border-slate-700 bg-slate-950/60 p-3">
           <Field label={text.sourceUrl}>
@@ -178,6 +184,7 @@ export function ModelImportForm({
               <input
                 className={inputClass}
                 placeholder={text.sourceUrlPlaceholder}
+                disabled={disabled}
                 value={sourceUrl}
                 onChange={(event) =>
                   onChange({ ...model, sourceUrl: event.target.value || undefined })
@@ -185,7 +192,7 @@ export function ModelImportForm({
               />
               <button
                 className="shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-                disabled={!canUpdate || update.isUpdating}
+                disabled={disabled || invalid || !canUpdate || update.isUpdating}
                 type="button"
                 onClick={onUpdateFromUrl}
               >
@@ -228,6 +235,7 @@ export function ModelImportForm({
             <button
               className="rounded border border-red-500/50 px-3 py-2 text-sm text-red-300"
               type="button"
+              disabled={disabled}
               onClick={onDelete}
             >
               {text.removeModel}
@@ -237,7 +245,7 @@ export function ModelImportForm({
         <div className="flex gap-2">
           <button
             className="rounded border border-emerald-500/50 px-3 py-2 text-sm text-emerald-300 disabled:opacity-50"
-            disabled={invalid}
+            disabled={disabled || invalid}
             type="button"
             onClick={onValidate}
           >
@@ -246,13 +254,14 @@ export function ModelImportForm({
           <button
             className="rounded border border-slate-700 px-3 py-2 text-sm"
             type="button"
+            disabled={disabled}
             onClick={onCancel}
           >
             {text.cancelChanges}
           </button>
           <button
             className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-            disabled={invalid}
+            disabled={disabled || invalid}
             type="button"
             onClick={onSubmit}
           >

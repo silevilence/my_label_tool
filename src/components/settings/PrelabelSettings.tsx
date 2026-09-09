@@ -125,7 +125,6 @@ export function PrelabelSettings({
   const cancelledConversions = useRef(new Set<string>());
   const cancelledDownloads = useRef(new Set<string>());
   const activeDownloadId = useRef<string | null>(null);
-  const cancelledModelDownloads = useRef(new Set<string>());
   const activeModelDownloadId = useRef<string | null>(null);
 
   useEffect(() => setEditingModel(currentModel), [currentModel]);
@@ -274,41 +273,37 @@ export function PrelabelSettings({
       setError(text.modelUpdateUnavailable);
       return;
     }
-    if (isModelUpdating) {
-      return;
-    }
-    if (!(await confirmAction(text.updateModelConfirm(sourceUrl)))) {
-      return;
-    }
-    const downloadId = crypto.randomUUID();
-    cancelledModelDownloads.current.delete(downloadId);
-    activeModelDownloadId.current = downloadId;
-    setIsModelUpdating(true);
-    setError("");
-    setModelUpdateNotice(null);
-    setModelUpdateProgress(null);
-    try {
-      const result = await downloadPrelabelModel(sourceUrl, model.path, downloadId, (event) => {
-        if (event.event === "progress") {
-          setModelUpdateProgress({ downloaded: event.downloaded, total: event.total });
-        }
-      });
-      if (cancelledModelDownloads.current.has(downloadId) || !result) {
-        setModelUpdateNotice({ tone: "warning", message: text.modelUpdateCancelled });
-      } else {
-        await onUpdateModel(applyModelDownloadResult(model, result));
-        setModelUpdateNotice({ tone: "success", message: text.modelUpdateCompleted(model.name) });
+    await runLibraryMutation(async () => {
+      if (!(await confirmAction(text.updateModelConfirm(sourceUrl)))) {
+        return;
       }
-    } catch (reason) {
-      setError(text.modelUpdateFailed(reason));
-    } finally {
-      if (activeModelDownloadId.current === downloadId) {
-        activeModelDownloadId.current = null;
-      }
-      cancelledModelDownloads.current.delete(downloadId);
-      setIsModelUpdating(false);
+      const downloadId = crypto.randomUUID();
+      activeModelDownloadId.current = downloadId;
+      setIsModelUpdating(true);
+      setModelUpdateNotice(null);
       setModelUpdateProgress(null);
-    }
+      try {
+        const result = await downloadPrelabelModel(sourceUrl, downloadId, (event) => {
+          if (event.event === "progress") {
+            setModelUpdateProgress({ downloaded: event.downloaded, total: event.total });
+          }
+        });
+        // A cancellation request may lose the race to installation. Only the backend's
+        // terminal result determines whether the downloaded model needs to be persisted.
+        if (!result) {
+          setModelUpdateNotice({ tone: "warning", message: text.modelUpdateCancelled });
+        } else {
+          await onUpdateModel(applyModelDownloadResult({ ...model, sourceUrl }, result));
+          setModelUpdateNotice({ tone: "success", message: text.modelUpdateCompleted(model.name) });
+        }
+      } catch (reason) {
+        setError(text.modelUpdateFailed(reason));
+      } finally {
+        activeModelDownloadId.current = null;
+        setIsModelUpdating(false);
+        setModelUpdateProgress(null);
+      }
+    });
   }
 
   async function cancelModelDownload() {
@@ -316,7 +311,6 @@ export function PrelabelSettings({
     if (!downloadId) {
       return;
     }
-    cancelledModelDownloads.current.add(downloadId);
     try {
       await cancelPrelabelModelDownload(downloadId);
     } catch (reason) {
@@ -537,6 +531,7 @@ export function PrelabelSettings({
                           : "border-slate-800 bg-slate-950 hover:border-slate-600"
                       }`}
                       key={source.pluginId}
+                      disabled={isBusy}
                       type="button"
                       onClick={() => {
                         setEditingModel(null);
@@ -607,6 +602,7 @@ export function PrelabelSettings({
             {draft && (
               <ModelImportForm
                 mode="create"
+                disabled={isBusy}
                 gpuAvailable={runtimeStatus?.gpuAvailable}
                 model={draft}
                 submitLabel={text.addToLibrary}
@@ -625,6 +621,7 @@ export function PrelabelSettings({
               <>
                 <ModelImportForm
                   mode="edit"
+                  disabled={isBusy}
                   gpuAvailable={runtimeStatus?.gpuAvailable}
                   model={editingModel}
                   submitLabel={text.saveModel}

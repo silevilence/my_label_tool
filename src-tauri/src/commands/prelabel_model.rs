@@ -17,18 +17,10 @@ pub use crate::media::prelabel::model_download::{ModelDownloadEvent, ModelDownlo
 pub async fn download_prelabel_model(
     app: tauri::AppHandle,
     source_url: String,
-    previous_path: Option<String>,
     download_id: String,
     on_progress: Channel<ModelDownloadEvent>,
 ) -> Result<Option<ModelDownloadResult>, String> {
-    model_download::download_prelabel_model_task(
-        app,
-        download_id,
-        source_url,
-        previous_path,
-        on_progress,
-    )
-    .await
+    model_download::download_prelabel_model_task(app, download_id, source_url, on_progress).await
 }
 
 /// Marks the named model download as cancelled. Idempotent: cancelling an already-finished

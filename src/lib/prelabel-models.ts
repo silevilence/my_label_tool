@@ -62,7 +62,11 @@ export function updateModelInLibrary(
 ): PrelabelModelLibrary {
   return {
     ...library,
-    models: library.models.map((candidate) => (candidate.id === model.id ? model : candidate)),
+    models: library.models.map((candidate) =>
+      candidate.id === model.id
+        ? { ...model, sourceUrl: model.sourceUrl?.trim() || undefined }
+        : candidate,
+    ),
   };
 }
 
@@ -124,10 +128,12 @@ export function isValidModelSourceUrl(url: string): boolean {
   }
   try {
     const parsed = new URL(trimmed);
+    const fileName = parsed.pathname.split("/").pop() ?? "";
     return (
       (parsed.protocol === "http:" || parsed.protocol === "https:") &&
       parsed.hostname.length > 0 &&
-      parsed.pathname.split("/").some((segment) => segment.toLowerCase().endsWith(".onnx"))
+      fileName.length > 5 &&
+      fileName.toLowerCase().endsWith(".onnx")
     );
   } catch {
     return false;
@@ -143,6 +149,19 @@ export function applyModelDownloadResult(
   return {
     ...model,
     path: result.path,
+    inputSizeOverride:
+      result.inputWidth === 0 || result.inputHeight === 0
+        ? [
+            result.inputWidth ||
+              model.inputSizeOverride?.[0] ||
+              model.inputWidth ||
+              DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE,
+            result.inputHeight ||
+              model.inputSizeOverride?.[1] ||
+              model.inputHeight ||
+              DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE,
+          ]
+        : null,
     format: result.format,
     classCount: result.classCount,
     inputWidth: result.inputWidth,

@@ -261,7 +261,6 @@ export function cancelOnnxRuntimeDownload(downloadId: string): Promise<Cancellat
 /** 从用户配置的更新地址下载模型；返回 null 表示下载被取消。 */
 export function downloadPrelabelModel(
   sourceUrl: string,
-  previousPath: string | null,
   downloadId: string,
   onProgress: (event: ModelDownloadEvent) => void,
 ): Promise<ModelDownloadResult | null> {
@@ -269,7 +268,6 @@ export function downloadPrelabelModel(
   progressChannel.onmessage = onProgress;
   return invoke<ModelDownloadResult | null>("download_prelabel_model", {
     sourceUrl,
-    previousPath,
     downloadId,
     onProgress: progressChannel,
   });

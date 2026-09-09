@@ -262,6 +262,7 @@ pub fn task_id_already_running(label: &str, task_id: &str) -> String {
 
 /// 手动更新预打标模型（从用户提供的 URL 下载）
 pub const MODEL_SOURCE_URL_INVALID: &str = "模型更新地址无效，必须是以 http(s):// 开头的 URL";
+pub const MODEL_TARGET_EXISTS: &str = "目标文件名已存在";
 pub const MODEL_SOURCE_FILE_NAME_UNAVAILABLE: &str =
     "无法从更新地址确定模型文件名，请使用以 .onnx 结尾的直链";
 pub fn model_app_data_failed(error: impl std::fmt::Display) -> String {
