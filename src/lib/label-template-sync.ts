@@ -151,6 +151,6 @@ function countNames(labels: LabelConfig[]): Map<string, number> {
   return counts;
 }
 
-function labelNameKey(name: string): string {
+export function labelNameKey(name: string): string {
   return name.trim().toLowerCase();
 }
