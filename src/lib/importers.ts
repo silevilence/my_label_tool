@@ -270,15 +270,16 @@ export function parseVocImport(files: TextImportFile[]): ImportedAnnotations {
 export function parseYoloImport(
   files: TextImportFile[],
   imageSizesByBaseName: Map<string, ImageSize>,
-  fallbackLabels: LabelConfig[] = [],
+  projectLabels: LabelConfig[] = [],
 ): ImportedAnnotations {
+  // 项目快照保存了 YOLO 类别顺序和模板 ID，重载时不能用 classes.txt 重建 ID。
+  if (projectLabels.length > 0) {
+    return parseYoloFiles(files, imageSizesByBaseName, projectLabels);
+  }
+
   const classesFile = files.find((file) => file.name.toLowerCase() === "classes.txt");
   if (!classesFile) {
-    if (fallbackLabels.length === 0) {
-      throw new Error("YOLO 导入目录缺少 classes.txt");
-    }
-
-    return parseYoloFiles(files, imageSizesByBaseName, fallbackLabels);
+    throw new Error("YOLO 导入目录缺少 classes.txt");
   }
 
   const classNames = classesFile.content

@@ -2,6 +2,7 @@ import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   baseName,
   confirmReplaceCurrentAnnotations,
+  detectYoloAnnotationFolder,
   loadImageSize,
   matchImportedImages,
   parseCustomMapping,
@@ -23,11 +24,13 @@ import {
   projectConfigTemplate,
   type ImageSize,
   type ImportedAnnotations,
+  type ImportSummary,
   type ProjectConfig,
   type TextImportFile,
 } from "../lib/importers";
 import {
   cancelPluginExport,
+  confirmAction,
   exportAnnotationsJson,
   exportTextFiles,
   runPluginExport,
@@ -45,6 +48,8 @@ import type { ExportData, ExportFormatId } from "../types/export";
 import type { PluginExportFormatDescriptor } from "../types/plugin";
 import { mergePluginConfigMigration } from "../lib/plugin-config-migration";
 import { PLUGIN_ZH_CN as pluginText } from "../i18n/plugin.zh-CN";
+import { PROJECT_ZH_CN as projectText } from "../i18n/project.zh-CN";
+import { mergeImportedLabels, remapImportedAnnotationLabels } from "../lib/yolo-label-merge";
 
 export interface PluginExportProgressState {
   exportId: string;
@@ -325,42 +330,100 @@ export function useProjectActions({
         return;
       }
 
-      const files = await readImportFiles(annotationPath, "txt");
-      const { imported, summary } = parseExternalYoloImport(
-        files,
-        await imageSizesByBaseName(images),
-      );
-      const configPath = projectConfigPath(folderPath);
-      const config: ProjectConfig = {
-        schemaVersion: 1,
-        format: "yolo",
-        annotationPath,
-        exportedAt: new Date().toISOString(),
-        imageFolder: folderPath,
-        labels: imported.labels,
-        template: projectConfigTemplate(),
-        exportOptions: { format: "yolo" },
-      };
-
-      applyImportedAnnotations(imported, images, config, configPath);
-      await saveProjectConfig(configPath, config);
-      window.alert(
-        `YOLO 项目创建完成：${summary.missingAnnotationFileCount} 张图片缺少标注文件，${summary.orphanAnnotationFileCount} 个标注文件未匹配图片，${summary.invalidLineCount} 行非法标注已跳过。`,
-      );
+      await createProjectFromYoloFolder(annotationPath, folderPath, images, {
+        showSummary: true,
+      });
     } catch (caughtError: unknown) {
       reportError(caughtError);
+    }
+  }
+
+  async function createProjectFromYoloFolder(
+    annotationPath: string,
+    imageFolder: string,
+    currentImages: ImageFile[],
+    options: { showSummary: boolean },
+  ) {
+    const files = await readImportFiles(annotationPath, "txt");
+    const { imported, summary } = parseExternalYoloImport(
+      files,
+      await imageSizesByBaseName(currentImages),
+    );
+    const merged = mergeImportedLabels(imported.labels, labels);
+    const importedWithMergedLabels: ImportedAnnotations = {
+      labels: merged.labels,
+      images: remapImportedAnnotationLabels(imported.images, imported.labels, merged.labels),
+    };
+    const configPath = projectConfigPath(imageFolder);
+    const config: ProjectConfig = {
+      schemaVersion: 1,
+      format: "yolo",
+      annotationPath,
+      exportedAt: new Date().toISOString(),
+      imageFolder,
+      labels: merged.labels,
+      template: projectConfigTemplate(),
+      exportOptions: { format: "yolo" },
+    };
+
+    await saveProjectConfig(configPath, config);
+    applyImportedAnnotations(importedWithMergedLabels, currentImages, config, configPath);
+    if (options.showSummary || hasImportSummaryIssues(summary)) {
+      window.alert(
+        projectText.yoloImportSummary(
+          summary.missingAnnotationFileCount,
+          summary.orphanAnnotationFileCount,
+          summary.invalidLineCount,
+        ),
+      );
     }
   }
 
   async function maybeLoadProjectConfig(imageFolder: string, currentImages: ImageFile[]) {
     const configs = await listTextFiles(imageFolder, "json");
     const config = configs.find((file) => file.name.toLowerCase() === PROJECT_CONFIG_NAME);
-    if (!config) {
-      clearProjectConfig();
+    if (config) {
+      try {
+        await loadProjectConfigImport(config.path, currentImages, false);
+      } catch (caughtError: unknown) {
+        clearProjectConfig();
+        reportError(caughtError);
+      }
       return;
     }
 
-    await loadProjectConfigImport(config.path, currentImages, false);
+    await maybeLoadYoloProject(imageFolder, currentImages);
+  }
+
+  async function maybeLoadYoloProject(imageFolder: string, currentImages: ImageFile[]) {
+    try {
+      const txtFiles = await listTextFiles(imageFolder, "txt");
+      const imageBaseNames = new Set(
+        currentImages.map((image) => baseName(image.name).toLowerCase()),
+      );
+      if (!detectYoloAnnotationFolder(txtFiles, imageBaseNames)) {
+        clearProjectConfig();
+        return;
+      }
+
+      const annotationFileCount = txtFiles.filter(
+        (file) => file.name.toLowerCase() !== "classes.txt",
+      ).length;
+      const confirmed = await confirmAction(
+        projectText.confirmYoloImport(annotationFileCount, PROJECT_CONFIG_NAME),
+      );
+      if (!confirmed) {
+        clearProjectConfig();
+        return;
+      }
+
+      await createProjectFromYoloFolder(imageFolder, imageFolder, currentImages, {
+        showSummary: false,
+      });
+    } catch (caughtError: unknown) {
+      clearProjectConfig();
+      reportError(caughtError);
+    }
   }
 
   function clearProjectConfig() {
@@ -599,4 +662,12 @@ function isBuiltInProjectFormat(
   format: ExportFormatId,
 ): format is ProjectConfig["format"] {
   return ["json", "coco", "voc", "yolo"].includes(format);
+}
+
+function hasImportSummaryIssues(summary: ImportSummary): boolean {
+  return (
+    summary.invalidLineCount > 0 ||
+    summary.missingAnnotationFileCount > 0 ||
+    summary.orphanAnnotationFileCount > 0
+  );
 }

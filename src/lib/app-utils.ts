@@ -62,6 +62,21 @@ export function projectConfigPath(folderPath: string): string {
   return joinPath(folderPath, PROJECT_CONFIG_NAME);
 }
 
+/**
+ * 判断目录中的 .txt 文件是否构成 YOLO 标注目录：
+ * 存在 classes.txt，或任一 txt 基名与图片基名匹配。
+ */
+export function detectYoloAnnotationFolder(
+  txtFiles: Array<{ name: string }>,
+  imageBaseNames: Set<string>,
+): boolean {
+  return txtFiles.some(
+    (file) =>
+      file.name.toLowerCase() === "classes.txt" ||
+      imageBaseNames.has(baseName(file.name).toLowerCase()),
+  );
+}
+
 export function joinPath(folderPath: string, name: string): string {
   const separator = folderPath.includes("\\") ? "\\" : "/";
   return `${folderPath.replace(/[\\/]+$/, "")}${separator}${name}`;
