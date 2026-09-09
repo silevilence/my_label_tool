@@ -400,6 +400,27 @@ describe("importers", () => {
     expect(imported.images[0].annotations[0].labelId).toBe("fallback-0");
   });
 
+  it("uses project label IDs and order even when classes.txt exists", () => {
+    const projectLabels: LabelConfig[] = [
+      { id: "cat", name: "cat", color: "#111111", shortcut: "1", shapeType: "any" },
+      { id: "dog", name: "dog", color: "#222222", shortcut: "2", shapeType: "rect" },
+    ];
+    const imported = parseYoloImport(
+      [file("classes.txt", "cat\ndog\n"), file("a.txt", "1 0.5 0.5 0.2 0.4\n")],
+      imageSizes,
+      projectLabels,
+    );
+
+    expect(imported.labels).toBe(projectLabels);
+    expect(imported.images[0].annotations[0]).toMatchObject({
+      labelId: "dog", points: [40, 15, 20, 20],
+    });
+    expect(() => parseYoloImport(
+      [file("classes.txt", "cat\ndog\n"), file("a.txt", "2 0.5 0.5 0.2 0.4\n")],
+      imageSizes, projectLabels,
+    )).toThrow("标签索引无效");
+  });
+
   it("summarizes external YOLO missing, orphan and invalid files", () => {
     const { imported, summary } = parseExternalYoloImport(
       [file("classes.txt", "person\n"), file("a.txt", "0 0.5 0.5 1 1\nbad\n"), file("orphan.txt", "0 0.1 0.1 0.1 0.1")],

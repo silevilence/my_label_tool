@@ -48,6 +48,7 @@ import type { ExportData, ExportFormatId } from "../types/export";
 import type { PluginExportFormatDescriptor } from "../types/plugin";
 import { mergePluginConfigMigration } from "../lib/plugin-config-migration";
 import { PLUGIN_ZH_CN as pluginText } from "../i18n/plugin.zh-CN";
+import { PROJECT_ZH_CN as projectText } from "../i18n/project.zh-CN";
 import { mergeImportedLabels, remapImportedAnnotationLabels } from "../lib/yolo-label-merge";
 
 export interface PluginExportProgressState {
@@ -365,10 +366,16 @@ export function useProjectActions({
       exportOptions: { format: "yolo" },
     };
 
-    applyImportedAnnotations(importedWithMergedLabels, currentImages, config, configPath);
     await saveProjectConfig(configPath, config);
+    applyImportedAnnotations(importedWithMergedLabels, currentImages, config, configPath);
     if (options.showSummary || hasImportSummaryIssues(summary)) {
-      window.alert(formatYoloImportSummary(summary));
+      window.alert(
+        projectText.yoloImportSummary(
+          summary.missingAnnotationFileCount,
+          summary.orphanAnnotationFileCount,
+          summary.invalidLineCount,
+        ),
+      );
     }
   }
 
@@ -403,7 +410,7 @@ export function useProjectActions({
         (file) => file.name.toLowerCase() !== "classes.txt",
       ).length;
       const confirmed = await confirmAction(
-        `检测到 YOLO 标注（${annotationFileCount} 个标注文件），是否读取标签并创建项目配置？将读取已打标签并写入 ${PROJECT_CONFIG_NAME}，下次打开该目录不再提示。`,
+        projectText.confirmYoloImport(annotationFileCount, PROJECT_CONFIG_NAME),
       );
       if (!confirmed) {
         clearProjectConfig();
@@ -663,8 +670,4 @@ function hasImportSummaryIssues(summary: ImportSummary): boolean {
     summary.missingAnnotationFileCount > 0 ||
     summary.orphanAnnotationFileCount > 0
   );
-}
-
-function formatYoloImportSummary(summary: ImportSummary): string {
-  return `YOLO 项目创建完成：${summary.missingAnnotationFileCount} 张图片缺少标注文件，${summary.orphanAnnotationFileCount} 个标注文件未匹配图片，${summary.invalidLineCount} 行非法标注已跳过。`;
 }

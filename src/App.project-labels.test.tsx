@@ -3,10 +3,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LabelConfig, LabelTemplate } from "./types/annotation";
 import { DEFAULT_LABELS } from "./lib/defaults/labels";
+import { parseProjectConfig, type ProjectConfig } from "./lib/importers";
+import type { TextExportFile } from "./types/export";
+import { useAnnotationStore } from "./store/useAnnotationStore";
 
 const tauriMocks = vi.hoisted(() => ({
   confirmAction: vi.fn(),
   exportAnnotationsJson: vi.fn(),
+  exportTextFiles: vi.fn(),
   listImageFiles: vi.fn(),
   listTextFiles: vi.fn(),
   loadLabelConfigs: vi.fn(),
@@ -19,6 +23,7 @@ const tauriMocks = vi.hoisted(() => ({
   migratePluginConfigs: vi.fn(),
   readTextFile: vi.fn(),
   selectImageFolder: vi.fn(),
+  selectExportFolder: vi.fn(),
 }));
 
 vi.mock("./lib/tauri-api", () => tauriMocks);
@@ -46,13 +51,21 @@ vi.mock("./hooks/useAppUpdate", () => ({
 }));
 vi.mock("./components/AppLayout", () => ({
   AppLayout: ({
+    activeProjectConfig,
+    createProjectFromExternalYolo,
+    transientMessage,
     labels,
     openFolder,
+    saveProjectExport,
     selectedTemplateId,
     templates,
   }: {
+    activeProjectConfig: ProjectConfig | null;
+    createProjectFromExternalYolo: () => void;
+    transientMessage: string;
     labels: LabelConfig[];
     openFolder: () => void;
+    saveProjectExport: () => void;
     selectedTemplateId: string;
     templates: LabelTemplate[];
   }) => (
@@ -60,6 +73,14 @@ vi.mock("./components/AppLayout", () => ({
       <button data-testid="open-folder" onClick={openFolder}>
         打开目录
       </button>
+      <button data-testid="import-yolo" onClick={createProjectFromExternalYolo}>
+        导入
+      </button>
+      <button data-testid="save-project" onClick={saveProjectExport}>
+        保存
+      </button>
+      <output data-testid="active-project">{activeProjectConfig?.format ?? "none"}</output>
+      <output data-testid="message">{transientMessage}</output>
       <select
         aria-label="标签模板"
         data-testid="selected-template"
@@ -105,6 +126,7 @@ describe("App project labels", () => {
     document.body.append(container);
     root = createRoot(container);
     vi.clearAllMocks();
+    useAnnotationStore.getState().replaceAnnotations({});
 
     tauriMocks.confirmAction.mockResolvedValue(true);
     tauriMocks.exportAnnotationsJson.mockResolvedValue(undefined);
@@ -227,10 +249,14 @@ describe("App YOLO folder auto load", () => {
     document.body.append(container);
     root = createRoot(container);
     vi.clearAllMocks();
+    useAnnotationStore.getState().replaceAnnotations({});
 
     tauriMocks.confirmAction.mockResolvedValue(true);
     tauriMocks.exportAnnotationsJson.mockResolvedValue(undefined);
     tauriMocks.loadLabelConfigs.mockResolvedValue(DEFAULT_LABELS);
+    tauriMocks.exportTextFiles.mockResolvedValue(undefined);
+    tauriMocks.selectExportFolder.mockResolvedValue("C:\\project");
+    vi.spyOn(window, "alert").mockImplementation(() => undefined);
     tauriMocks.loadLabelTemplates.mockResolvedValue([]);
     tauriMocks.loadPluginLabelPresets.mockResolvedValue({ presets: [], warning: null });
     tauriMocks.loadPluginExportFormats.mockResolvedValue({ formats: [], warning: null });
@@ -291,6 +317,129 @@ describe("App YOLO folder auto load", () => {
     return select?.value ?? "";
   }
 
+  async function clickAction(testId: string) {
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(`[data-testid='${testId}']`)?.click();
+      await flushMicrotasks();
+    });
+  }
+
+  it("keeps inherited IDs and exported classes after reopening a YOLO project", async () => {
+    const labels: LabelConfig[] = [
+      { id: "cat", name: "cat", color: "#111111", shortcut: "1", shapeType: "any" },
+      { id: "dog", name: "dog", color: "#222222", shortcut: "2", shapeType: "any" },
+    ];
+    tauriMocks.loadLabelConfigs.mockResolvedValue(labels);
+    tauriMocks.readTextFile.mockImplementation((path: string) =>
+      Promise.resolve(path.endsWith("classes.txt") ? "cat\ndog" : "1 0.5 0.5 0.2 0.2"),
+    );
+    await renderAndOpenFolder();
+    expect(
+      useAnnotationStore.getState().annotationsByImage["C:\\project\\cat.jpg"][0].labelId,
+    ).toBe("dog");
+    const savedConfig = parseProjectConfig(
+      JSON.stringify(tauriMocks.exportAnnotationsJson.mock.calls[0][1]),
+    );
+    expect(savedConfig.labels).toEqual(labels);
+    tauriMocks.listTextFiles.mockImplementation((_folder: string, extension: string) =>
+      Promise.resolve(
+        extension === "json"
+          ? [
+              {
+                path: "C:\\project\\my-label-tool.project.json",
+                name: "my-label-tool.project.json",
+              },
+            ]
+          : [
+              { path: "C:\\project\\classes.txt", name: "classes.txt" },
+              { path: "C:\\project\\cat.txt", name: "cat.txt" },
+            ],
+      ),
+    );
+    tauriMocks.readTextFile.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("my-label-tool.project.json")
+          ? JSON.stringify(savedConfig)
+          : path.endsWith("classes.txt")
+            ? "cat\ndog"
+            : "1 0.5 0.5 0.2 0.2",
+      ),
+    );
+
+    await clickAction("open-folder");
+    expect(tauriMocks.confirmAction).toHaveBeenCalledTimes(1);
+    expect(
+      useAnnotationStore.getState().annotationsByImage["C:\\project\\cat.jpg"][0].labelId,
+    ).toBe("dog");
+    await clickAction("save-project");
+    expect(tauriMocks.exportTextFiles).toHaveBeenCalledWith(
+      "C:\\project",
+      expect.arrayContaining([
+        { path: "cat.txt", content: "1 0.5 0.5 0.2 0.2\n" },
+      ] satisfies TextExportFile[]),
+    );
+  });
+
+  it("leaves labels, annotations and template unchanged when project writing fails", async () => {
+    tauriMocks.exportAnnotationsJson.mockRejectedValue(new Error("write denied"));
+    await renderAndOpenFolder();
+
+    expect(templateValue()).toBe("common-detection");
+    expect(
+      container.querySelector("[data-testid='selected-template'] option[value='project-config']"),
+    ).toBeNull();
+    expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
+    expect(container.querySelector("[data-testid='active-project']")?.textContent).toBe("none");
+    expect(container.querySelector("[data-testid='message']")?.textContent).toBe("write denied");
+    expect(useAnnotationStore.getState().annotationsByImage).toEqual({});
+  });
+
+  it("applies the imported project only after the configuration write completes", async () => {
+    let finishWrite: (() => void) | undefined;
+    tauriMocks.exportAnnotationsJson.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    await renderAndOpenFolder();
+
+    expect(finishWrite).toBeDefined();
+    expect(templateValue()).toBe("common-detection");
+    expect(useAnnotationStore.getState().annotationsByImage).toEqual({});
+    await act(async () => {
+      finishWrite?.();
+      await flushMicrotasks();
+    });
+    expect(templateValue()).toBe("project-config");
+    expect(useAnnotationStore.getState().annotationsByImage["C:\\project\\cat.jpg"]).toHaveLength(
+      1,
+    );
+  });
+
+  it("preserves annotations when creating a project from the menu fails to write", async () => {
+    tauriMocks.confirmAction.mockResolvedValueOnce(false);
+    await renderAndOpenFolder();
+    const annotation = {
+      id: "existing",
+      type: "rect" as const,
+      labelId: DEFAULT_LABELS[0].id,
+      points: [1, 2, 3, 4],
+    };
+    await act(async () =>
+      useAnnotationStore.getState().replaceAnnotations({ "C:\\project\\cat.jpg": [annotation] }),
+    );
+    tauriMocks.exportAnnotationsJson.mockRejectedValue(new Error("write denied"));
+    await clickAction("import-yolo");
+
+    expect(tauriMocks.selectExportFolder).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("[data-testid='message']")?.textContent).toBe("write denied");
+    expect(templateValue()).toBe("common-detection");
+    expect(useAnnotationStore.getState().annotationsByImage["C:\\project\\cat.jpg"]).toEqual([
+      annotation,
+    ]);
+  });
+
   it("loads YOLO annotations after confirmation and keeps matching shortcuts", async () => {
     tauriMocks.loadLabelConfigs.mockResolvedValue([
       { id: "cat", name: "cat", color: "#111111", shortcut: "1", shapeType: "any" },
@@ -303,7 +452,10 @@ describe("App YOLO folder auto load", () => {
     expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("cat,dog");
     expect(templateValue()).toBe("project-config");
 
-    const savedCall = tauriMocks.exportAnnotationsJson.mock.calls[tauriMocks.exportAnnotationsJson.mock.calls.length - 1];
+    const savedCall =
+      tauriMocks.exportAnnotationsJson.mock.calls[
+        tauriMocks.exportAnnotationsJson.mock.calls.length - 1
+      ];
     const savedConfig = savedCall?.[1] as {
       labels: LabelConfig[];
     };

@@ -12,8 +12,8 @@ export interface LabelMergeResult {
 /**
  * 将导入的标签与当前标签按名称合并：命中时继承既有标签的
  * id/shortcut/color/shapeType（保持导入顺序，YOLO 类别索引依赖顺序），
- * 未命中时保留导入标签原样。同名歧义（导入内部重名或既有重名）不继承，
- * 避免多个类别映射到同一标签造成 id 冲突。
+ * 未命中时保留导入标签属性，ID 冲突时生成新 ID。同名歧义不继承；
+ * 为未匹配标签避开全部既有 ID，防止切回模板时引用另一类别。
  */
 export function mergeImportedLabels(
   imported: LabelConfig[],
@@ -32,28 +32,46 @@ export function mergeImportedLabels(
   }
 
   const ambiguousNames = new Set<string>();
+  const existingIds = new Set(existing.map((label) => label.id));
+  const reservedIds = new Set([...existingIds, ...imported.map((label) => label.id)]);
+  const usedIds = new Set<string>();
   let matchedCount = 0;
-  const labels = imported.map((label) => {
+  const matches = imported.map((label) => {
     const key = labelNameKey(label.name);
     if ((importedKeyCounts.get(key) ?? 0) > 1) {
       ambiguousNames.add(label.name);
-      return label;
+      return undefined;
     }
 
     const candidates = existingByKey.get(key) ?? [];
     if (candidates.length > 1) {
       ambiguousNames.add(label.name);
-      return label;
+      return undefined;
     }
     if (candidates.length === 0) {
-      return label;
+      return undefined;
     }
 
-    const match = candidates[0];
+    return candidates[0];
+  });
+  const labels = imported.map((label, index) => {
+    const match = matches[index];
+    let id = match?.id ?? label.id;
+    if (usedIds.has(id) || (!match && existingIds.has(id))) {
+      let suffix = 1;
+      do {
+        id = `${label.id}-imported-${suffix++}`;
+      } while (reservedIds.has(id));
+    }
+    usedIds.add(id);
+    reservedIds.add(id);
+    if (!match) {
+      return id === label.id ? label : { ...label, id };
+    }
     matchedCount += 1;
     return {
       ...label,
-      id: match.id,
+      id,
       color: match.color,
       shortcut: match.shortcut,
       shapeType: isRectCompatibleShapeType(match.shapeType) ? match.shapeType : label.shapeType,
