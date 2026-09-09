@@ -114,6 +114,12 @@ fn validate_library(library: &PrelabelModelLibrary) -> Result<(), String> {
         {
             return Err(text::MODEL_THRESHOLDS_INVALID.to_string());
         }
+        if let Some(source_url) = &model.source_url {
+            let valid = source_url.starts_with("http://") || source_url.starts_with("https://");
+            if !valid {
+                return Err(text::MODEL_SOURCE_URL_INVALID.to_string());
+            }
+        }
     }
     if let Some(current_id) = &library.current_model_id {
         if !ids.contains(current_id.as_str()) {
@@ -147,8 +153,59 @@ mod tests {
                 iou_threshold: 0.45,
                 added_at: "2026-08-20T00:00:00.000Z".to_string(),
                 device: crate::models::prelabel::PrelabelDevice::Auto,
+                source_url: None,
+                updated_at: None,
             }],
         }
+    }
+
+    #[test]
+    fn model_library_accepts_legacy_json_without_update_fields() {
+        let path = std::env::temp_dir().join(format!(
+            "my_label_tool_legacy_prelabel_models_{}.json",
+            std::process::id()
+        ));
+        let json = r#"{
+            "schemaVersion": 1,
+            "currentModelId": "model-1",
+            "models": [{
+                "id": "model-1",
+                "name": "YOLO11n",
+                "path": "C:\\models\\yolo11n.onnx",
+                "format": "yolo11",
+                "classCount": 2,
+                "inputWidth": 640,
+                "inputHeight": 640,
+                "inputSizeOverride": null,
+                "classNames": ["person", "car"],
+                "confidenceThreshold": 0.25,
+                "iouThreshold": 0.45,
+                "addedAt": "2026-08-20T00:00:00.000Z",
+                "device": "auto"
+            }]
+        }"#;
+        fs::write(&path, json).unwrap();
+
+        let library = read_prelabel_model_library(&path).unwrap();
+
+        assert_eq!(library.models[0].source_url, None);
+        assert_eq!(library.models[0].updated_at, None);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn model_library_rejects_a_non_http_source_url() {
+        let path = std::env::temp_dir().join(format!(
+            "my_label_tool_bad_url_prelabel_models_{}.json",
+            std::process::id()
+        ));
+        let mut library = sample_library();
+        library.models[0].source_url = Some("file:///etc/passwd".to_string());
+
+        let error = write_prelabel_model_library(&path, &library).unwrap_err();
+
+        assert!(error.contains("更新地址"));
+        let _ = fs::remove_file(path);
     }
 
     #[test]

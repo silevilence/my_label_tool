@@ -1,4 +1,5 @@
 import type {
+  ModelDownloadResult,
   OnnxModelSummary,
   PrelabelModelConfig,
   PrelabelModelLibrary,
@@ -114,4 +115,39 @@ export function updateInputSizeOverride(
     return null;
   }
   return current;
+}
+
+export function isValidModelSourceUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.length > 0 &&
+      parsed.pathname.split("/").some((segment) => segment.toLowerCase().endsWith(".onnx"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** 用下载结果更新模型配置：替换模型元数据与路径，记录更新时间；更新地址保持不变。 */
+export function applyModelDownloadResult(
+  model: PrelabelModelConfig,
+  result: ModelDownloadResult,
+  updatedAt: string = new Date().toISOString(),
+): PrelabelModelConfig {
+  return {
+    ...model,
+    path: result.path,
+    format: result.format,
+    classCount: result.classCount,
+    inputWidth: result.inputWidth,
+    inputHeight: result.inputHeight,
+    classNames: result.classNames,
+    updatedAt,
+  };
 }

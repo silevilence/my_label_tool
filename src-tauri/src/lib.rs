@@ -38,6 +38,8 @@ pub fn run() {
             commands::download_onnx_runtime,
             commands::cancel_onnx_runtime_download,
             commands::validate_prelabel_model,
+            commands::download_prelabel_model,
+            commands::cancel_prelabel_model_download,
             commands::run_prelabel_inference,
             commands::cancel_prelabel_inference,
             commands::detect_pt_conversion_environment,
@@ -73,6 +75,7 @@ pub fn run() {
                 commands::cancel_all_pt_conversions_and_wait();
                 commands::cancel_all_prelabel_tasks();
                 commands::cancel_all_runtime_downloads();
+                commands::cancel_all_prelabel_model_downloads();
                 plugins::runtime::shutdown_all_plugin_processes();
             }
         });

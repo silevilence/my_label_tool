@@ -129,6 +129,8 @@ my_label_tool/
 | `install_onnx_runtime_from_file` | 校验并安装手动选择的 Runtime DLL；同目录存在 provider / DirectML DLL 时一并安装 |
 | `download_onnx_runtime` | 经确认后下载、校验并安装项目 Release 中的 Runtime DLL |
 | `cancel_onnx_runtime_download` | 按 download_id 取消进行中的 Runtime 下载，返回取消受理状态 |
+| `download_prelabel_model` | 从用户配置的更新地址下载模型，校验 ONNX 后原子落盘到受管模型目录 |
+| `cancel_prelabel_model_download` | 按 download_id 取消进行中的模型下载，返回取消受理状态 |
 | `validate_prelabel_model` | 通过 ONNX Runtime 校验模型张量契约与元数据一致性 |
 | `run_prelabel_inference` | 复用模型会话批量执行预处理、推理与后处理 |
 | `cancel_prelabel_inference` | 按 task_id 取消进行中的预打标推理，在下一张图片边界停止并保留已完成结果 |

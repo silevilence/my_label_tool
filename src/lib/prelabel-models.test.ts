@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   addModelToLibrary,
+  applyModelDownloadResult,
   createPrelabelModelConfig,
   deleteModelFromLibrary,
+  isValidModelSourceUrl,
   modelNameFromPath,
   prelabelFormatLabel,
   selectModelInLibrary,
   updateInputSizeOverride,
   updateModelInLibrary,
 } from "./prelabel-models";
-import { EMPTY_PRELABEL_MODEL_LIBRARY, type PrelabelModelConfig } from "../types/prelabel";
+import {
+  EMPTY_PRELABEL_MODEL_LIBRARY,
+  type ModelDownloadResult,
+  type PrelabelModelConfig,
+} from "../types/prelabel";
 
 describe("prelabel model imports", () => {
   it("formats persisted YOLO variants for user-visible summaries", () => {
@@ -100,7 +106,69 @@ describe("prelabel model imports", () => {
     expect(config.inputSizeOverride).toEqual([640, 640]);
     expect(updateInputSizeOverride(config, 0, "1280")).toEqual([1280, 640]);
   });
+
+  it("accepts only http(s) URLs pointing at an .onnx file", () => {
+    expect(isValidModelSourceUrl("https://example.com/models/yolo11n.onnx")).toBe(true);
+    expect(isValidModelSourceUrl("http://example.com/yolo11n.onnx?token=abc")).toBe(true);
+    expect(isValidModelSourceUrl("  https://example.com/YOLO11n.ONNX  ")).toBe(true);
+    expect(isValidModelSourceUrl("ftp://example.com/yolo11n.onnx")).toBe(false);
+    expect(isValidModelSourceUrl("file:///etc/passwd")).toBe(false);
+    expect(isValidModelSourceUrl("https://example.com/releases/latest")).toBe(false);
+    expect(isValidModelSourceUrl("https://")).toBe(false);
+    expect(isValidModelSourceUrl("")).toBe(false);
+    expect(isValidModelSourceUrl("not a url")).toBe(false);
+  });
+
+  it("applies a download result onto the model config and stamps the update time", () => {
+    const model = baseModel();
+    const result: ModelDownloadResult = {
+      path: "C:/appdata/models/yolo11n-1000.onnx",
+      format: "yolov8",
+      classCount: 3,
+      inputWidth: 640,
+      inputHeight: 640,
+      classNames: ["a", "b", "c"],
+    };
+
+    const next = applyModelDownloadResult(model, result, "2026-09-09T00:00:00.000Z");
+
+    expect(next.path).toBe(result.path);
+    expect(next.format).toBe("yolov8");
+    expect(next.classCount).toBe(3);
+    expect(next.classNames).toEqual(["a", "b", "c"]);
+    expect(next.updatedAt).toBe("2026-09-09T00:00:00.000Z");
+    expect(next.sourceUrl).toBe("https://example.com/yolo11n.onnx");
+    expect(next.id).toBe(model.id);
+    expect(next.name).toBe(model.name);
+    expect(next.confidenceThreshold).toBe(model.confidenceThreshold);
+  });
+
+  it("defaults the update time to now and keeps an unset source url unset", () => {
+    const model = baseModel();
+    delete model.sourceUrl;
+    const result: ModelDownloadResult = {
+      path: "C:/appdata/models/yolo11n-1000.onnx",
+      format: "yolo11",
+      classCount: 1,
+      inputWidth: 640,
+      inputHeight: 640,
+      classNames: ["person"],
+    };
+
+    const next = applyModelDownloadResult(model, result);
+
+    expect(next.updatedAt).toEqual(expect.any(String));
+    expect(Number.isNaN(Date.parse(next.updatedAt ?? ""))).toBe(false);
+    expect(next.sourceUrl).toBeUndefined();
+  });
 });
+
+function baseModel(): PrelabelModelConfig {
+  return {
+    ...model("model-1", "yolo11n"),
+    sourceUrl: "https://example.com/yolo11n.onnx",
+  };
+}
 
 function model(id: string, name: string): PrelabelModelConfig {
   return createPrelabelModelConfig(

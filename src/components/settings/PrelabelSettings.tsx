@@ -1,13 +1,16 @@
-// This settings workspace intentionally keeps model-library, runtime, mapping, and PT-conversion
-// orchestration together because they share one guarded mutation lifecycle and active selection.
+// This settings workspace keeps model-library, runtime, and PT-conversion orchestration together
+// because they share one guarded mutation lifecycle and active selection. The import form
+// (PrelabelModelForm) and class-mapping panel (PrelabelClassMapping) live in their own modules.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelOnnxRuntimeDownload,
+  cancelPrelabelModelDownload,
   cancelPtConversion,
   confirmAction,
   convertPtToOnnx,
   detectPtConversionEnvironment,
   downloadOnnxRuntime,
+  downloadPrelabelModel,
   findConvertedOnnx,
   getOnnxRuntimeStatus,
   inspectOnnxModel,
@@ -18,9 +21,10 @@ import {
   validatePrelabelModel,
 } from "../../lib/tauri-api";
 import {
+  applyModelDownloadResult,
   createPrelabelModelConfig,
+  isValidModelSourceUrl,
   prelabelFormatLabel as formatLabel,
-  updateInputSizeOverride,
 } from "../../lib/prelabel-models";
 import {
   createPtConversionSession,
@@ -31,24 +35,18 @@ import {
   type PtConversionSession,
   validatePtConversionParameters,
 } from "../../lib/prelabel-conversion";
-import {
-  createLabelForPrelabelClass,
-  isUnmatchedPrelabelMapping,
-  resolvePrelabelClassMappings,
-} from "../../lib/prelabel-mapping";
-import { DEFAULT_LABEL_COLORS } from "../../lib/defaults/labels";
 import type { ProjectConfig } from "../../lib/importers";
 import type { LabelConfig } from "../../types/annotation";
 import type {
   OnnxRuntimeStatus,
-  PrelabelDevice,
   PrelabelModelConfig,
   PrelabelModelLibrary,
   PrelabelClassMapping,
   PtConversionEnvironment,
-  ResolvedPrelabelClassMapping,
 } from "../../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
+import { ModelImportForm } from "./PrelabelModelForm";
+import { ClassMappingPanel } from "./PrelabelClassMapping";
 import { PtConversionDialog } from "./PtConversionDialog";
 import type { PluginPrelabelSourceDescriptor } from "../../types/plugin";
 
@@ -98,7 +96,8 @@ export function PrelabelSettings({
   const [draft, setDraft] = useState<PrelabelModelConfig | null>(null);
   const [editingModel, setEditingModel] = useState<PrelabelModelConfig | null>(currentModel);
   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
-  const selectedPlugin = pluginSources.find((source) => source.pluginId === selectedPluginId) ?? null;
+  const selectedPlugin =
+    pluginSources.find((source) => source.pluginId === selectedPluginId) ?? null;
   const [ptGuidance, setPtGuidance] = useState<PtGuidance | null>(null);
   const [ptConversionSession, setPtConversionSession] = useState<PtConversionSession | null>(null);
   const [ptConversionNotice, setPtConversionNotice] = useState("");
@@ -113,10 +112,21 @@ export function PrelabelSettings({
     downloaded: number;
     total: number | null;
   } | null>(null);
+  const [modelUpdateProgress, setModelUpdateProgress] = useState<{
+    downloaded: number;
+    total: number | null;
+  } | null>(null);
+  const [modelUpdateNotice, setModelUpdateNotice] = useState<{
+    tone: "success" | "warning";
+    message: string;
+  } | null>(null);
+  const [isModelUpdating, setIsModelUpdating] = useState(false);
   const mutationInFlight = useRef(false);
   const cancelledConversions = useRef(new Set<string>());
   const cancelledDownloads = useRef(new Set<string>());
   const activeDownloadId = useRef<string | null>(null);
+  const cancelledModelDownloads = useRef(new Set<string>());
+  const activeModelDownloadId = useRef<string | null>(null);
 
   useEffect(() => setEditingModel(currentModel), [currentModel]);
   useEffect(() => {
@@ -254,6 +264,63 @@ export function PrelabelSettings({
       await cancelOnnxRuntimeDownload(downloadId);
     } catch (reason) {
       setError(text.runtimeOperationFailed(reason));
+    }
+  }
+
+  /** 从模型配置的更新地址手动拉取新版本：下载、校验 ONNX、落盘到受管目录并更新配置。 */
+  async function updateModelFromUrl(model: PrelabelModelConfig) {
+    const sourceUrl = (model.sourceUrl ?? "").trim();
+    if (!isValidModelSourceUrl(sourceUrl)) {
+      setError(text.modelUpdateUnavailable);
+      return;
+    }
+    if (isModelUpdating) {
+      return;
+    }
+    if (!(await confirmAction(text.updateModelConfirm(sourceUrl)))) {
+      return;
+    }
+    const downloadId = crypto.randomUUID();
+    cancelledModelDownloads.current.delete(downloadId);
+    activeModelDownloadId.current = downloadId;
+    setIsModelUpdating(true);
+    setError("");
+    setModelUpdateNotice(null);
+    setModelUpdateProgress(null);
+    try {
+      const result = await downloadPrelabelModel(sourceUrl, model.path, downloadId, (event) => {
+        if (event.event === "progress") {
+          setModelUpdateProgress({ downloaded: event.downloaded, total: event.total });
+        }
+      });
+      if (cancelledModelDownloads.current.has(downloadId) || !result) {
+        setModelUpdateNotice({ tone: "warning", message: text.modelUpdateCancelled });
+      } else {
+        await onUpdateModel(applyModelDownloadResult(model, result));
+        setModelUpdateNotice({ tone: "success", message: text.modelUpdateCompleted(model.name) });
+      }
+    } catch (reason) {
+      setError(text.modelUpdateFailed(reason));
+    } finally {
+      if (activeModelDownloadId.current === downloadId) {
+        activeModelDownloadId.current = null;
+      }
+      cancelledModelDownloads.current.delete(downloadId);
+      setIsModelUpdating(false);
+      setModelUpdateProgress(null);
+    }
+  }
+
+  async function cancelModelDownload() {
+    const downloadId = activeModelDownloadId.current;
+    if (!downloadId) {
+      return;
+    }
+    cancelledModelDownloads.current.add(downloadId);
+    try {
+      await cancelPrelabelModelDownload(downloadId);
+    } catch (reason) {
+      setError(text.modelUpdateFailed(reason));
     }
   }
 
@@ -479,7 +546,9 @@ export function PrelabelSettings({
                       <span className="block truncate text-sm font-medium text-slate-100">
                         {source.pluginName}
                       </span>
-                      <span className={`mt-1 block text-xs ${source.enabled ? "text-slate-500" : "text-amber-300"}`}>
+                      <span
+                        className={`mt-1 block text-xs ${source.enabled ? "text-slate-500" : "text-amber-300"}`}
+                      >
                         {source.disabledReason ?? text.pluginSourceReady}
                       </span>
                     </button>
@@ -516,6 +585,17 @@ export function PrelabelSettings({
                 {modelValidation}
               </p>
             )}
+            {modelUpdateNotice && (
+              <p
+                className={`mb-4 rounded border p-3 text-sm ${
+                  modelUpdateNotice.tone === "success"
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                    : "border-amber-500/50 bg-amber-500/10 text-amber-100"
+                }`}
+              >
+                {modelUpdateNotice.message}
+              </p>
+            )}
             {ptGuidance && (
               <PtConversionGuidance
                 guidance={ptGuidance}
@@ -526,6 +606,7 @@ export function PrelabelSettings({
             )}
             {draft && (
               <ModelImportForm
+                mode="create"
                 gpuAvailable={runtimeStatus?.gpuAvailable}
                 model={draft}
                 submitLabel={text.addToLibrary}
@@ -543,11 +624,18 @@ export function PrelabelSettings({
             {!draft && !ptGuidance && editingModel && (
               <>
                 <ModelImportForm
+                  mode="edit"
                   gpuAvailable={runtimeStatus?.gpuAvailable}
                   model={editingModel}
                   submitLabel={text.saveModel}
+                  update={{
+                    isUpdating: isModelUpdating,
+                    progress: modelUpdateProgress,
+                  }}
                   onCancel={() => setEditingModel(currentModel)}
                   onChange={setEditingModel}
+                  onCancelUpdate={() => void cancelModelDownload()}
+                  onUpdateFromUrl={() => void updateModelFromUrl(editingModel)}
                   onValidate={() => void validateModel(editingModel)}
                   onDelete={() => {
                     if (window.confirm(text.removeConfirmation(editingModel.name))) {
@@ -623,214 +711,6 @@ export function PrelabelSettings({
           }}
         />
       )}
-    </div>
-  );
-}
-
-function ClassMappingPanel({
-  activeProjectConfig,
-  disabled,
-  isLabelDirty,
-  labels,
-  classNames,
-  sourceId,
-  onSave,
-}: {
-  activeProjectConfig: ProjectConfig | null;
-  disabled: boolean;
-  isLabelDirty: boolean;
-  labels: LabelConfig[];
-  classNames: string[];
-  sourceId: string;
-  onSave: (mappings: PrelabelClassMapping[], labels: LabelConfig[]) => Promise<void>;
-}) {
-  const savedMappings = activeProjectConfig?.prelabelMappings?.[sourceId] ?? [];
-  const resolved = useMemo(
-    () =>
-      resolvePrelabelClassMappings(
-        sourceId,
-        classNames,
-        labels,
-        activeProjectConfig?.prelabelMappings ?? {},
-      ),
-    [activeProjectConfig?.prelabelMappings, classNames, labels, sourceId],
-  );
-  const unmatchedCount = resolved.filter(isUnmatchedPrelabelMapping).length;
-
-  function upsertMapping(next: PrelabelClassMapping): PrelabelClassMapping[] {
-    return [
-      ...savedMappings.filter((mapping) => mapping.classIndex !== next.classIndex),
-      next,
-    ].sort((left, right) => left.classIndex - right.classIndex);
-  }
-
-  async function bind(mapping: ResolvedPrelabelClassMapping, labelId: string) {
-    await onSave(
-      upsertMapping({
-        classIndex: mapping.classIndex,
-        className: mapping.className,
-        action: "bind",
-        labelId,
-      }),
-      labels,
-    );
-  }
-
-  async function create(mapping: ResolvedPrelabelClassMapping) {
-    const label = createLabelForPrelabelClass(
-      labels,
-      mapping.className,
-      DEFAULT_LABEL_COLORS[labels.length % DEFAULT_LABEL_COLORS.length],
-    );
-    await onSave(
-      upsertMapping({
-        classIndex: mapping.classIndex,
-        className: mapping.className,
-        action: "create",
-        labelId: label.id,
-      }),
-      [...labels, label],
-    );
-  }
-
-  async function exclude(mapping: ResolvedPrelabelClassMapping) {
-    await onSave(
-      upsertMapping({
-        classIndex: mapping.classIndex,
-        className: mapping.className,
-        action: "exclude",
-      }),
-      labels,
-    );
-  }
-
-  return (
-    <section className="mt-6 border-t border-slate-800 pt-5">
-      <h3 className="font-medium text-slate-100">{text.mappingTitle}</h3>
-      <p className="mt-1 text-xs text-slate-400">{text.mappingDescription}</p>
-      {!activeProjectConfig && (
-        <p className="mt-3 rounded border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-100">
-          {text.mappingNeedsProject}
-        </p>
-      )}
-      {isLabelDirty && (
-        <p className="mt-3 rounded border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-100">
-          {text.mappingDirtyLabels}
-        </p>
-      )}
-      <p
-        className={`mt-3 rounded border p-3 text-sm ${
-          unmatchedCount > 0
-            ? "border-amber-500/50 bg-amber-500/10 text-amber-100"
-            : "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-        }`}
-      >
-        {unmatchedCount > 0 ? text.mappingUnmatched(unmatchedCount) : text.mappingComplete}
-      </p>
-      <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
-        {resolved.map((mapping) => (
-          <ClassMappingRow
-            disabled={!activeProjectConfig || disabled}
-            key={`${mapping.classIndex}:${mapping.className}`}
-            labels={labels}
-            mapping={mapping}
-            onBind={(labelId) => bind(mapping, labelId)}
-            onCreate={() => create(mapping)}
-            onExclude={() => exclude(mapping)}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ClassMappingRow({
-  disabled,
-  labels,
-  mapping,
-  onBind,
-  onCreate,
-  onExclude,
-}: {
-  disabled: boolean;
-  labels: LabelConfig[];
-  mapping: ResolvedPrelabelClassMapping;
-  onBind: (labelId: string) => Promise<void>;
-  onCreate: () => Promise<void>;
-  onExclude: () => Promise<void>;
-}) {
-  const [selectedLabelId, setSelectedLabelId] = useState(mapping.labelId ?? labels[0]?.id ?? "");
-  useEffect(() => {
-    setSelectedLabelId(mapping.labelId ?? labels[0]?.id ?? "");
-  }, [labels, mapping.labelId]);
-
-  const status =
-    mapping.source === "auto-exact"
-      ? text.mappingAutoExact
-      : mapping.source === "auto-ascii-case-insensitive"
-        ? text.mappingAutoAscii
-        : mapping.source === "explicit"
-          ? text.mappingExplicit
-          : mapping.source === "explicit-exclude"
-            ? text.mappingExcluded
-            : text.mappingUnresolved;
-  return (
-    <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm text-slate-100">
-          <span className="mr-2 text-xs text-slate-500">{mapping.classIndex}</span>
-          {mapping.className}
-        </span>
-        <span
-          className={`text-xs ${
-            mapping.labelId || mapping.excluded ? "text-emerald-300" : "text-amber-300"
-          }`}
-        >
-          {status}
-          {mapping.labelId
-            ? ` → ${labels.find((label) => label.id === mapping.labelId)?.name ?? mapping.labelId}`
-            : ""}
-        </span>
-      </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-        <select
-          aria-label={text.chooseLabel}
-          className={inputClass}
-          disabled={disabled || labels.length === 0}
-          value={selectedLabelId}
-          onChange={(event) => setSelectedLabelId(event.target.value)}
-        >
-          {labels.map((label) => (
-            <option key={label.id} value={label.id}>
-              {label.name}
-            </option>
-          ))}
-        </select>
-        <button
-          className="rounded border border-sky-500/50 px-3 py-2 text-xs text-sky-200 disabled:opacity-50"
-          disabled={disabled || !selectedLabelId}
-          type="button"
-          onClick={() => void onBind(selectedLabelId)}
-        >
-          {text.bindExisting}
-        </button>
-        <button
-          className="rounded border border-emerald-500/50 px-3 py-2 text-xs text-emerald-200 disabled:opacity-50"
-          disabled={disabled}
-          type="button"
-          onClick={() => void onCreate()}
-        >
-          {text.createFromClass}
-        </button>
-        <button
-          className="rounded border border-slate-600 px-3 py-2 text-xs text-slate-300 disabled:opacity-50"
-          disabled={disabled}
-          type="button"
-          onClick={() => void onExclude()}
-        >
-          {text.excludeClass}
-        </button>
-      </div>
     </div>
   );
 }
@@ -1003,203 +883,3 @@ function PtConversionGuidance({
     </div>
   );
 }
-
-function ModelImportForm({
-  model,
-  submitLabel,
-  gpuAvailable,
-  onCancel,
-  onChange,
-  onDelete,
-  onSubmit,
-  onValidate,
-}: {
-  model: PrelabelModelConfig;
-  submitLabel: string;
-  gpuAvailable?: boolean | null;
-  onCancel: () => void;
-  onChange: (model: PrelabelModelConfig) => void;
-  onDelete?: () => void;
-  onSubmit: () => void;
-  onValidate: () => void;
-}) {
-  const invalid =
-    !model.name.trim() ||
-    model.classNames.some((name) => !name.trim()) ||
-    !Number.isFinite(model.confidenceThreshold) ||
-    model.confidenceThreshold < 0 ||
-    model.confidenceThreshold > 1 ||
-    !Number.isFinite(model.iouThreshold) ||
-    model.iouThreshold < 0 ||
-    model.iouThreshold > 1 ||
-    !(model.inputSizeOverride ?? [model.inputWidth, model.inputHeight]).every(
-      (dimension) => Number.isSafeInteger(dimension) && dimension > 0,
-    );
-  return (
-    <div>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="font-medium text-slate-100">{text.importForm}</h3>
-          <p className="mt-1 break-all text-xs text-slate-500">{model.path}</p>
-        </div>
-        <span className="rounded bg-sky-500/15 px-2 py-1 text-xs text-sky-300">
-          {formatLabel(model.format)}
-        </span>
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Field label={text.modelName}>
-          <input
-            className={inputClass}
-            value={model.name}
-            onChange={(event) => onChange({ ...model, name: event.target.value })}
-          />
-        </Field>
-        <Field label={text.inspectedInfo}>
-          <div className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-300">
-            {text.modelSummary(model.classCount, model.inputWidth, model.inputHeight)}
-          </div>
-        </Field>
-        <Field label={text.confidenceThreshold}>
-          <input
-            className={inputClass}
-            max="1"
-            min="0"
-            step="0.01"
-            type="number"
-            value={model.confidenceThreshold}
-            onChange={(event) =>
-              onChange({ ...model, confidenceThreshold: event.target.valueAsNumber })
-            }
-          />
-        </Field>
-        <Field label={text.iouThreshold}>
-          <input
-            className={inputClass}
-            max="1"
-            min="0"
-            step="0.01"
-            type="number"
-            value={model.iouThreshold}
-            onChange={(event) => onChange({ ...model, iouThreshold: event.target.valueAsNumber })}
-          />
-        </Field>
-        <Field label={text.device}>
-          <select
-            className={inputClass}
-            value={model.device}
-            onChange={(event) =>
-              onChange({ ...model, device: event.target.value as PrelabelDevice })
-            }
-          >
-            <option value="auto">{text.deviceAuto}</option>
-            <option value="cpu">{text.deviceCpu}</option>
-            <option value="gpu">{text.deviceGpu}</option>
-          </select>
-        </Field>
-        {model.device === "gpu" && gpuAvailable === false && (
-          <p className="text-xs text-amber-300">{text.deviceGpuUnavailable}</p>
-        )}
-        <Field label={text.inputWidthOverride}>
-          <input
-            className={inputClass}
-            min="1"
-            placeholder={model.inputWidth ? String(model.inputWidth) : text.dynamicDimension}
-            type="number"
-            value={model.inputSizeOverride?.[0] ?? ""}
-            onChange={(event) =>
-              onChange({
-                ...model,
-                inputSizeOverride: updateInputSizeOverride(model, 0, event.target.value),
-              })
-            }
-          />
-        </Field>
-        <Field label={text.inputHeightOverride}>
-          <input
-            className={inputClass}
-            min="1"
-            placeholder={model.inputHeight ? String(model.inputHeight) : text.dynamicDimension}
-            type="number"
-            value={model.inputSizeOverride?.[1] ?? ""}
-            onChange={(event) =>
-              onChange({
-                ...model,
-                inputSizeOverride: updateInputSizeOverride(model, 1, event.target.value),
-              })
-            }
-          />
-        </Field>
-      </div>
-      <h4 className="mt-5 text-sm font-medium text-slate-200">{text.classNames}</h4>
-      <div className="mt-2 grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
-        {model.classNames.map((name, index) => (
-          <label className="grid grid-cols-[3rem_1fr] items-center gap-2" key={index}>
-            <span className="text-right text-xs text-slate-500">{index}</span>
-            <input
-              className={inputClass}
-              value={name}
-              onChange={(event) =>
-                onChange({
-                  ...model,
-                  classNames: model.classNames.map((candidate, candidateIndex) =>
-                    candidateIndex === index ? event.target.value : candidate,
-                  ),
-                })
-              }
-            />
-          </label>
-        ))}
-      </div>
-      <div className="mt-5 flex flex-wrap justify-between gap-2 border-t border-slate-800 pt-4">
-        <div>
-          {onDelete && (
-            <button
-              className="rounded border border-red-500/50 px-3 py-2 text-sm text-red-300"
-              type="button"
-              onClick={onDelete}
-            >
-              {text.removeModel}
-            </button>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <button
-            className="rounded border border-emerald-500/50 px-3 py-2 text-sm text-emerald-300 disabled:opacity-50"
-            disabled={invalid}
-            type="button"
-            onClick={onValidate}
-          >
-            {text.validateModel}
-          </button>
-          <button
-            className="rounded border border-slate-700 px-3 py-2 text-sm"
-            type="button"
-            onClick={onCancel}
-          >
-            {text.cancelChanges}
-          </button>
-          <button
-            className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-            disabled={invalid}
-            type="button"
-            onClick={onSubmit}
-          >
-            {submitLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="text-xs text-slate-400">
-      <span className="mb-1 block">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-const inputClass =
-  "w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500";

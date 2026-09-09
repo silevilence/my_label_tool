@@ -49,13 +49,13 @@ const DOWNLOAD_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_HEADERS_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Copy)]
-struct DownloadTimeouts {
-    connect: Duration,
-    headers: Duration,
-    chunk: Duration,
+pub(crate) struct DownloadTimeouts {
+    pub connect: Duration,
+    pub headers: Duration,
+    pub chunk: Duration,
 }
 
-const DOWNLOAD_TIMEOUTS: DownloadTimeouts = DownloadTimeouts {
+pub(crate) const DOWNLOAD_TIMEOUTS: DownloadTimeouts = DownloadTimeouts {
     connect: DOWNLOAD_CONNECT_TIMEOUT,
     headers: DOWNLOAD_HEADERS_TIMEOUT,
     chunk: DOWNLOAD_CHUNK_TIMEOUT,
@@ -355,54 +355,131 @@ async fn download_checked_asset_from_url<F>(
     asset: &RuntimeAsset,
     url: &str,
     timeouts: DownloadTimeouts,
-    mut on_progress: F,
+    on_progress: F,
 ) -> Result<Option<Vec<u8>>, String>
 where
     F: FnMut(RuntimeDownloadEvent),
 {
-    let client = reqwest::Client::builder()
-        .connect_timeout(timeouts.connect)
-        .build()
-        .map_err(text::runtime_download_failed)?;
-    let response = tokio::select! {
-        biased;
-        _ = handle.cancelled() => return Ok(None),
-        send = tokio::time::timeout(timeouts.headers, client.get(url).send()) => {
-            send.map_err(|_| text::runtime_download_timed_out(asset.file_name))?
-                .map_err(text::runtime_download_failed)?
-                .error_for_status()
-                .map_err(text::runtime_download_failed)?
+    let file_name = asset.file_name;
+    let bytes = download_bytes_from_url(
+        HttpDownload {
+            handle,
+            url,
+            timeouts,
+            max_bytes: None,
+            timed_out: || text::runtime_download_timed_out(file_name),
+            map_error: |error| text::runtime_download_failed(error),
+        },
+        |downloaded, total| RuntimeDownloadEvent::Progress {
+            file_name,
+            downloaded,
+            total,
+        },
+        on_progress,
+    )
+    .await?;
+    match bytes {
+        Some(bytes) => {
+            verify_sha256(&bytes, asset.sha256)?;
+            Ok(Some(bytes))
         }
+        None => Ok(None),
+    }
+}
+
+/// Parameters of [`download_bytes_from_url`]: the shared timeout ladder plus the caller's
+/// cancellation handle, URL, optional size cap and error-wording mappers.
+pub(crate) struct HttpDownload<'a, T, M> {
+    pub handle: &'a AsyncCancellation,
+    pub url: &'a str,
+    pub timeouts: DownloadTimeouts,
+    /// Hard cap on the buffered body; `None` means unlimited, which is only appropriate for
+    /// SHA-verified payloads.
+    pub max_bytes: Option<u64>,
+    /// Builds the user-facing error for a stalled/timeout download.
+    pub timed_out: T,
+    /// Maps transport errors to a user-facing message.
+    pub map_error: M,
+}
+
+impl<'a, T, M> HttpDownload<'a, T, M>
+where
+    T: Fn() -> String + Copy,
+    M: Fn(reqwest::Error) -> String + Copy,
+{
+    async fn send(&self) -> Result<Option<reqwest::Response>, String> {
+        let client = reqwest::Client::builder()
+            .connect_timeout(self.timeouts.connect)
+            .build()
+            .map_err(self.map_error)?;
+        tokio::select! {
+            biased;
+            _ = self.handle.cancelled() => Ok(None),
+            send = tokio::time::timeout(self.timeouts.headers, client.get(self.url).send()) => {
+                send.map_err(|_| (self.timed_out)())?
+                    .map_err(self.map_error)?
+                    .error_for_status()
+                    .map(Some)
+                    .map_err(self.map_error)
+            }
+        }
+    }
+}
+
+/// Streams a single HTTP(S) response body to memory with the shared connect/headers/chunk
+/// timeout ladder and responsive cancellation. Used by the runtime download and the manual
+/// prelabel-model download; transport errors and timeouts are mapped by the caller so the
+/// wording matches the feature.
+///
+/// Returns `Ok(None)` when cancelled mid-download (distinct from a transport error).
+pub(crate) async fn download_bytes_from_url<E, P, F, T, M>(
+    request: HttpDownload<'_, T, M>,
+    make_progress: P,
+    mut on_event: F,
+) -> Result<Option<Vec<u8>>, String>
+where
+    T: Fn() -> String + Copy,
+    M: Fn(reqwest::Error) -> String + Copy,
+    P: Fn(u64, Option<u64>) -> E,
+    F: FnMut(E),
+{
+    let Some(response) = request.send().await? else {
+        return Ok(None);
     };
     let total = response.content_length();
+    if let (Some(limit), Some(total)) = (request.max_bytes, total) {
+        if total > limit {
+            return Err(text::model_size_limit_exceeded(limit));
+        }
+    }
     let mut stream = response.bytes_stream();
     let mut bytes: Vec<u8> = Vec::new();
     let mut downloaded = 0_u64;
     loop {
         tokio::select! {
             biased;
-            _ = handle.cancelled() => return Ok(None),
-            next_chunk = tokio::time::timeout(timeouts.chunk, stream.next()) => {
+            _ = request.handle.cancelled() => return Ok(None),
+            next_chunk = tokio::time::timeout(request.timeouts.chunk, stream.next()) => {
                 match next_chunk {
                     Err(_) => {
-                        return Err(text::runtime_download_timed_out(asset.file_name));
+                        return Err((request.timed_out)());
                     }
                     Ok(None) => break,
                     Ok(Some(chunk)) => {
-                        let chunk = chunk.map_err(text::runtime_download_failed)?;
+                        let chunk = chunk.map_err(request.map_error)?;
                         downloaded += chunk.len() as u64;
-                        on_progress(RuntimeDownloadEvent::Progress {
-                            file_name: asset.file_name,
-                            downloaded,
-                            total,
-                        });
+                        if let Some(limit) = request.max_bytes {
+                            if downloaded > limit {
+                                return Err(text::model_size_limit_exceeded(limit));
+                            }
+                        }
+                        on_event(make_progress(downloaded, total));
                         bytes.extend_from_slice(&chunk);
                     }
                 }
             }
         }
     }
-    verify_sha256(&bytes, asset.sha256)?;
     Ok(Some(bytes))
 }
 
@@ -512,12 +589,11 @@ pub fn cancel_download(
 mod tests {
     use std::{
         fs,
-        io::{Read, Write},
-        net::{TcpListener, TcpStream},
+        io::Write,
         path::PathBuf,
         sync::Arc,
         thread,
-        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
     use sha2::{Digest, Sha256};
@@ -527,6 +603,7 @@ mod tests {
         validate_model_file, verify_sha256, DownloadTimeouts, RuntimeAsset, DML_DLL, PROVIDERS_DLL,
         RUNTIME_DLL,
     };
+    use crate::media::test_support::{read_request, spawn_http_server};
     use crate::{
         media::prelabel::{
             runtime::load_runtime,
@@ -599,42 +676,11 @@ mod tests {
         assert!(error.contains(PROVIDERS_DLL));
     }
 
-    fn spawn_http_server(
-        serve: impl FnOnce(TcpStream) + Send + 'static,
-    ) -> (String, thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        listener.set_nonblocking(true).unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(2);
-            loop {
-                match listener.accept() {
-                    Ok((stream, _)) => {
-                        stream.set_nonblocking(false).unwrap();
-                        serve(stream);
-                        return;
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                        assert!(Instant::now() < deadline, "test client did not connect");
-                        thread::sleep(Duration::from_millis(5));
-                    }
-                    Err(error) => panic!("test server accept failed: {error}"),
-                }
-            }
-        });
-        (format!("http://{address}/runtime.dll"), server)
-    }
-
     fn test_asset() -> RuntimeAsset {
         RuntimeAsset {
             file_name: RUNTIME_DLL,
             sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
         }
-    }
-
-    fn read_request(stream: &mut TcpStream) {
-        let mut request = [0_u8; 1024];
-        let _ = stream.read(&mut request).unwrap();
     }
 
     fn short_timeouts() -> DownloadTimeouts {
