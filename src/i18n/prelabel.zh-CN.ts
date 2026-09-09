@@ -98,6 +98,17 @@ export const PRELABEL_ZH_CN = {
   modelValidationPassed: (format: string, classes: number, width: number, height: number) =>
     `模型校验通过：${format}，${classes} 类，输入 ${width}×${height}`,
   modelValidationFailed: (reason: unknown) => `模型校验失败：${String(reason)}`,
+  sourceUrl: "更新地址",
+  sourceUrlPlaceholder: "https://example.com/model.onnx",
+  sourceUrlHint:
+    "模型发布新版本时，把下载直链填在这里并点「更新模型」；新文件会下载到应用数据目录，不会覆盖原文件。地址随「保存模型配置」一并持久化。",
+  updateModel: "更新模型",
+  modelDownloading: "正在下载模型…",
+  updateModelConfirm: (url: string) => `将从 ${url} 下载模型并校验后替换当前模型文件，是否继续？`,
+  modelUpdateCompleted: (name: string) => `模型「${name}」已更新。`,
+  modelUpdateCancelled: "下载已取消，未替换模型文件。",
+  modelUpdateFailed: (reason: unknown) => `模型更新失败：${String(reason)}`,
+  modelUpdateUnavailable: "请先填写有效的更新地址（以 http(s):// 开头、以 .onnx 结尾的直链）。",
   mappingTitle: "类名与项目标签映射",
   mappingDescription: "名称一致时自动匹配；手动选择会按当前模型保存到项目配置。",
   mappingNeedsProject: "当前目录没有项目配置。请先导入标注或另存项目，再保存类名映射。",

@@ -2,11 +2,13 @@ mod plugin;
 mod prelabel;
 mod prelabel_conversion;
 mod prelabel_inference;
+mod prelabel_model;
 mod prelabel_runtime;
 pub use plugin::*;
 pub use prelabel::*;
 pub use prelabel_conversion::*;
 pub use prelabel_inference::*;
+pub use prelabel_model::*;
 pub use prelabel_runtime::*;
 
 use std::{

@@ -4,6 +4,8 @@ import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annot
 import type { ExportData, TextExportFile } from "../types/export";
 import type { ShortcutMap } from "./defaults/shortcuts";
 import type {
+  ModelDownloadEvent,
+  ModelDownloadResult,
   ModelValidationReport,
   OnnxModelSummary,
   OnnxRuntimeStatus,
@@ -256,6 +258,27 @@ export function cancelOnnxRuntimeDownload(downloadId: string): Promise<Cancellat
   });
 }
 
+/** 从用户配置的更新地址下载模型；返回 null 表示下载被取消。 */
+export function downloadPrelabelModel(
+  sourceUrl: string,
+  downloadId: string,
+  onProgress: (event: ModelDownloadEvent) => void,
+): Promise<ModelDownloadResult | null> {
+  const progressChannel = new Channel<ModelDownloadEvent>();
+  progressChannel.onmessage = onProgress;
+  return invoke<ModelDownloadResult | null>("download_prelabel_model", {
+    sourceUrl,
+    downloadId,
+    onProgress: progressChannel,
+  });
+}
+
+export function cancelPrelabelModelDownload(downloadId: string): Promise<CancellationResult> {
+  return invoke<CancellationResult>("cancel_prelabel_model_download", {
+    downloadId,
+  });
+}
+
 export function validatePrelabelModel(path: string): Promise<ModelValidationReport> {
   return invoke<ModelValidationReport>("validate_prelabel_model", { path });
 }
@@ -341,9 +364,7 @@ export function runPluginExport(
   });
 }
 
-export function cancelPluginExport(
-  exportId: string,
-): Promise<PluginExportCancellationResult> {
+export function cancelPluginExport(exportId: string): Promise<PluginExportCancellationResult> {
   return invoke<PluginExportCancellationResult>("cancel_plugin_export", { exportId });
 }
 
@@ -376,10 +397,7 @@ export function cancelPluginPrelabel(
   return invoke<PluginPrelabelCancellationResult>("cancel_plugin_prelabel", { operationId });
 }
 
-export function setPluginEnabled(
-  pluginId: string,
-  enabled: boolean,
-): Promise<PluginRegistryEntry> {
+export function setPluginEnabled(pluginId: string, enabled: boolean): Promise<PluginRegistryEntry> {
   return invoke<PluginRegistryEntry>("set_plugin_enabled", { pluginId, enabled });
 }
 

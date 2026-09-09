@@ -408,6 +408,8 @@ mod tests {
             added_at: "2026-08-20T00:00:00.000Z".to_string(),
             // These fixture tests run inference on a CPU ONNX Runtime build, so pin to CPU.
             device: PrelabelDevice::Cpu,
+            source_url: None,
+            updated_at: None,
         }
     }
 

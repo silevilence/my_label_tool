@@ -2,13 +2,17 @@ use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::i18n::zh_cn as text;
 use tauri::Manager;
 
 use crate::{
-    media::onnx_metadata::{inspect_onnx_bytes, OnnxModelSummary},
+    media::{
+        onnx_metadata::{inspect_onnx_bytes, OnnxModelSummary},
+        prelabel::model_download::{download_file_name, remove_replaced_managed_models},
+    },
     models::prelabel::PrelabelModelLibrary,
 };
 
@@ -81,8 +85,23 @@ fn read_prelabel_model_library(path: &Path) -> Result<PrelabelModelLibrary, Stri
 
 fn write_prelabel_model_library(path: &Path, library: &PrelabelModelLibrary) -> Result<(), String> {
     validate_library(library)?;
+    // Read the previous snapshot before writing; failure only disables optional cleanup.
+    let previous = read_prelabel_model_library(path).ok();
     let json = serde_json::to_string_pretty(library).map_err(|error| error.to_string())?;
-    fs::write(path, json).map_err(|error| error.to_string())
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let staging = path.with_extension(format!("saving-{}-{nonce}", std::process::id()));
+    let result = fs::write(&staging, json).and_then(|()| fs::rename(&staging, path));
+    if let Err(error) = result {
+        let _ = fs::remove_file(&staging);
+        return Err(error.to_string());
+    }
+    if let (Some(previous), Some(directory)) = (previous, path.parent()) {
+        remove_replaced_managed_models(&directory.join("models"), &previous, library);
+    }
+    Ok(())
 }
 
 fn validate_library(library: &PrelabelModelLibrary) -> Result<(), String> {
@@ -113,6 +132,9 @@ fn validate_library(library: &PrelabelModelLibrary) -> Result<(), String> {
             || !(0.0..=1.0).contains(&model.iou_threshold)
         {
             return Err(text::MODEL_THRESHOLDS_INVALID.to_string());
+        }
+        if let Some(source_url) = &model.source_url {
+            download_file_name(source_url)?;
         }
     }
     if let Some(current_id) = &library.current_model_id {
@@ -147,8 +169,59 @@ mod tests {
                 iou_threshold: 0.45,
                 added_at: "2026-08-20T00:00:00.000Z".to_string(),
                 device: crate::models::prelabel::PrelabelDevice::Auto,
+                source_url: None,
+                updated_at: None,
             }],
         }
+    }
+
+    #[test]
+    fn model_library_accepts_legacy_json_without_update_fields() {
+        let path = std::env::temp_dir().join(format!(
+            "my_label_tool_legacy_prelabel_models_{}.json",
+            std::process::id()
+        ));
+        let json = r#"{
+            "schemaVersion": 1,
+            "currentModelId": "model-1",
+            "models": [{
+                "id": "model-1",
+                "name": "YOLO11n",
+                "path": "C:\\models\\yolo11n.onnx",
+                "format": "yolo11",
+                "classCount": 2,
+                "inputWidth": 640,
+                "inputHeight": 640,
+                "inputSizeOverride": null,
+                "classNames": ["person", "car"],
+                "confidenceThreshold": 0.25,
+                "iouThreshold": 0.45,
+                "addedAt": "2026-08-20T00:00:00.000Z",
+                "device": "auto"
+            }]
+        }"#;
+        fs::write(&path, json).unwrap();
+
+        let library = read_prelabel_model_library(&path).unwrap();
+
+        assert_eq!(library.models[0].source_url, None);
+        assert_eq!(library.models[0].updated_at, None);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn model_library_rejects_a_non_http_source_url() {
+        let path = std::env::temp_dir().join(format!(
+            "my_label_tool_bad_url_prelabel_models_{}.json",
+            std::process::id()
+        ));
+        let mut library = sample_library();
+        library.models[0].source_url = Some("file:///etc/passwd".to_string());
+
+        let error = write_prelabel_model_library(&path, &library).unwrap_err();
+
+        assert!(error.contains("更新地址"));
+        let _ = fs::remove_file(path);
     }
 
     #[test]
@@ -164,6 +237,118 @@ mod tests {
 
         assert_eq!(actual, expected);
         let _ = fs::remove_file(path);
+    }
+
+    fn update_fixture(
+        label: &str,
+    ) -> (
+        std::path::PathBuf,
+        PrelabelModelLibrary,
+        PrelabelModelLibrary,
+    ) {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "model-library-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(directory.join("models")).unwrap();
+        let old_path = directory.join("models").join("old.onnx");
+        let new_path = directory.join("models").join("new.onnx");
+        fs::write(&old_path, b"old model").unwrap();
+        fs::write(&new_path, b"new model").unwrap();
+        let mut old = sample_library();
+        old.models[0].path = old_path.to_string_lossy().into_owned();
+        let mut next = old.clone();
+        next.models[0].path = new_path.to_string_lossy().into_owned();
+        let path = directory.join("prelabel-models.json");
+        write_prelabel_model_library(&path, &old).unwrap();
+        (path, old, next)
+    }
+
+    #[test]
+    fn cleans_up_old_models_only_after_persisting_a_valid_replacement() {
+        let (path, old, mut next) = update_fixture("commit");
+        let mut invalid = next.clone();
+        invalid.models[0].input_width = 0;
+        invalid.models[0].input_height = 0;
+        assert!(write_prelabel_model_library(&path, &invalid).is_err());
+        assert_eq!(read_prelabel_model_library(&path).unwrap(), old);
+        assert_eq!(fs::read(&old.models[0].path).unwrap(), b"old model");
+
+        next.models[0].source_url = Some("HTTPS://example.com/new.ONNX?token=abc".to_string());
+        write_prelabel_model_library(&path, &next).unwrap();
+        assert_eq!(read_prelabel_model_library(&path).unwrap(), next);
+        assert!(!std::path::Path::new(&old.models[0].path).exists());
+        assert_eq!(fs::read(&next.models[0].path).unwrap(), b"new model");
+        fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_failed_library_write_preserves_the_previous_config_and_model() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (path, old, next) = update_fixture("write-failure");
+        // Hold the existing JSON without delete sharing, making atomic replacement fail.
+        let locked = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&path)
+            .unwrap();
+        assert!(write_prelabel_model_library(&path, &next).is_err());
+        assert_eq!(read_prelabel_model_library(&path).unwrap(), old);
+        assert_eq!(fs::read(&old.models[0].path).unwrap(), b"old model");
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 2);
+        drop(locked);
+        fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn cleanup_keeps_external_files_and_models_referenced_by_another_entry() {
+        let (path, mut old, mut next) = update_fixture("shared");
+        let mut shared = old.models[0].clone();
+        shared.id = "shared-model".to_string();
+        // An equivalent path spelling must count as a reference too.
+        shared.path = path
+            .parent()
+            .unwrap()
+            .join("models")
+            .join(".")
+            .join("old.onnx")
+            .to_string_lossy()
+            .into_owned();
+        old.models.push(shared.clone());
+        next.models.push(shared);
+        write_prelabel_model_library(&path, &old).unwrap();
+        write_prelabel_model_library(&path, &next).unwrap();
+        assert_eq!(fs::read(&old.models[0].path).unwrap(), b"old model");
+
+        let external = path.parent().unwrap().join("user-model.onnx");
+        fs::write(&external, b"user model").unwrap();
+        old.models[0].path = external.to_string_lossy().into_owned();
+        write_prelabel_model_library(&path, &old).unwrap();
+        write_prelabel_model_library(&path, &next).unwrap();
+        assert_eq!(fs::read(external).unwrap(), b"user model");
+        fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn model_library_rejects_non_file_update_urls_before_writing() {
+        let (path, old, mut next) = update_fixture("url");
+        for url in [
+            "https://example.com/model.onnx/download",
+            "https://example.com/model.onnx/",
+            "https://model.onnx",
+            "https://",
+        ] {
+            next.models[0].source_url = Some(url.to_string());
+            assert!(write_prelabel_model_library(&path, &next).is_err(), "{url}");
+            assert_eq!(read_prelabel_model_library(&path).unwrap(), old);
+            assert!(std::path::Path::new(&old.models[0].path).exists());
+        }
+        fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
     #[test]

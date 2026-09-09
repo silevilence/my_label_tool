@@ -19,6 +19,10 @@ export interface PrelabelModelConfig extends OnnxModelSummary {
   iouThreshold: number;
   addedAt: string;
   device: PrelabelDevice;
+  /** 更新地址（http/https）；未配置为 undefined。用于手动「更新模型」流程。 */
+  sourceUrl?: string;
+  /** 最近一次从 sourceUrl 成功更新的 ISO 时间。 */
+  updatedAt?: string;
 }
 
 export interface PrelabelModelLibrary {
@@ -55,6 +59,16 @@ export type RuntimeDownloadEvent =
 export interface RuntimeDownloadOutcome {
   cancelled: boolean;
 }
+
+export type ModelDownloadEvent =
+  | { event: "started"; fileName: string }
+  | { event: "progress"; fileName: string; downloaded: number; total: number | null }
+  | { event: "completed"; fileName: string };
+
+/** 下载成功返回的模型信息；null 表示下载被取消。 */
+export type ModelDownloadResult = OnnxModelSummary & {
+  path: string;
+};
 
 export interface CancellationResult {
   status: "accepted" | "already-completed";

@@ -39,6 +39,13 @@ pub struct PrelabelModelConfig {
     /// Inference execution device for this model. Defaults to auto (use GPU when available).
     #[serde(default)]
     pub device: PrelabelDevice,
+    /// Download URL for the manual "update model" flow. Absent in libraries created before
+    /// this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
+    /// Timestamp of the last successful update from `source_url`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

@@ -355,6 +355,8 @@ mod tests {
             iou_threshold: 0.7,
             added_at: "2026-08-20T00:00:00.000Z".to_string(),
             device: PrelabelDevice::Auto,
+            source_url: None,
+            updated_at: None,
         }
     }
 

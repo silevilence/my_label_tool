@@ -1,4 +1,5 @@
 import type {
+  ModelDownloadResult,
   OnnxModelSummary,
   PrelabelModelConfig,
   PrelabelModelLibrary,
@@ -61,7 +62,11 @@ export function updateModelInLibrary(
 ): PrelabelModelLibrary {
   return {
     ...library,
-    models: library.models.map((candidate) => (candidate.id === model.id ? model : candidate)),
+    models: library.models.map((candidate) =>
+      candidate.id === model.id
+        ? { ...model, sourceUrl: model.sourceUrl?.trim() || undefined }
+        : candidate,
+    ),
   };
 }
 
@@ -114,4 +119,54 @@ export function updateInputSizeOverride(
     return null;
   }
   return current;
+}
+
+export function isValidModelSourceUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    const fileName = parsed.pathname.split("/").pop() ?? "";
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.length > 0 &&
+      fileName.length > 5 &&
+      fileName.toLowerCase().endsWith(".onnx")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** 用下载结果更新模型配置：替换模型元数据与路径，记录更新时间；更新地址保持不变。 */
+export function applyModelDownloadResult(
+  model: PrelabelModelConfig,
+  result: ModelDownloadResult,
+  updatedAt: string = new Date().toISOString(),
+): PrelabelModelConfig {
+  return {
+    ...model,
+    path: result.path,
+    inputSizeOverride:
+      result.inputWidth === 0 || result.inputHeight === 0
+        ? [
+            result.inputWidth ||
+              model.inputSizeOverride?.[0] ||
+              model.inputWidth ||
+              DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE,
+            result.inputHeight ||
+              model.inputSizeOverride?.[1] ||
+              model.inputHeight ||
+              DEFAULT_PRELABEL_DYNAMIC_INPUT_SIZE,
+          ]
+        : null,
+    format: result.format,
+    classCount: result.classCount,
+    inputWidth: result.inputWidth,
+    inputHeight: result.inputHeight,
+    classNames: result.classNames,
+    updatedAt,
+  };
 }

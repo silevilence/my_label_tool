@@ -255,8 +255,42 @@ pub const TASK_LOCK_FAILED: &str = "后台任务注册表不可用，请重启�
 pub const TASK_ID_INVALID: &str = "任务 ID 不能为空";
 pub const PRELABEL_TASK_LABEL: &str = "预打标";
 pub const RUNTIME_DOWNLOAD_TASK_LABEL: &str = "ONNX Runtime 下载";
+pub const MODEL_DOWNLOAD_TASK_LABEL: &str = "预打标模型下载";
 pub fn task_id_already_running(label: &str, task_id: &str) -> String {
     format!("{label}任务已存在：{task_id}")
+}
+
+/// 手动更新预打标模型（从用户提供的 URL 下载）
+pub const MODEL_SOURCE_URL_INVALID: &str = "模型更新地址无效，必须是以 http(s):// 开头的 URL";
+pub const MODEL_TARGET_EXISTS: &str = "目标文件名已存在";
+pub const MODEL_SOURCE_FILE_NAME_UNAVAILABLE: &str =
+    "无法从更新地址确定模型文件名，请使用以 .onnx 结尾的直链";
+pub fn model_app_data_failed(error: impl std::fmt::Display) -> String {
+    format!("无法确定模型下载目录：{error}")
+}
+
+pub fn model_download_failed(error: impl std::fmt::Display) -> String {
+    format!("下载预打标模型失败：{error}")
+}
+
+pub fn model_download_timed_out(file_name: &str) -> String {
+    format!("下载 {file_name} 超时，请检查网络后重试")
+}
+
+pub fn model_size_limit_exceeded(limit: u64) -> String {
+    format!("模型文件超过 {limit} 字节大小上限，已中止下载")
+}
+
+pub fn model_onnx_invalid(reason: impl std::fmt::Display) -> String {
+    format!("下载内容不是有效的 YOLO ONNX 模型：{reason}")
+}
+
+pub fn model_create_dir_failed(path: &std::path::Path, error: impl std::fmt::Display) -> String {
+    format!("创建模型下载目录 {} 失败：{error}", path.display())
+}
+
+pub fn model_write_failed(path: &std::path::Path, error: impl std::fmt::Display) -> String {
+    format!("写入模型文件 {} 失败：{error}", path.display())
 }
 
 pub const PLUGIN_MANIFEST_MUST_BE_OBJECT: &str = "插件清单必须是 JSON 对象";

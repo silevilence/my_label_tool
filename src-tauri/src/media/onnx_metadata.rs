@@ -329,79 +329,8 @@ fn contiguous_names(indexed: BTreeMap<usize, String>) -> Result<Vec<String>, Str
 #[cfg(test)]
 mod tests {
     use super::{inspect_onnx_bytes, OnnxModelSummary};
+    use crate::media::test_support::{model_with_outputs, onnx_model as model};
     use crate::models::prelabel::YoloModelFormat;
-
-    fn varint(mut value: u64) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        loop {
-            let mut byte = (value & 0x7f) as u8;
-            value >>= 7;
-            if value != 0 {
-                byte |= 0x80;
-            }
-            bytes.push(byte);
-            if value == 0 {
-                return bytes;
-            }
-        }
-    }
-
-    fn length_delimited(field: u64, value: &[u8]) -> Vec<u8> {
-        let mut bytes = varint((field << 3) | 2);
-        bytes.extend(varint(value.len() as u64));
-        bytes.extend(value);
-        bytes
-    }
-
-    fn varint_field(field: u64, value: u64) -> Vec<u8> {
-        let mut bytes = varint(field << 3);
-        bytes.extend(varint(value));
-        bytes
-    }
-
-    fn value_info(name: &str, dimensions: &[u64]) -> Vec<u8> {
-        let mut shape = Vec::new();
-        for dimension in dimensions {
-            shape.extend(length_delimited(1, &varint_field(1, *dimension)));
-        }
-        let mut tensor = varint_field(1, 1);
-        tensor.extend(length_delimited(2, &shape));
-        let type_proto = length_delimited(1, &tensor);
-        let mut value = length_delimited(1, name.as_bytes());
-        value.extend(length_delimited(2, &type_proto));
-        value
-    }
-
-    fn metadata(key: &str, value: &str) -> Vec<u8> {
-        let mut entry = length_delimited(1, key.as_bytes());
-        entry.extend(length_delimited(2, value.as_bytes()));
-        length_delimited(14, &entry)
-    }
-
-    fn model_with_outputs(
-        input: &[u64],
-        outputs: &[&[u64]],
-        description: &str,
-        names: Option<&str>,
-    ) -> Vec<u8> {
-        let mut graph = length_delimited(11, &value_info("images", input));
-        for (index, output) in outputs.iter().enumerate() {
-            graph.extend(length_delimited(
-                12,
-                &value_info(&format!("output{index}"), output),
-            ));
-        }
-        let mut model = length_delimited(7, &graph);
-        model.extend(metadata("description", description));
-        if let Some(names) = names {
-            model.extend(metadata("names", names));
-        }
-        model
-    }
-
-    fn model(input: &[u64], output: &[u64], description: &str, names: Option<&str>) -> Vec<u8> {
-        model_with_outputs(input, &[output], description, names)
-    }
 
     #[test]
     fn inspects_ultralytics_yolo11_metadata() {
