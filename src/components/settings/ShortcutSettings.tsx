@@ -7,6 +7,7 @@ import {
 import type { InteractionMode } from "../canvas/types";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../../lib/defaults/display";
 import { formatShortcut, normalizeShortcutKey } from "../../lib/shortcut-utils";
+import { IMAGE_DELETION_ZH_CN as imageDeletionText } from "../../i18n/image-deletion.zh-CN";
 
 interface ShortcutSettingsProps {
   helpDisplaySettings: HelpDisplaySettings;
@@ -53,6 +54,13 @@ export function ShortcutSettings({
       }
 
       const shortcut = normalizeShortcutKey(event.key);
+      if (
+        actionId === "deleteImage" &&
+        (labelShortcutSet.has(shortcut) || ["Delete", "Enter", " ", "Tab"].includes(shortcut))
+      ) {
+        window.alert(imageDeletionText.shortcutConflict);
+        return;
+      }
       const action = SHORTCUT_ACTIONS.find(
         (item) => item.id !== actionId && shortcuts[item.id] === shortcut,
       );
@@ -67,7 +75,7 @@ export function ShortcutSettings({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onChangeShortcut, recordingActionId, shortcuts]);
+  }, [labelShortcutSet, onChangeShortcut, recordingActionId, shortcuts]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">

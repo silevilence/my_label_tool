@@ -1,4 +1,7 @@
+import { IMAGE_DELETION_ZH_CN as text } from "../../i18n/image-deletion.zh-CN";
+
 export const SHORTCUT_ACTIONS = [
+  { id: "deleteImage", label: text.deleteCurrentImage, description: text.shortcutDescription },
   { id: "previousImage", label: "上一张图片", description: "切换到图片列表中的上一张" },
   { id: "nextImage", label: "下一张图片", description: "切换到图片列表中的下一张" },
   { id: "zoomIn", label: "放大画布", description: "以画布中心放大当前图片" },
@@ -17,6 +20,7 @@ export type ShortcutActionId = (typeof SHORTCUT_ACTIONS)[number]["id"];
 export type ShortcutMap = Record<ShortcutActionId, string>;
 
 export const DEFAULT_SHORTCUTS: ShortcutMap = {
+  deleteImage: "F8",
   previousImage: "ArrowLeft",
   nextImage: "ArrowRight",
   zoomIn: "=",

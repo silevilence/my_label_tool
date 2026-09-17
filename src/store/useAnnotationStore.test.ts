@@ -4,6 +4,34 @@ import { useAnnotationStore } from "./useAnnotationStore";
 const rect = { id: "r1", type: "rect" as const, labelId: "person", points: [1, 2, 3, 4] };
 
 describe("annotation store", () => {
+  it("removes only deleted-image history and prunes stale selections from surviving history", () => {
+    const store = useAnnotationStore.getState();
+    store.replaceAnnotations({});
+    store.addAnnotation("a.jpg", rect);
+    store.selectShape(rect.id);
+    store.addAnnotation("b.jpg", { ...rect, id: "b" });
+    store.selectShape("b");
+    store.updateAnnotation("b.jpg", "b", { points: [2, 3, 4, 5] });
+    store.addAnnotation("a.jpg", { ...rect, id: "a2" });
+    store.undo();
+    store.removeImage("a.jpg");
+    expect(useAnnotationStore.getState().canRedo).toBe(false);
+    expect(useAnnotationStore.getState().canUndo).toBe(true);
+    expect(useAnnotationStore.getState().selectedShapeId).toBe("b");
+    store.undo();
+    store.undo();
+    expect(useAnnotationStore.getState().selectedShapeId).toBeNull();
+    store.redo();
+    store.redo();
+    expect(useAnnotationStore.getState().annotationsByImage).toEqual({
+      "b.jpg": [{ ...rect, id: "b", points: [2, 3, 4, 5] }],
+    });
+    store.removeImage("b.jpg");
+    expect(useAnnotationStore.getState().selectedShapeId).toBeNull();
+    expect(useAnnotationStore.getState().canUndo).toBe(false);
+    store.removeImage("missing.jpg");
+    expect(useAnnotationStore.getState().annotationsByImage).toEqual({});
+  });
   beforeEach(() => {
     useAnnotationStore.setState({
       annotationsByImage: {},
@@ -23,7 +51,9 @@ describe("annotation store", () => {
 
     useAnnotationStore.getState().selectShape("r1");
     useAnnotationStore.getState().updateAnnotation("a.jpg", "r1", { points: [5, 6, 7, 8] });
-    expect(useAnnotationStore.getState().annotationsByImage["a.jpg"][0].points).toEqual([5, 6, 7, 8]);
+    expect(useAnnotationStore.getState().annotationsByImage["a.jpg"][0].points).toEqual([
+      5, 6, 7, 8,
+    ]);
 
     useAnnotationStore.getState().deleteAnnotation("a.jpg", "r1");
     expect(useAnnotationStore.getState().selectedShapeId).toBeNull();
@@ -109,10 +139,12 @@ describe("annotation store", () => {
     useAnnotationStore.getState().replaceAnnotations({ "a.jpg": [selected], "b.jpg": [] });
     useAnnotationStore.getState().selectShape(selected.id);
 
-    useAnnotationStore.getState().insertAnnotationsBatch(
-      [{ imagePath: "b.jpg", annotations: [{ ...rect, id: "b" }] }],
-      "append",
-    );
+    useAnnotationStore
+      .getState()
+      .insertAnnotationsBatch(
+        [{ imagePath: "b.jpg", annotations: [{ ...rect, id: "b" }] }],
+        "append",
+      );
     expect(useAnnotationStore.getState().selectedShapeId).toBe(selected.id);
 
     useAnnotationStore

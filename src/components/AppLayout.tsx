@@ -40,10 +40,7 @@ import { isEditableTarget } from "../lib/app-utils";
 import type { PrelabelExecutionControls } from "../hooks/usePrelabelExecution";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
 import type { PrelabelClassMapping } from "../types/prelabel";
-import type {
-  PluginExportFormatDescriptor,
-  PluginPrelabelSourceDescriptor,
-} from "../types/plugin";
+import type { PluginExportFormatDescriptor, PluginPrelabelSourceDescriptor } from "../types/plugin";
 import type { PluginExportProgressState } from "../hooks/useProjectActions";
 
 const ShortcutSettings = lazy(async () => {
@@ -64,6 +61,8 @@ const ImageSearchDialog = lazy(async () => {
 });
 
 interface AppLayoutProps {
+  canDeleteImage: boolean;
+  requestDeleteImage: (path: string) => void;
   activeProjectConfig: ProjectConfig | null;
   annotationToDelete: AnnotationShape | null;
   annotations: AnnotationShape[];
@@ -192,6 +191,8 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({
+  canDeleteImage,
+  requestDeleteImage,
   activeProjectConfig,
   annotationToDelete,
   annotations,
@@ -395,6 +396,8 @@ export function AppLayout({
   return (
     <main className="flex h-screen overflow-hidden bg-slate-950 text-slate-100">
       <AppSidebar
+        canDeleteImage={canDeleteImage}
+        requestDeleteImage={requestDeleteImage}
         activeProjectConfig={activeProjectConfig}
         annotations={annotations}
         annotationsByImage={annotationsByImage}
@@ -755,6 +758,11 @@ export function AppLayout({
 
       {contextMenu && (
         <CanvasContextMenu
+          canDeleteImage={canDeleteImage && Boolean(selectedImage)}
+          onDeleteImage={() => {
+            setContextMenu(null);
+            requestDeleteImage(selectedPath);
+          }}
           annotation={contextAnnotation}
           canNextImage={selectedImageIndex >= 0 && selectedImageIndex < images.length - 1}
           canNextUnannotatedImage={hasNextUnannotatedImage}

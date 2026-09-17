@@ -51,6 +51,12 @@ describe("app utils", () => {
     });
   });
 
+  it("adds image deletion to legacy shortcuts without taking over an existing F8 binding", () => {
+    expect(mergeShortcuts({}).deleteImage).toBe("F8");
+    expect(mergeShortcuts({ zoomIn: "F8" })).toMatchObject({ zoomIn: "F8", deleteImage: "" });
+    expect(mergeShortcuts({ deleteImage: "F9" }).deleteImage).toBe("F9");
+  });
+
   it("matches imported images by normalized path first and file name as fallback", () => {
     const currentImages: ImageFile[] = [
       { path: "C:\\Images\\A.JPG", name: "A.JPG" },

@@ -5,6 +5,8 @@ import { SHORTCUT_ACTIONS, type ShortcutMap } from "../lib/defaults/shortcuts";
 import type { AnnotationShapeType, LabelConfig } from "../types/annotation";
 
 interface UseKeyboardShortcutsParams {
+  enabled?: boolean;
+  deleteCurrentImage: () => void;
   labels: LabelConfig[];
   selectedPath: string;
   selectedShapeId: string | null;
@@ -22,6 +24,8 @@ interface UseKeyboardShortcutsParams {
 }
 
 export function useKeyboardShortcuts({
+  enabled = true,
+  deleteCurrentImage,
   labels,
   selectedPath,
   selectedShapeId,
@@ -39,7 +43,12 @@ export function useKeyboardShortcuts({
 }: UseKeyboardShortcutsParams) {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (isEditableTarget(event.target)) {
+      if (
+        !enabled ||
+        event.defaultPrevented ||
+        isEditableTarget(event.target) ||
+        document.querySelector('[aria-modal="true"]')
+      ) {
         return;
       }
 
@@ -95,6 +104,11 @@ export function useKeyboardShortcuts({
         selectAdjacentImage(1);
         return;
       }
+      if (key === shortcuts.deleteImage && key !== "Delete" && selectedPath) {
+        event.preventDefault();
+        if (!event.repeat) deleteCurrentImage();
+        return;
+      }
       if (key === shortcuts.zoomIn) {
         event.preventDefault();
         zoomFromKeyboard(1);
@@ -134,6 +148,8 @@ export function useKeyboardShortcuts({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
+    enabled,
+    deleteCurrentImage,
     changeCurrentLabel,
     deleteSelectedShape,
     labels,

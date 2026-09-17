@@ -1,3 +1,9 @@
+pub const IMAGE_DELETE_INVALID_PATH: &str =
+    "只能删除所选图片目录内的普通 jpg/png/bmp 文件，不支持链接或目录";
+pub const IMAGE_DELETE_FAILED: &str =
+    "无法移入回收站，请检查文件是否存在、被占用、权限是否充足，以及所在磁盘是否支持回收站";
+#[cfg(not(windows))]
+pub const IMAGE_DELETE_UNSUPPORTED: &str = "当前系统暂不支持安全移入回收站，未删除文件";
 pub const ONNX_MISSING_GRAPH: &str = "ONNX 模型缺少计算图";
 pub const ONNX_MISSING_IMAGE_INPUT: &str = "ONNX 模型缺少标准的 NCHW 图像输入";
 pub const ONNX_MISSING_DETECTION_OUTPUT: &str = "未识别到标准 YOLO 检测输出（需要三维输出张量）";

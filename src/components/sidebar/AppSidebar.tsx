@@ -1,5 +1,6 @@
 import { useRef, useState, type MutableRefObject } from "react";
 import { ExportPanel } from "../settings/ExportPanel";
+import { ImageListContextMenu } from "./ImageListContextMenu";
 import { LabelSettings } from "../settings/LabelSettings";
 import {
   SHAPE_TYPE_LABELS,
@@ -20,6 +21,8 @@ import type { PluginExportFormatDescriptor } from "../../types/plugin";
 import type { PluginExportProgressState } from "../../hooks/useProjectActions";
 
 interface AppSidebarProps {
+  canDeleteImage: boolean;
+  requestDeleteImage: (path: string) => void;
   activeProjectConfig: ProjectConfig | null;
   annotations: AnnotationShape[];
   annotationsByImage: Record<string, AnnotationShape[]>;
@@ -77,6 +80,8 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
+  canDeleteImage,
+  requestDeleteImage,
   activeProjectConfig,
   annotations,
   annotationsByImage,
@@ -134,6 +139,9 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const menuRef = useRef<HTMLDetailsElement | null>(null);
   const [isPluginSettingsOpen, setIsPluginSettingsOpen] = useState(false);
+  const [imageMenu, setImageMenu] = useState<{ image: ImageFile; x: number; y: number } | null>(
+    null,
+  );
   const selectedImageIndex = images.findIndex((image) => image.path === selectedPath);
   const currentImageNumber = selectedImageIndex >= 0 ? selectedImageIndex + 1 : 0;
   const annotatedCount = images.filter(
@@ -287,7 +295,7 @@ export function AppSidebar({
           activeProjectConfig !== null && selectedExportFormatId === activeProjectConfig.format
         }
         customMappingText={customMappingText}
-        disabled={images.length === 0}
+        disabled={!folderPath}
         isSaving={isSaving}
         selectedFormatId={selectedExportFormatId}
         pluginFormats={pluginExportFormats}
@@ -447,6 +455,10 @@ export function AppSidebar({
                 title={image.path}
                 type="button"
                 onClick={() => setSelectedPath(image.path)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setImageMenu({ image, x: event.clientX, y: event.clientY });
+                }}
               >
                 {image.name}
               </button>
@@ -454,6 +466,14 @@ export function AppSidebar({
           )}
         </div>
       </section>
+      {imageMenu && images.includes(imageMenu.image) && (
+        <ImageListContextMenu
+          {...imageMenu}
+          disabled={!canDeleteImage}
+          onDelete={requestDeleteImage}
+          onClose={() => setImageMenu(null)}
+        />
+      )}
       {isPluginSettingsOpen && (
         <PluginSettings
           projectDir={folderPath || null}

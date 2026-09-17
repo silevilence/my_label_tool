@@ -14,6 +14,16 @@ export function mergeShortcuts(savedShortcuts: Record<string, string>): Shortcut
       nextShortcuts[action] = savedShortcuts[action];
     }
   }
+  // Existing users may already use F8 for another action. Do not turn that key
+  // into a destructive action when their saved configuration predates deletion.
+  if (
+    savedShortcuts.deleteImage === undefined &&
+    Object.entries(nextShortcuts).some(
+      ([action, key]) => action !== "deleteImage" && key === nextShortcuts.deleteImage,
+    )
+  ) {
+    nextShortcuts.deleteImage = "";
+  }
   return nextShortcuts;
 }
 

@@ -17,6 +17,7 @@ interface AnnotationState {
   ) => void;
   deleteAnnotation: (imagePath: string, annotationId: string) => void;
   clearImageAnnotations: (imagePath: string) => void;
+  removeImage: (imagePath: string) => void;
   insertAnnotationsBatch: (
     entries: Array<{ imagePath: string; annotations: AnnotationShape[] }>,
     mode: "append" | "replace",
@@ -78,6 +79,43 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
     ),
   clearImageAnnotations: (imagePath) =>
     set((state) => applyImageHistory(state, imagePath, [], null)),
+  removeImage: (imagePath) =>
+    set((state) => {
+      const removedIds = new Set(
+        (state.annotationsByImage[imagePath] ?? []).map((item) => item.id),
+      );
+      for (const entry of [...state.undoStack, ...state.redoStack]) {
+        if (entry.imagePath === imagePath) {
+          for (const item of [...entry.before, ...entry.after]) removedIds.add(item.id);
+        }
+      }
+      const annotationsByImage = { ...state.annotationsByImage };
+      delete annotationsByImage[imagePath];
+      const prune = (entries: AnnotationHistoryEntry[]) =>
+        entries
+          .filter((entry) => entry.imagePath !== imagePath)
+          .map((entry) => ({
+            ...entry,
+            selectedBefore:
+              entry.selectedBefore && removedIds.has(entry.selectedBefore)
+                ? null
+                : entry.selectedBefore,
+            selectedAfter:
+              entry.selectedAfter && removedIds.has(entry.selectedAfter)
+                ? null
+                : entry.selectedAfter,
+          }));
+      return withHistoryFlags({
+        ...state,
+        annotationsByImage,
+        selectedShapeId:
+          state.selectedShapeId && removedIds.has(state.selectedShapeId)
+            ? null
+            : state.selectedShapeId,
+        undoStack: prune(state.undoStack),
+        redoStack: prune(state.redoStack),
+      });
+    }),
   insertAnnotationsBatch: (entries, mode, requestedGroupId) => {
     const groupId = requestedGroupId ?? `store-${nextHistoryGroupId}`;
     if (requestedGroupId === undefined) {

@@ -84,6 +84,10 @@ export function listImageFiles(folderPath: string): Promise<ImageFile[]> {
   return invoke<ImageFile[]>("list_image_files", { folderPath });
 }
 
+export function recycleImageFile(folderPath: string, imagePath: string): Promise<void> {
+  return invoke("recycle_image_file", { folderPath, imagePath });
+}
+
 export function imageFileSrc(path: string): string {
   return convertFileSrc(path);
 }

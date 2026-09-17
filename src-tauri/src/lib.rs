@@ -19,6 +19,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_image_files,
+            commands::recycle_image_file,
             commands::export_annotations_json,
             commands::export_text_files,
             commands::read_text_file,

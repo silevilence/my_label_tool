@@ -1,4 +1,6 @@
+mod image_deletion;
 mod plugin;
+pub use image_deletion::*;
 mod prelabel;
 mod prelabel_conversion;
 mod prelabel_inference;

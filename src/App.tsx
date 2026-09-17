@@ -1,14 +1,9 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type SetStateAction,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { AppLayout } from "./components/AppLayout";
+import { DeleteImageDialog } from "./components/DeleteImageDialog";
+import { useImageDeletion } from "./hooks/useImageDeletion";
 import { normalizeShortcutKey } from "./lib/shortcut-utils";
 import type {
   CanvasContextMenu,
@@ -94,7 +89,9 @@ function App() {
   );
   const pluginTemplateIdsRef = useRef<ReadonlySet<string>>(new Set());
   const pluginPresetsRef = useRef<PluginLabelPreset[]>([]);
-  const [pluginExportFormats, setPluginExportFormats] = useState<PluginExportFormatDescriptor[]>([]);
+  const [pluginExportFormats, setPluginExportFormats] = useState<PluginExportFormatDescriptor[]>(
+    [],
+  );
   const [pluginPrelabelSources, setPluginPrelabelSources] = useState<
     PluginPrelabelSourceDescriptor[]
   >([]);
@@ -103,22 +100,19 @@ function App() {
   const [activeProjectConfigPath, setActiveProjectConfigPath] = useState("");
   const [activeProjectConfig, setActiveProjectConfigState] = useState<ProjectConfig | null>(null);
   const activeProjectConfigRef = useRef<ProjectConfig | null>(null);
-  const setActiveProjectConfig = useCallback(
-    (nextConfig: SetStateAction<ProjectConfig | null>) => {
-      if (typeof nextConfig === "function") {
-        setActiveProjectConfigState((current) => {
-          const resolved = nextConfig(current);
-          activeProjectConfigRef.current = resolved;
-          return resolved;
-        });
-        return;
-      }
+  const setActiveProjectConfig = useCallback((nextConfig: SetStateAction<ProjectConfig | null>) => {
+    if (typeof nextConfig === "function") {
+      setActiveProjectConfigState((current) => {
+        const resolved = nextConfig(current);
+        activeProjectConfigRef.current = resolved;
+        return resolved;
+      });
+      return;
+    }
 
-      activeProjectConfigRef.current = nextConfig;
-      setActiveProjectConfigState(nextConfig);
-    },
-    [],
-  );
+    activeProjectConfigRef.current = nextConfig;
+    setActiveProjectConfigState(nextConfig);
+  }, []);
   const [currentLabelId, setCurrentLabelId] = useState(DEFAULT_LABELS[0].id);
   const [isLabelDirty, setIsLabelDirty] = useState(false);
   const [selectedExportFormatId, setSelectedExportFormatId] = useState<ExportFormatId>("json");
@@ -212,9 +206,7 @@ function App() {
       snapshot.warning,
       exportSnapshot.warning,
       prelabelSnapshot.warning,
-      merged.collisions.length > 0
-        ? pluginText.labelPresetCollision(merged.collisions)
-        : null,
+      merged.collisions.length > 0 ? pluginText.labelPresetCollision(merged.collisions) : null,
     ].filter((message): message is string => Boolean(message));
     if (messages.length > 0) setError(messages.join("；"));
   }, [folderPath, selectedExportFormatId, selectedTemplateId, templates]);
@@ -341,6 +333,22 @@ function App() {
     insertAnnotationsBatch,
     setError,
   });
+
+  const imageDeletionBusy =
+    prelabelExecution.progress.isRunning || isSaving || pluginExportProgress !== null;
+  const imageDeletion = useImageDeletion({
+    images,
+    folderPath,
+    selectedPath,
+    busy: imageDeletionBusy,
+    setImages,
+    setSelectedPath,
+    setError,
+  });
+  function requestDeleteImage(path: string) {
+    setContextMenu(null);
+    imageDeletion.request(path);
+  }
 
   async function savePrelabelMappings(
     modelId: string,
@@ -622,6 +630,13 @@ function App() {
   }, [clearPolygonDraft, currentShapeType, polygonPoints, selectedPath, currentLabel]);
 
   useKeyboardShortcuts({
+    enabled:
+      !imageDeletion.target &&
+      !isShortcutSettingsOpen &&
+      !isPrelabelSettingsOpen &&
+      !isPrelabelExecutionOpen &&
+      !annotationToDelete,
+    deleteCurrentImage: () => requestDeleteImage(selectedPath),
     labels,
     selectedPath,
     selectedShapeId,
@@ -656,125 +671,139 @@ function App() {
   }, [isPanning]);
 
   return (
-    <AppLayout
-      activeProjectConfig={activeProjectConfig}
-      annotationToDelete={annotationToDelete}
-      annotations={annotations}
-      annotationsByImage={annotationsByImage}
-      canRedo={canRedo}
-      canUndo={canUndo}
-      canvasHostRef={canvasHostRef}
-      canvasSize={canvasSize}
-      contextAnnotation={contextAnnotation}
-      contextMenu={contextMenu}
-      currentLabel={currentLabel}
-      currentShapeType={currentShapeType}
-      customMappingText={customMappingText}
-      draftPolygonPoints={draftPolygonPoints}
-      draftRect={draftRect}
-      error={error}
-      folderPath={folderPath}
-      highlightedShapeId={highlightedShapeId}
-      helpDisplaySettings={helpDisplaySettings}
-      imageLayout={imageLayout}
-      imageLoadError={imageLoadError}
-      images={images}
-      interactionMode={interactionMode}
-      isImageLoading={isImageLoading}
-      isLabelDirty={isLabelDirty}
-      isPanning={isPanning}
-      isSaving={isSaving}
-      isShortcutSettingsOpen={isShortcutSettingsOpen}
-      isPrelabelSettingsOpen={isPrelabelSettingsOpen}
-      isPrelabelExecutionOpen={isPrelabelExecutionOpen}
-      labelById={labelById}
-      labelDisplaySettings={labelDisplaySettings}
-      labelShortcuts={labelShortcuts}
-      labelSwitchHint={labelSwitchHint}
-      labels={labels}
-      loadedImage={loadedImage}
-      projectTemplateId={projectTemplateId}
-      selectedExportFormatId={selectedExportFormatId}
-      selectedImage={selectedImage}
-      selectedImageButtonRef={selectedImageButtonRef}
-      selectedPath={selectedPath}
-      selectedRectRef={selectedRectRef}
-      selectedShapeId={selectedShapeId}
-      selectedTemplateId={selectedTemplateId}
-      showSaveSuccess={showSaveSuccess}
-      transientMessage={transientMessage}
-      shortcuts={shortcuts}
-      templates={templates}
-      pluginExportFormats={pluginExportFormats}
-      pluginPrelabelSources={pluginPrelabelSources}
-      pluginExportProgress={pluginExportProgress}
-      pluginTemplateIds={pluginTemplateIds}
-      pluginTemplateSources={pluginTemplateSources}
-      transformerRef={transformerRef}
-      updateMessage={updateMessage}
-      updateProgress={updateProgress}
-      updateStatus={updateStatus}
-      usedLabelIds={usedLabelIds}
-      cancelLabelChanges={cancelLabelChanges}
-      cancelPluginExport={() => void cancelActivePluginExport()}
-      changeAnnotationLabel={changeAnnotationLabel}
-      checkForUpdates={() => void checkForUpdates()}
-      clearCurrentImageAnnotations={clearCurrentImageAnnotations}
-      confirmDeleteAnnotation={confirmDeleteAnnotation}
-      createProjectFromExternalYolo={createProjectFromExternalYolo}
-      deleteContextAnnotation={deleteContextAnnotation}
-      deleteTemplate={deleteTemplate}
-      exportSelectedFormat={exportSelectedFormat}
-      fitImageHeight={fitImageHeight}
-      fitImageWidth={fitImageWidth}
-      handleDragEnd={handleDragEnd}
-      handleStageMouseDown={handleStageMouseDown}
-      handleStageMouseMove={handleStageMouseMove}
-      handleStageMouseUp={handleStageMouseUp}
-      handleStageWheel={handleStageWheel}
-      handlePointDragEnd={handlePointDragEnd}
-      handleTransformEnd={handleTransformEnd}
-      handleVertexDragEnd={handleVertexDragEnd}
-      importAnnotations={importAnnotations}
-      installUpdate={() => void installUpdate()}
-      newTemplate={newTemplate}
-      openContextMenu={openContextMenu}
-      openFolder={openFolder}
-      redo={redo}
-      retryPluginConfigMigrations={retryPluginConfigMigrations}
-      refreshPluginLabelPresets={refreshPluginLabelPresets}
-      resetZoom={resetZoom}
-      saveProjectExport={saveWithFeedback}
-      savePrelabelMappings={savePrelabelMappings}
-      saveTemplate={saveTemplate}
-      saveTemplateAndUpdateAnnotations={saveTemplateAndUpdateAnnotations}
-      saveTemplateAs={saveTemplateAs}
-      selectAdjacentImage={selectAdjacentImage}
-      selectAdjacentUnannotatedImage={selectAdjacentUnannotatedImage}
-      selectCurrentLabel={changeCurrentLabel}
-      selectShape={selectShape}
-      selectShapeType={selectShapeType}
-      selectTemplate={selectTemplate}
-      setAnnotationToDelete={setAnnotationToDelete}
-      setContextMenu={setContextMenu}
-      setCustomMappingText={setCustomMappingText}
-      setHelpDisplaySetting={setHelpDisplaySetting}
-      setImageScale={setImageScale}
-      setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
-      setIsPrelabelSettingsOpen={setIsPrelabelSettingsOpen}
-      setIsPrelabelExecutionOpen={setIsPrelabelExecutionOpen}
-      prelabelModels={prelabelModels}
-      prelabelExecution={prelabelExecution}
-      setLabelDisplaySetting={setLabelDisplaySetting}
-      setSelectedExportFormatId={changeExportFormat}
-      setSelectedPath={setSelectedPath}
-      setUpdateMessage={setUpdateMessage}
-      startPanning={startPanning}
-      undo={undo}
-      updateLabels={updateLabels}
-      updateShortcut={updateShortcut}
-      zoomFromKeyboard={zoomFromKeyboard}
-    />
+    <>
+      <AppLayout
+        canDeleteImage={!imageDeletionBusy && !imageDeletion.target}
+        requestDeleteImage={requestDeleteImage}
+        activeProjectConfig={activeProjectConfig}
+        annotationToDelete={annotationToDelete}
+        annotations={annotations}
+        annotationsByImage={annotationsByImage}
+        canRedo={canRedo}
+        canUndo={canUndo}
+        canvasHostRef={canvasHostRef}
+        canvasSize={canvasSize}
+        contextAnnotation={contextAnnotation}
+        contextMenu={contextMenu}
+        currentLabel={currentLabel}
+        currentShapeType={currentShapeType}
+        customMappingText={customMappingText}
+        draftPolygonPoints={draftPolygonPoints}
+        draftRect={draftRect}
+        error={error}
+        folderPath={folderPath}
+        highlightedShapeId={highlightedShapeId}
+        helpDisplaySettings={helpDisplaySettings}
+        imageLayout={imageLayout}
+        imageLoadError={imageLoadError}
+        images={images}
+        interactionMode={interactionMode}
+        isImageLoading={isImageLoading}
+        isLabelDirty={isLabelDirty}
+        isPanning={isPanning}
+        isSaving={isSaving}
+        isShortcutSettingsOpen={isShortcutSettingsOpen}
+        isPrelabelSettingsOpen={isPrelabelSettingsOpen}
+        isPrelabelExecutionOpen={isPrelabelExecutionOpen}
+        labelById={labelById}
+        labelDisplaySettings={labelDisplaySettings}
+        labelShortcuts={labelShortcuts}
+        labelSwitchHint={labelSwitchHint}
+        labels={labels}
+        loadedImage={loadedImage}
+        projectTemplateId={projectTemplateId}
+        selectedExportFormatId={selectedExportFormatId}
+        selectedImage={selectedImage}
+        selectedImageButtonRef={selectedImageButtonRef}
+        selectedPath={selectedPath}
+        selectedRectRef={selectedRectRef}
+        selectedShapeId={selectedShapeId}
+        selectedTemplateId={selectedTemplateId}
+        showSaveSuccess={showSaveSuccess}
+        transientMessage={transientMessage}
+        shortcuts={shortcuts}
+        templates={templates}
+        pluginExportFormats={pluginExportFormats}
+        pluginPrelabelSources={pluginPrelabelSources}
+        pluginExportProgress={pluginExportProgress}
+        pluginTemplateIds={pluginTemplateIds}
+        pluginTemplateSources={pluginTemplateSources}
+        transformerRef={transformerRef}
+        updateMessage={updateMessage}
+        updateProgress={updateProgress}
+        updateStatus={updateStatus}
+        usedLabelIds={usedLabelIds}
+        cancelLabelChanges={cancelLabelChanges}
+        cancelPluginExport={() => void cancelActivePluginExport()}
+        changeAnnotationLabel={changeAnnotationLabel}
+        checkForUpdates={() => void checkForUpdates()}
+        clearCurrentImageAnnotations={clearCurrentImageAnnotations}
+        confirmDeleteAnnotation={confirmDeleteAnnotation}
+        createProjectFromExternalYolo={createProjectFromExternalYolo}
+        deleteContextAnnotation={deleteContextAnnotation}
+        deleteTemplate={deleteTemplate}
+        exportSelectedFormat={exportSelectedFormat}
+        fitImageHeight={fitImageHeight}
+        fitImageWidth={fitImageWidth}
+        handleDragEnd={handleDragEnd}
+        handleStageMouseDown={handleStageMouseDown}
+        handleStageMouseMove={handleStageMouseMove}
+        handleStageMouseUp={handleStageMouseUp}
+        handleStageWheel={handleStageWheel}
+        handlePointDragEnd={handlePointDragEnd}
+        handleTransformEnd={handleTransformEnd}
+        handleVertexDragEnd={handleVertexDragEnd}
+        importAnnotations={importAnnotations}
+        installUpdate={() => void installUpdate()}
+        newTemplate={newTemplate}
+        openContextMenu={openContextMenu}
+        openFolder={openFolder}
+        redo={redo}
+        retryPluginConfigMigrations={retryPluginConfigMigrations}
+        refreshPluginLabelPresets={refreshPluginLabelPresets}
+        resetZoom={resetZoom}
+        saveProjectExport={saveWithFeedback}
+        savePrelabelMappings={savePrelabelMappings}
+        saveTemplate={saveTemplate}
+        saveTemplateAndUpdateAnnotations={saveTemplateAndUpdateAnnotations}
+        saveTemplateAs={saveTemplateAs}
+        selectAdjacentImage={selectAdjacentImage}
+        selectAdjacentUnannotatedImage={selectAdjacentUnannotatedImage}
+        selectCurrentLabel={changeCurrentLabel}
+        selectShape={selectShape}
+        selectShapeType={selectShapeType}
+        selectTemplate={selectTemplate}
+        setAnnotationToDelete={setAnnotationToDelete}
+        setContextMenu={setContextMenu}
+        setCustomMappingText={setCustomMappingText}
+        setHelpDisplaySetting={setHelpDisplaySetting}
+        setImageScale={setImageScale}
+        setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
+        setIsPrelabelSettingsOpen={setIsPrelabelSettingsOpen}
+        setIsPrelabelExecutionOpen={setIsPrelabelExecutionOpen}
+        prelabelModels={prelabelModels}
+        prelabelExecution={prelabelExecution}
+        setLabelDisplaySetting={setLabelDisplaySetting}
+        setSelectedExportFormatId={changeExportFormat}
+        setSelectedPath={setSelectedPath}
+        setUpdateMessage={setUpdateMessage}
+        startPanning={startPanning}
+        undo={undo}
+        updateLabels={updateLabels}
+        updateShortcut={updateShortcut}
+        zoomFromKeyboard={zoomFromKeyboard}
+      />
+      {imageDeletion.target && (
+        <DeleteImageDialog
+          target={imageDeletion.target}
+          annotationCount={annotationsByImage[imageDeletion.target.image.path]?.length ?? 0}
+          isDeleting={imageDeletion.isDeleting}
+          error={imageDeletion.error}
+          onCancel={imageDeletion.cancel}
+          onConfirm={() => void imageDeletion.confirm()}
+        />
+      )}
+    </>
   );
 }
 
@@ -792,8 +821,5 @@ function withActiveProjectTemplate(
     ...projectConfig.template,
     labels: projectConfig.labels,
   };
-  return [
-    ...templates.filter((template) => template.id !== projectTemplate.id),
-    projectTemplate,
-  ];
+  return [...templates.filter((template) => template.id !== projectTemplate.id), projectTemplate];
 }

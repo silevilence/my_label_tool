@@ -1,8 +1,11 @@
+import { IMAGE_DELETION_ZH_CN as imageDeletionText } from "../i18n/image-deletion.zh-CN";
+
 export function normalizeShortcutKey(key: string): string {
   return key.length === 1 ? key.toLowerCase() : key;
 }
 
 export function formatShortcut(shortcut: string): string {
+  if (shortcut === "") return imageDeletionText.unassignedShortcut;
   if (shortcut === " ") {
     return "Space";
   }

@@ -8,6 +8,7 @@ describe("shortcut utilities", () => {
   });
 
   it("formats named, directional, and printable shortcuts", () => {
+    expect(formatShortcut("")).toBe("未绑定");
     expect(formatShortcut(" ")).toBe("Space");
     expect(formatShortcut("\t")).toBe("Tab");
     expect(formatShortcut("Tab")).toBe("Tab");

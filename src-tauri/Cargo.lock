@@ -1933,6 +1933,7 @@ name = "my_label_tool"
 version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
+ "dunce",
  "futures-util",
  "image",
  "libc",
@@ -1948,6 +1949,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "windows",
+ "windows-core 0.61.2",
  "zip",
 ]
 

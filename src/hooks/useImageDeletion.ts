@@ -1,0 +1,88 @@
+import { useRef, useState } from "react";
+import { recycleImageFile, type ImageFile } from "../lib/tauri-api";
+import { useAnnotationStore } from "../store/useAnnotationStore";
+import { IMAGE_DELETION_ZH_CN as text } from "../i18n/image-deletion.zh-CN";
+
+export interface ImageDeletionTarget {
+  image: ImageFile;
+  folderPath: string;
+  readyAt: number;
+}
+
+export function useImageDeletion(options: {
+  images: ImageFile[];
+  folderPath: string;
+  selectedPath: string;
+  busy: boolean;
+  setImages: (images: ImageFile[]) => void;
+  setSelectedPath: (path: string) => void;
+  setError: (message: string) => void;
+}) {
+  const latest = useRef(options);
+  latest.current = options;
+  const targetRef = useRef<ImageDeletionTarget | null>(null);
+  const inFlight = useRef(false);
+  const [target, setTarget] = useState<ImageDeletionTarget | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  function request(path: string) {
+    const current = latest.current;
+    if (targetRef.current || inFlight.current) return;
+    if (current.busy) {
+      current.setError(text.busy);
+      return;
+    }
+    const image = current.images.find((item) => item.path === path);
+    if (!image) return;
+    const next = { image, folderPath: current.folderPath, readyAt: Date.now() + 3000 };
+    targetRef.current = next;
+    setError("");
+    setTarget(next);
+  }
+
+  function cancel() {
+    if (inFlight.current) return;
+    targetRef.current = null;
+    setTarget(null);
+  }
+
+  async function confirm() {
+    const pending = targetRef.current;
+    if (!pending || inFlight.current || Date.now() < pending.readyAt) return;
+    const current = latest.current;
+    if (current.busy) {
+      setError(text.busy);
+      return;
+    }
+    if (current.folderPath !== pending.folderPath || !current.images.includes(pending.image)) {
+      setError(text.stale);
+      return;
+    }
+    inFlight.current = true;
+    setIsDeleting(true);
+    setError("");
+    try {
+      await recycleImageFile(pending.folderPath, pending.image.path);
+      useAnnotationStore.getState().removeImage(pending.image.path);
+      const latestState = latest.current;
+      if (latestState.folderPath === pending.folderPath) {
+        const index = latestState.images.findIndex((image) => image.path === pending.image.path);
+        const remaining = latestState.images.filter((image) => image.path !== pending.image.path);
+        latestState.setImages(remaining);
+        if (latestState.selectedPath === pending.image.path) {
+          latestState.setSelectedPath(remaining[Math.min(index, remaining.length - 1)]?.path ?? "");
+        }
+      }
+      targetRef.current = null;
+      setTarget(null);
+    } catch (caught: unknown) {
+      setError(text.failure(caught instanceof Error ? caught.message : String(caught)));
+    } finally {
+      inFlight.current = false;
+      setIsDeleting(false);
+    }
+  }
+
+  return { target, isDeleting, error, request, cancel, confirm };
+}

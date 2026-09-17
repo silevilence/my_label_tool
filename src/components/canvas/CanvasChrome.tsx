@@ -1,4 +1,5 @@
 import type { MutableRefObject, ReactNode } from "react";
+import { IMAGE_DELETION_ZH_CN as imageDeletionText } from "../../i18n/image-deletion.zh-CN";
 import { Circle, Label as KonvaLabel, Line, Rect, Tag, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
@@ -143,6 +144,8 @@ export function DeleteAnnotationDialog({
 }
 
 interface CanvasContextMenuProps {
+  canDeleteImage: boolean;
+  onDeleteImage: () => void;
   annotation: AnnotationShape | null;
   canNextImage: boolean;
   canNextUnannotatedImage: boolean;
@@ -166,6 +169,8 @@ interface CanvasContextMenuProps {
 }
 
 export function CanvasContextMenu({
+  canDeleteImage,
+  onDeleteImage,
   annotation,
   canNextImage,
   canNextUnannotatedImage,
@@ -211,6 +216,9 @@ export function CanvasContextMenu({
       </ContextMenuGroup>
 
       <ContextMenuGroup title="图片操作">
+        <ContextMenuButton danger disabled={!canDeleteImage} onClick={onDeleteImage}>
+          {imageDeletionText.deleteCurrentImage}
+        </ContextMenuButton>
         <ContextSubMenu label="跳转" openUp={openSubmenusUp}>
           <ContextMenuButton disabled={!canPreviousImage} onClick={onPreviousImage}>
             上一张

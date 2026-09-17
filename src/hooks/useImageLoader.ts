@@ -11,6 +11,13 @@ export function useImageLoader(images: ImageFile[], selectedPath: string) {
   );
 
   useEffect(() => {
+    const paths = new Set(images.map((image) => image.path));
+    for (const path of cacheRef.current.keys()) {
+      if (!paths.has(path)) cacheRef.current.delete(path);
+    }
+  }, [images]);
+
+  useEffect(() => {
     if (!selectedImage) {
       setLoadedImage(null);
       setImageLoadError("");
