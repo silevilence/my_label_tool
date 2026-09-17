@@ -73,10 +73,10 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ```
 my_label_tool/
 ├── src/                            # React 前端
-│   ├── components/                 # UI 组件
+│   ├── components/                 # UI 组件（AppLayout、DeleteImageDialog 图片删除确认弹窗）
 │   │   ├── canvas/                 # Konva 画布（CanvasChrome）、几何计算（geometry）、交互类型
 │   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置、插件管理
-│   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）
+│   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）、图片列表右键菜单（ImageListContextMenu）
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
 │   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态）
 │   ├── types/                      # 核心类型（annotation、export、prelabel、plugin）
@@ -89,11 +89,11 @@ my_label_tool/
 │   │   ├── plugin-*.ts             # 插件契约：配置迁移 / 预置标签 / 导出与预打标来源
 │   │   ├── tauri-api.ts            # 所有 Tauri command 调用封装
 │   │   └── app-utils.ts            # 路径、图片尺寸、项目配置等工具函数
-│   ├── i18n/                       # 前端用户可见文案（prelabel.zh-CN.ts、plugin.zh-CN.ts）
-│   └── hooks/                      # 画布交互、图片加载、预打标、标签/项目/快捷键等 hooks
+│   ├── i18n/                       # 前端用户可见文案（prelabel.zh-CN.ts、plugin.zh-CN.ts、project.zh-CN.ts、image-deletion.zh-CN.ts）
+│   └── hooks/                      # 画布交互、图片加载、图片删除、预打标、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
-│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs）、models、bin（插件校验/测试桩）
-│   │   ├── media/                  # 图像/模型处理：onnx_metadata.rs、pt_conversion.rs、prelabel/（runtime、pipeline、inference）
+│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs、image_deletion.rs）、models、bin（插件校验/测试桩）
+│   │   ├── media/                  # 图像/模型处理：onnx_metadata.rs、pt_conversion.rs、prelabel/（runtime、pipeline、inference）、image_deletion.rs + image_recycle_windows.rs（回收站删除）
 │   │   ├── plugins/                # 插件框架：manifest、protocol、runtime、permissions、registry、config
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── tests/                      # 插件协议集成测试（plugin_conformance.rs）
@@ -211,7 +211,7 @@ interface LabelTemplate {
 
 - 所有 `#[tauri::command]` 函数返回 `Result<T, String>`（或自定义 Error 类型 + `impl Serialize`），禁止 `unwrap()`/`expect()` 出现在 command 函数体内，必须走错误处理。
 - 文件路径处理统一用 `std::path::PathBuf`，不手动拼接字符串路径。
-- 图像/视频/模型处理逻辑独立成 `src-tauri/src/media/` 模块（如 `onnx_metadata.rs`、`pt_conversion.rs`、`prelabel/` 下的 runtime / pipeline / inference），不要塞进 `commands/` 里；command 只做参数校验与结果转发。
+- 图像/视频/模型处理逻辑独立成 `src-tauri/src/media/` 模块（如 `onnx_metadata.rs`、`pt_conversion.rs`、`image_deletion.rs`、`prelabel/` 下的 runtime / pipeline / inference），不要塞进 `commands/` 里；command 只做参数校验与结果转发。
 
 ### 通用
 
@@ -222,7 +222,7 @@ interface LabelTemplate {
 
 ## 7. 测试要求
 
-- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、ONNX 元数据解析、预打标推理管线、PT 转换等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、预打标模型库/类别映射/执行、插件契约（`src/types/plugin*.test.ts`、`src/lib/plugin-*.test.ts`）与插件管理 UI（`plugin-ui.acceptance.test.tsx`）等纯逻辑。插件协议集成测试：`cargo test --manifest-path src-tauri/Cargo.toml --test plugin_conformance`（独立桩进程覆盖握手、全部错误码、进度、取消与行上限）；插件改动的快速验证脚本：`scripts/verify-plugin-system.ps1`、`scripts/verify-plugin-sdk.ps1`。
+- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、图片回收站删除、ONNX 元数据解析、预打标推理管线、PT 转换等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、图片删除流程与入口、预打标模型库/类别映射/执行、插件契约（`src/types/plugin*.test.ts`、`src/lib/plugin-*.test.ts`）与插件管理 UI（`plugin-ui.acceptance.test.tsx`）等纯逻辑。插件协议集成测试：`cargo test --manifest-path src-tauri/Cargo.toml --test plugin_conformance`（独立桩进程覆盖握手、全部错误码、进度、取消与行上限）；插件改动的快速验证脚本：`scripts/verify-plugin-system.ps1`、`scripts/verify-plugin-sdk.ps1`。
 - 预打标真实模型验收：`.github/workflows/official-models.yml` 在 CI 下载官方 YOLOv5n / YOLOv8n / YOLO11n 权重并导出 ONNX，运行被 `#[ignore]` 隔离的元数据、运行时、真实推理与 `.pt` 转换测试；仅当预打标模块、Rust 依赖或工作流本身变化时触发，也可手动触发。涉及预打标推理改动时，先确认这些测试仍能通过。
 - **覆盖率目标**：前端可黑盒测试的纯逻辑层（导入/导出、store、几何计算、配置解析等）通过 `npm run test:coverage` 保持 90% 以上行覆盖率；Tauri API 封装、更新器、UI 组件、纯默认配置等特殊文件可在覆盖率配置中排除，但新增复杂逻辑时必须补测。
 - 新功能必须补充相关测试；问题修复尽可能补充回归测试，避免只修当前手动路径。
@@ -251,7 +251,7 @@ interface LabelTemplate {
 
 - **emoji**：视觉分类标识，必须使用
 - **type**：`feat` / `fix` / `refactor` / `docs` / `test` / `chore` / `style` / `perf`
-- **scope**：可选，如 `(opds)`、`(spider)`、`(api)`、`(web)`
+- **scope**：可选，如 `(image)`、`(project)`、`(prelabel)`、`(plugin)`
 - **subject**：中文标题，概括变更内容，首字无需空格
 - **body**：英文或中英文混排，每行为一个 `- ` 开头的条目，描述具体变更
 - **footer**：可选的 `Refs:` 或 `BREAKING CHANGE:`
