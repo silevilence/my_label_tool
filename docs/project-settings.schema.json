@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Host project settings",
+  "type": "object",
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "videoExtraction": {
+      "type": "object",
+      "required": ["frameInterval"],
+      "properties": { "frameInterval": { "type": "integer", "minimum": 1, "maximum": 1000000 } }
+    }
+  }
+}

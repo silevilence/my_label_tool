@@ -65,6 +65,7 @@ const ImageSearchDialog = lazy(async () => {
 });
 
 interface AppLayoutProps {
+  projectSettings?: ReactNode;
   interpolationShape?: AnnotationShape | null;
   onDismissError?: () => void;
   workspaceDisabled?: boolean;
@@ -201,6 +202,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({
+  projectSettings,
   interpolationShape,
   onDismissError,
   workspaceDisabled = false,
@@ -771,6 +773,7 @@ export function AppLayout({
         {isShortcutSettingsOpen && (
           <Suspense fallback={null}>
             <ShortcutSettings
+              projectSettings={projectSettings}
               helpDisplaySettings={helpDisplaySettings}
               labelDisplaySettings={labelDisplaySettings}
               labelShortcuts={labelShortcuts}

@@ -1,4 +1,13 @@
 export const VIDEO_ZH_CN = {
+  projectSettings: "项目设置 · 视频抽帧",
+  defaultInterval: "默认抽帧间隔（源帧）",
+  defaultExtractionHint:
+    "仅用于当前项目的新抽帧任务，不改变已抽取的视频帧。单个视频仍可临时调整间隔。",
+  settingsNeedProject: "打开项目文件夹后，可配置此项目的默认抽帧间隔。",
+  invalidSettings: "项目抽帧设置无效：间隔须为 1 至 1000000 的整数。",
+  saveSettings: "保存项目设置",
+  savingSettings: "正在保存…",
+  settingsSaved: "项目设置已保存",
   open: "导入视频",
   add: "添加视频到项目",
   openProject: "打开项目文件夹",

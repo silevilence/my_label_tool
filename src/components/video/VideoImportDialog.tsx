@@ -1,20 +1,23 @@
 import { useState } from "react";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
+import { DEFAULT_PROJECT_SETTINGS, MAX_FRAME_INTERVAL } from "../../lib/defaults/video";
 
 export function VideoImportDialog({
+  defaultInterval = DEFAULT_PROJECT_SETTINGS.videoExtraction.frameInterval,
   busy,
   sourcePath,
   onImport,
   onCancel,
   onClose,
 }: {
+  defaultInterval?: number;
   busy: boolean;
   sourcePath?: string;
   onImport: (interval: number) => void;
   onCancel: () => void;
   onClose: () => void;
 }) {
-  const [interval, setInterval] = useState(30);
+  const [interval, setInterval] = useState(defaultInterval);
   return (
     <div
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-6"
@@ -55,7 +58,7 @@ export function VideoImportDialog({
             aria-label={text.interval}
             type="number"
             min={1}
-            max={1_000_000}
+            max={MAX_FRAME_INTERVAL}
             step={1}
             disabled={busy}
             value={interval}

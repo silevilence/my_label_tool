@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   SHORTCUT_ACTIONS,
   type ShortcutActionId,
@@ -11,6 +11,7 @@ import { IMAGE_DELETION_ZH_CN as imageDeletionText } from "../../i18n/image-dele
 import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface ShortcutSettingsProps {
+  projectSettings?: ReactNode;
   helpDisplaySettings: HelpDisplaySettings;
   labelDisplaySettings: LabelDisplaySettings;
   labelShortcuts: string[];
@@ -22,6 +23,7 @@ interface ShortcutSettingsProps {
 }
 
 export function ShortcutSettings({
+  projectSettings,
   helpDisplaySettings,
   labelDisplaySettings,
   labelShortcuts,
@@ -104,6 +106,7 @@ export function ShortcutSettings({
           </button>
         </div>
 
+        {projectSettings}
         <div className="mt-4 rounded border border-slate-800 p-3">
           <h3 className="text-sm font-medium text-slate-100">画布提示</h3>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">

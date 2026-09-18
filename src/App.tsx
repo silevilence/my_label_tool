@@ -44,6 +44,8 @@ import { useSaveFeedback } from "./hooks/useSaveFeedback";
 import { useShortcutsConfig } from "./hooks/useShortcutsConfig";
 import { useShapeToolSelection } from "./hooks/useShapeToolSelection";
 import { useTransientMessage } from "./hooks/useTransientMessage";
+import { useProjectSettings } from "./hooks/useProjectSettings";
+import { ProjectVideoSettings } from "./components/settings/ProjectVideoSettings";
 import { useZoomControls } from "./hooks/useZoomControls";
 import { usePrelabelModels } from "./hooks/usePrelabelModels";
 import { usePrelabelExecution } from "./hooks/usePrelabelExecution";
@@ -85,6 +87,7 @@ function App() {
   const panStateRef = useRef<PanState | null>(null);
   const suppressContextMenuRef = useRef(false);
   const [folderPath, setFolderPath] = useState("");
+  const projectSettings = useProjectSettings(folderPath);
   const [videoEntries, setVideoEntries] = useState<ProjectVideo[]>([]);
   const [videoImportSource, setVideoImportSource] = useState<string | null>(null);
   const [interpolationPreview, setInterpolationPreview] = useState<InterpolationPreview | null>(
@@ -760,6 +763,7 @@ function App() {
   return (
     <>
       <AppLayout
+        projectSettings={<ProjectVideoSettings folder={folderPath} model={projectSettings} />}
         interpolationShape={
           interpolationPreview?.source === annotationsByImage &&
           interpolationPreview.video === video
@@ -923,8 +927,9 @@ function App() {
         updateShortcut={updateShortcut}
         zoomFromKeyboard={zoomFromKeyboard}
       />
-      {videoImportSource !== null && (
+      {videoImportSource !== null && !projectSettings.loading && (
         <VideoImportDialog
+          defaultInterval={projectSettings.settings.videoExtraction.frameInterval}
           sourcePath={videoImportSource}
           busy={videoImport.busy}
           onClose={() => setVideoImportSource(null)}
