@@ -20,6 +20,7 @@ interface AnnotationState {
   deleteAnnotation: (imagePath: string, annotationId: string) => void;
   clearImageAnnotations: (imagePath: string) => void;
   removeImage: (imagePath: string) => void;
+  removeImages: (imagePaths: string[]) => void;
   insertAnnotationsBatch: (
     entries: Array<{ imagePath: string; annotations: AnnotationShape[] }>,
     mode: "append" | "replace",
@@ -44,7 +45,7 @@ interface AnnotationHistoryEntry {
 const HISTORY_LIMIT = 100;
 let nextHistoryGroupId = 1;
 
-export const useAnnotationStore = create<AnnotationState>((set) => ({
+export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   frameIndices: {},
   setFrameIndices: (frameIndices) =>
     set((state) => ({
@@ -104,21 +105,23 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
     ),
   clearImageAnnotations: (imagePath) =>
     set((state) => applyImageHistory(state, imagePath, [], null)),
-  removeImage: (imagePath) =>
+  removeImage: (imagePath) => get().removeImages([imagePath]),
+  removeImages: (imagePaths) =>
     set((state) => {
+      const removedPaths = new Set(imagePaths);
       const removedIds = new Set(
-        (state.annotationsByImage[imagePath] ?? []).map((item) => item.id),
+        imagePaths.flatMap((path) => (state.annotationsByImage[path] ?? []).map((item) => item.id)),
       );
       for (const entry of [...state.undoStack, ...state.redoStack]) {
-        if (entry.imagePath === imagePath) {
+        if (removedPaths.has(entry.imagePath)) {
           for (const item of [...entry.before, ...entry.after]) removedIds.add(item.id);
         }
       }
       const annotationsByImage = { ...state.annotationsByImage };
-      delete annotationsByImage[imagePath];
+      for (const path of removedPaths) delete annotationsByImage[path];
       const prune = (entries: AnnotationHistoryEntry[]) =>
         entries
-          .filter((entry) => entry.imagePath !== imagePath)
+          .filter((entry) => !removedPaths.has(entry.imagePath))
           .map((entry) => ({
             ...entry,
             selectedBefore:

@@ -2,11 +2,12 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useProjectVideoActions } from "./useProjectVideoActions";
-import { importVideo, type ImageFile } from "../lib/tauri-api";
+import { importVideo, reextractVideo, type ImageFile } from "../lib/tauri-api";
 import type { ProjectVideo } from "../types/video";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 vi.mock("../lib/tauri-api", () => ({
   importVideo: vi.fn(),
+  reextractVideo: vi.fn(),
   cancelVideoImport: vi.fn().mockResolvedValue(undefined),
   selectVideoFile: vi.fn(),
   selectExportFolder: vi.fn(),
@@ -38,14 +39,13 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();
   root = createRoot(document.createElement("div"));
-  useAnnotationStore
-    .getState()
-    .replaceAnnotations({
-      "C:/project/photo.png": [{ id: "photo", type: "point", labelId: "label", points: [1, 2] }],
-    });
+  useAnnotationStore.getState().replaceAnnotations({
+    "C:/project/photo.png": [{ id: "photo", type: "point", labelId: "label", points: [1, 2] }],
+  });
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  vi.restoreAllMocks();
 });
 it("merges all batch results without losing earlier frames, photos or annotations", async () => {
   vi.mocked(importVideo).mockImplementation(async (sourcePath, _folder, frameInterval) => ({
@@ -74,4 +74,41 @@ it("merges all batch results without losing earlier frames, photos or annotation
   expect(actions.busy).toBe(false);
   await act(async () => actions.closeBatch());
   expect(actions.batch).toBeNull();
+});
+it("keeps the old frames and annotations after replacement failure or cancellation", async () => {
+  const video = {
+    schemaVersion: 1 as const,
+    sourcePath: "C:/movie.mp4",
+    frameInterval: 30,
+    width: 100,
+    height: 100,
+    totalFrames: 1,
+    frames: [{ name: "frame-000000.png", frameIndex: 0, timestampSeconds: 0 }],
+  };
+  vi.mocked(importVideo).mockResolvedValue({ folderPath: "C:/project/old", video });
+  vi.mocked(reextractVideo).mockRejectedValue(new Error("recycle failed"));
+  await act(async () => root.render(<Harness />));
+  await act(async () => actions.start(30, "C:/project", video.sourcePath));
+  await act(async () =>
+    useAnnotationStore
+      .getState()
+      .addAnnotation("C:/project/old/frame-000000.png", {
+        id: "old",
+        type: "point",
+        labelId: "label",
+        points: [1, 2],
+      }),
+  );
+  const oldImages = actualImages;
+  const annotations = useAnnotationStore.getState().annotationsByImage;
+  await act(async () => actions.requestReextract(video.sourcePath, 10));
+  await act(async () => actions.confirmReextract());
+  expect(reextractVideo).not.toHaveBeenCalled();
+  vi.spyOn(Date, "now").mockReturnValue(actions.replacement!.readyAt);
+  await act(async () => actions.confirmReextract());
+  expect(actions.replacementError).toBe("recycle failed");
+  expect(actualImages).toBe(oldImages);
+  expect(useAnnotationStore.getState().annotationsByImage).toBe(annotations);
+  await act(async () => actions.cancelReextract());
+  expect(actions.replacement).toBeNull();
 });

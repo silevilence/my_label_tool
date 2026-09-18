@@ -24,6 +24,7 @@ import { ProjectMediaList } from "./ProjectMediaList";
 import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface AppSidebarProps {
+  reextractVideo?: (source: string) => void;
   batchPrepare?: () => void;
   videos?: LoadedProjectVideo[];
   addVideo?: (source?: string) => void;
@@ -86,6 +87,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
+  reextractVideo,
   batchPrepare,
   videos = [],
   addVideo,
@@ -152,6 +154,7 @@ export function AppSidebar({
     null,
   );
   const selectedImageIndex = images.findIndex((image) => image.path === selectedPath);
+  const [videoMenu, setVideoMenu] = useState<{ source: string; x: number; y: number } | null>(null);
   const currentImageNumber = selectedImageIndex >= 0 ? selectedImageIndex + 1 : 0;
   const annotatedCount = images.filter(
     (image) => (annotationsByImage[image.path] ?? []).length > 0,
@@ -488,6 +491,10 @@ export function AppSidebar({
               selectedRef={selectedImageButtonRef}
               onSelect={setSelectedPath}
               onPrepare={(source) => addVideo?.(source)}
+              onVideoMenu={(source, x, y) => {
+                setImageMenu(null);
+                setVideoMenu({ source, x, y });
+              }}
               onImageMenu={(image, x, y) => setImageMenu({ image, x, y })}
             />
           ) : (
@@ -524,6 +531,19 @@ export function AppSidebar({
           disabled={!canDeleteImage}
           onDelete={requestDeleteImage}
           onClose={() => setImageMenu(null)}
+        />
+      )}
+      {videoMenu && (
+        <ImageListContextMenu
+          image={{ path: videoMenu.source, name: videoMenu.source }}
+          x={videoMenu.x}
+          y={videoMenu.y}
+          actionLabel={videoText.reextract}
+          disabled={
+            !reextractVideo || !videos.find((asset) => asset.sourcePath === videoMenu.source)?.video
+          }
+          onDelete={(source) => reextractVideo?.(source)}
+          onClose={() => setVideoMenu(null)}
         />
       )}
       {isPluginSettingsOpen && (

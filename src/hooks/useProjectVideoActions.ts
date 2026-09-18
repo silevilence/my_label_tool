@@ -1,10 +1,20 @@
 import { useRef, useState } from "react";
-import type { ProjectVideo } from "../types/video";
+import type { ProjectVideo, VideoImportResult } from "../types/video";
 import { selectExportFolder, selectVideoFile, type ImageFile } from "../lib/tauri-api";
 import { mergeProjectImages, projectVideos, projectFrameIndices } from "../lib/project-media";
 import { normalizePath } from "../lib/app-utils";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import { useVideoImport } from "./useVideoImport";
+import { reextractVideo, cancelVideoImport } from "../lib/tauri-api";
+import { VIDEO_ZH_CN as text } from "../i18n/video.zh-CN";
+import type { LoadedProjectVideo } from "../lib/project-media";
+
+export interface VideoReextractTarget {
+  asset: LoadedProjectVideo;
+  readyAt: number;
+  folderPath: string;
+  interval: number;
+}
 
 export function useProjectVideoActions({
   folderPath,
@@ -15,6 +25,7 @@ export function useProjectVideoActions({
   setSelectedPath,
   setError,
   openFolder,
+  blocked = false,
 }: {
   folderPath: string;
   entries: ProjectVideo[];
@@ -24,12 +35,17 @@ export function useProjectVideoActions({
   setSelectedPath: (path: string) => void;
   setError: (message: string) => void;
   openFolder: (folder?: string) => Promise<boolean>;
+  blocked?: boolean;
 }) {
   const [source, setSource] = useState<string | null>(null);
+  const [replacement, setReplacement] = useState<VideoReextractTarget | null>(null);
+  const [replacing, setReplacing] = useState(false);
+  const [replacementError, setReplacementError] = useState("");
+  const replacingRef = useRef(false);
   // The batch callback must see results committed by earlier iterations, even before React renders.
   const latest = useRef({ folderPath, entries, images });
   latest.current = { folderPath, entries, images };
-  const importer = useVideoImport(async (result) => {
+  async function applyImported(result: VideoImportResult, retiredPaths: string[] = []) {
     const current = latest.current;
     const entry = {
       sourcePath: result.video.sourcePath,
@@ -43,16 +59,73 @@ export function useProjectVideoActions({
       entry,
     ];
     const nextVideos = projectVideos(current.folderPath, nextEntries);
-    const nextImages = mergeProjectImages(current.images, nextVideos);
+    const retired = new Set(retiredPaths);
+    const nextImages = mergeProjectImages(
+      current.images.filter((image) => !retired.has(image.path)),
+      nextVideos,
+    );
     latest.current = { ...current, entries: nextEntries, images: nextImages };
     useAnnotationStore.getState().setFrameIndices(projectFrameIndices(nextVideos));
+    if (retiredPaths.length) useAnnotationStore.getState().removeImages(retiredPaths);
     setEntries(nextEntries);
     setImages(nextImages);
     setSelectedPath(nextVideos[nextVideos.length - 1].images[0]?.path ?? "");
     setSource(null);
-  }, setError);
+  }
+  const importer = useVideoImport(applyImported, setError);
+  function requestReextract(path: string, interval: number) {
+    if (blocked || importer.busy || replacingRef.current) {
+      setError(text.reextractBusy);
+      return;
+    }
+    const asset = projectVideos(folderPath, entries).find((entry) => entry.sourcePath === path);
+    if (!asset?.video || !asset.folderPath) return;
+    setReplacementError("");
+    setReplacement({ asset, interval, folderPath, readyAt: Date.now() + 3000 });
+  }
+  async function confirmReextract() {
+    if (!replacement || replacingRef.current || Date.now() < replacement.readyAt) return;
+    if (blocked || importer.busy) {
+      setReplacementError(text.reextractBusy);
+      return;
+    }
+    const current = latest.current;
+    if (
+      current.folderPath !== replacement.folderPath ||
+      !current.entries.some((entry) => entry.video === replacement.asset.video)
+    ) {
+      setReplacementError(text.reextractStale);
+      return;
+    }
+    replacingRef.current = true;
+    setReplacing(true);
+    setReplacementError("");
+    try {
+      const result = await reextractVideo(
+        replacement.asset.sourcePath,
+        replacement.folderPath,
+        replacement.asset.folderPath!,
+        replacement.interval,
+      );
+      await applyImported(
+        result,
+        replacement.asset.images.map((image) => image.path),
+      );
+      setReplacement(null);
+    } catch (error) {
+      setReplacementError(error instanceof Error ? error.message : String(error));
+    } finally {
+      replacingRef.current = false;
+      setReplacing(false);
+    }
+  }
+  function cancelReextract() {
+    if (replacingRef.current)
+      void cancelVideoImport().catch((error: unknown) => setReplacementError(String(error)));
+    else setReplacement(null);
+  }
   async function addVideo(requested?: string) {
-    if (importer.busy) return;
+    if (importer.busy || replacingRef.current || replacement) return;
     try {
       const path = requested || (await selectVideoFile());
       if (!path) return;
@@ -72,5 +145,17 @@ export function useProjectVideoActions({
       setError(String(error));
     }
   }
-  return { ...importer, source, setSource, addVideo };
+  return {
+    ...importer,
+    busy: importer.busy || replacing,
+    source,
+    setSource,
+    addVideo,
+    replacement,
+    replacing,
+    replacementError,
+    requestReextract,
+    confirmReextract,
+    cancelReextract,
+  };
 }

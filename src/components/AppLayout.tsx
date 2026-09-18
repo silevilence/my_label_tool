@@ -65,6 +65,7 @@ const ImageSearchDialog = lazy(async () => {
 });
 
 interface AppLayoutProps {
+  reextractVideo?: (source: string) => void;
   batchPrepare?: () => void;
   projectSettings?: ReactNode;
   interpolationShape?: AnnotationShape | null;
@@ -203,6 +204,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({
+  reextractVideo,
   batchPrepare,
   projectSettings,
   interpolationShape,
@@ -425,6 +427,7 @@ export function AppLayout({
         }}
       >
         <AppSidebar
+          reextractVideo={reextractVideo}
           batchPrepare={batchPrepare}
           videos={videos}
           addVideo={addVideo}

@@ -11,6 +11,11 @@ mod platform;
 
 pub fn recycle_image(folder: &Path, image: &Path) -> Result<(), String> {
     let path = validate_image_path(folder, image)?;
+    recycle_owned_path(path)
+}
+
+/// Internal only: callers must validate ownership before recycling a staged directory.
+pub(super) fn recycle_owned_path(path: PathBuf) -> Result<(), String> {
     #[cfg(windows)]
     {
         // IFileOperation needs its own STA; the Tauri blocking pool may already be MTA.

@@ -12,6 +12,7 @@ import {
 } from "./components/video/VideoInterpolationPanel";
 import { useProjectVideoActions } from "./hooks/useProjectVideoActions";
 import { VideoBatchDialog } from "./components/video/VideoBatchDialog";
+import { VideoReextractDialog } from "./components/video/VideoReextractDialog";
 import { VIDEO_ZH_CN as videoText } from "./i18n/video.zh-CN";
 import { DeleteImageDialog } from "./components/DeleteImageDialog";
 import { useImageDeletion } from "./hooks/useImageDeletion";
@@ -421,6 +422,7 @@ function App() {
   const videoImport = useProjectVideoActions({
     folderPath,
     entries: videoEntries,
+    blocked: imageDeletionBusy,
     images,
     setEntries: setVideoEntries,
     setImages,
@@ -652,7 +654,13 @@ function App() {
 
   useEffect(() => {
     function finishPolygonFromKeyboard(event: KeyboardEvent) {
-      if (videoImport.busy || videoImportSource !== null || videoImport.batch !== null) return;
+      if (
+        videoImport.busy ||
+        videoImportSource !== null ||
+        videoImport.batch !== null ||
+        videoImport.replacement !== null
+      )
+        return;
       if (isEditableTarget(event.target) || currentShapeType !== "polygon") {
         return;
       }
@@ -674,6 +682,7 @@ function App() {
     currentLabel,
     videoImport.busy,
     videoImport.batch,
+    videoImport.replacement,
     videoImportSource,
   ]);
 
@@ -689,6 +698,7 @@ function App() {
       !videoImport.busy &&
       videoImportSource === null &&
       videoImport.batch === null &&
+      videoImport.replacement === null &&
       !imageDeletion.target &&
       !isShortcutSettingsOpen &&
       !isPrelabelSettingsOpen &&
@@ -731,6 +741,15 @@ function App() {
   return (
     <>
       <AppLayout
+        reextractVideo={
+          !projectSettings.loading
+            ? (source) =>
+                videoImport.requestReextract(
+                  source,
+                  projectSettings.settings.videoExtraction.frameInterval,
+                )
+            : undefined
+        }
         projectSettings={<ProjectVideoSettings folder={folderPath} model={projectSettings} />}
         interpolationShape={
           interpolationPreview?.source === annotationsByImage &&
@@ -751,7 +770,10 @@ function App() {
             : undefined
         }
         workspaceDisabled={
-          videoImport.busy || videoImportSource !== null || videoImport.batch !== null
+          videoImport.busy ||
+          videoImportSource !== null ||
+          videoImport.batch !== null ||
+          videoImport.replacement !== null
         }
         videos={videos}
         addVideo={(source) => {
@@ -907,6 +929,15 @@ function App() {
         updateShortcut={updateShortcut}
         zoomFromKeyboard={zoomFromKeyboard}
       />
+      {videoImport.replacement && (
+        <VideoReextractDialog
+          target={videoImport.replacement}
+          busy={videoImport.replacing}
+          error={videoImport.replacementError}
+          onConfirm={() => void videoImport.confirmReextract()}
+          onCancel={videoImport.cancelReextract}
+        />
+      )}
       {videoImport.batch && (
         <VideoBatchDialog
           progress={videoImport.batch}

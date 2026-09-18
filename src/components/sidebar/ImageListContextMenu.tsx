@@ -9,7 +9,9 @@ export function ImageListContextMenu({
   disabled,
   onDelete,
   onClose,
+  actionLabel = text.deleteImage,
 }: {
+  actionLabel?: string;
   image: ImageFile;
   x: number;
   y: number;
@@ -59,7 +61,7 @@ export function ImageListContextMenu({
           onDelete(image.path);
         }}
       >
-        {text.deleteImage}
+        {actionLabel}
       </button>
     </div>
   );

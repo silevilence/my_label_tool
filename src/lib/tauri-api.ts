@@ -20,6 +20,14 @@ export function importVideo(
 export function cancelVideoImport(): Promise<void> {
   return invoke("cancel_video_import");
 }
+export function reextractVideo(
+  sourcePath: string,
+  projectFolder: string,
+  frameFolder: string,
+  frameInterval: number,
+): Promise<VideoImportResult> {
+  return invoke("reextract_video", { sourcePath, projectFolder, frameFolder, frameInterval });
+}
 export function loadVideoProject(folderPath: string): Promise<VideoProject | null> {
   return invoke("load_video_project", { folderPath });
 }

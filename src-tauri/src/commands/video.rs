@@ -38,6 +38,33 @@ pub fn cancel_video_import() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn reextract_video(
+    app: tauri::AppHandle,
+    source_path: PathBuf,
+    project_folder: PathBuf,
+    frame_folder: PathBuf,
+    frame_interval: usize,
+) -> Result<VideoImportResult, String> {
+    let guard = video::ImportGuard::acquire()?;
+    let resources = app.path().resource_dir().map_err(text::video_failed)?;
+    let ffmpeg = video::executable(&resources, "ffmpeg")?;
+    let ffprobe = video::executable(&resources, "ffprobe")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = guard;
+        crate::media::video_reextract::reextract(
+            &source_path,
+            &project_folder,
+            &frame_folder,
+            frame_interval,
+            &ffmpeg,
+            &ffprobe,
+        )
+    })
+    .await
+    .map_err(text::video_failed)?
+}
+
+#[tauri::command]
 pub async fn load_video_project(folder_path: PathBuf) -> Result<Option<VideoProject>, String> {
     tauri::async_runtime::spawn_blocking(move || video::load(&folder_path))
         .await

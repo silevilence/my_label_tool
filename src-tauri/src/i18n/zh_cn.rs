@@ -845,3 +845,6 @@ pub const VIDEO_TOOLS_MISSING: &str =
 pub fn video_failed(error: impl std::fmt::Display) -> String {
     format!("视频处理失败：{error}")
 }
+pub const VIDEO_REEXTRACT_PATH: &str =
+    "只能替换当前项目内、元数据匹配的普通视频帧文件，不能通过链接访问其它目录。";
+pub const VIDEO_REEXTRACT_CHANGED: &str = "视频帧元数据已变化，请重新打开项目后重试。";

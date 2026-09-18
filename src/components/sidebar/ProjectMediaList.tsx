@@ -13,7 +13,9 @@ export function ProjectMediaList({
   onSelect,
   onPrepare,
   onImageMenu,
+  onVideoMenu,
 }: {
+  onVideoMenu?: (source: string, x: number, y: number) => void;
   images: ImageFile[];
   videos: LoadedProjectVideo[];
   selectedPath: string;
@@ -58,11 +60,19 @@ export function ProjectMediaList({
             <button
               type="button"
               title={video.sourcePath}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                onVideoMenu?.(video.sourcePath, event.clientX, event.clientY);
+              }}
               aria-current={active ? "true" : undefined}
               className={`w-full rounded px-3 py-2 text-left text-sm ${active ? "bg-sky-500/15 text-sky-200 ring-1 ring-inset ring-sky-500/40" : "text-slate-300 hover:bg-slate-800"}`}
               onClick={() =>
                 video.images.length
-                  ? onSelect(remembered.current.get(video.sourcePath) ?? video.images[0].path)
+                  ? onSelect(
+                      video.images.find(
+                        (image) => image.path === remembered.current.get(video.sourcePath),
+                      )?.path ?? video.images[0].path,
+                    )
                   : onPrepare(video.sourcePath)
               }
             >

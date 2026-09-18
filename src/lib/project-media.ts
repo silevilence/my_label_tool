@@ -1,6 +1,6 @@
 import type { ProjectVideo, VideoProject } from "../types/video";
 import type { ImageFile } from "./tauri-api";
-import { joinPath, normalizePath } from "./app-utils";
+import { joinPath, normalizePath, portablePath } from "./app-utils";
 import type { ExportData } from "../types/export";
 
 export interface LoadedProjectVideo extends ProjectVideo {
@@ -11,8 +11,8 @@ export interface LoadedProjectVideo extends ProjectVideo {
 export function projectVideos(folder: string, videos: ProjectVideo[]): LoadedProjectVideo[] {
   return videos.map((asset) => {
     if (!asset.video || !asset.folderPath) return { ...asset, images: [], scopedVideo: null };
-    const directory = asset.folderPath.replace(/\\/g, "/");
-    const root = folder.replace(/\\/g, "/").replace(/\/+$/, "");
+    const directory = portablePath(asset.folderPath);
+    const root = portablePath(folder).replace(/\/+$/, "");
     const prefix =
       normalizePath(directory) === normalizePath(root)
         ? ""

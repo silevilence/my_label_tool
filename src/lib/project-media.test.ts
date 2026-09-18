@@ -10,7 +10,7 @@ import {
   videoForImage,
   withProjectMedia,
 } from "./project-media";
-import { matchImportedImages } from "./app-utils";
+import { matchImportedImages, normalizePath } from "./app-utils";
 import { parseNativeJsonImport } from "./importers";
 import { exportYolo } from "./exporters/yolo";
 import { interpolateVideoTrack } from "./video-interpolation";
@@ -36,6 +36,22 @@ export function fixtureVideo(id: string): ProjectVideo {
     },
   };
 }
+it("scopes Windows canonical extraction folders and restores annotations after reopening", () => {
+  const entry = fixtureVideo("one");
+  entry.folderPath = "\\\\?\\C:\\project\\one";
+  const extracted = projectVideos("C:/project", [entry])[0];
+  expect(extracted.images[0].name).toBe("one/frame-000000.png");
+  const reopened = projectVideos("C:/project", [fixtureVideo("one")])[0];
+  const matched = matchImportedImages(
+    {
+      labels: [],
+      images: [{ path: extracted.images[0].path, name: extracted.images[0].name, annotations: [] }],
+    },
+    reopened.images,
+  );
+  expect(matched.missingCount).toBe(0);
+  expect(normalizePath("\\\\?\\UNC\\server\\share\\video")).toBe("//server/share/video");
+});
 const labels: LabelConfig[] = [{ id: "car", name: "车", color: "#123456", shapeType: "rect" }];
 const shape: AnnotationShape = {
   id: "target",

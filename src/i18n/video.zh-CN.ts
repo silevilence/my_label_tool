@@ -1,4 +1,10 @@
 export const VIDEO_ZH_CN = {
+  reextract: "重新抽帧",
+  reextractConfirm: "删除旧帧与标注并重新抽帧",
+  reextractConsequence: (frames: number, interval: number) =>
+    `将按每 ${interval} 个源帧抽取一帧重新生成视频帧。成功后，原 ${frames} 张帧图片移入回收站，对应标注和撤销记录一并删除。其它素材与源视频保留；失败或取消保留旧帧。`,
+  reextractBusy: "请等待保存、导出或预打标结束后再重新抽帧。",
+  reextractStale: "项目或视频已变化，请重新发起抽帧。",
   batchPrepare: "批量抽取未准备视频",
   batchProgress: (done: number, total: number, failed: number) =>
     `完成 ${done} / ${total} 个视频，失败 ${failed} 个`,

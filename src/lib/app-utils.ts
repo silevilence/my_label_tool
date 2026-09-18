@@ -94,7 +94,15 @@ export function joinPath(folderPath: string, name: string): string {
 }
 
 export function normalizePath(path: string): string {
-  return path.replace(/\\/g, "/").toLowerCase();
+  return portablePath(path).toLowerCase();
+}
+
+/** Windows canonical paths from Rust may carry a verbatim drive or UNC prefix. */
+export function portablePath(path: string): string {
+  return path
+    .replace(/\\/g, "/")
+    .replace(/^\/\/\?\/UNC\//i, "//")
+    .replace(/^\/\/\?\//, "");
 }
 
 export function baseName(path: string): string {

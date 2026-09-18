@@ -117,6 +117,7 @@ my_label_tool/
 | --- | --- |
 | `list_image_files` | 列出文件夹下可加载图片（校验扩展名 + 文件头签名，跳过空文件） |
 | `import_video` / `cancel_video_import` / `load_video_project` / `list_project_videos` | 宿主专用离线视频抽帧、取消、帧目录校验与混合项目视频枚举；不向插件开放，详见 docs/video-annotation.md |
+| `reextract_video` | 宿主专用视频重抽帧：校验项目归属，新帧准备成功后回收旧帧；失败回滚，不向插件开放 |
 | `recycle_image_file` | 校验所选目录内的普通图片文件并移入 Windows 回收站；失败不永久删除，仅供宿主 UI 调用，不向插件开放 |
 | `export_annotations_json` | 将标注数据写入指定 JSON 文件 |
 | `export_text_files` | 批量写入文本文件（VOC XML / YOLO txt），路径需为相对安全路径 |

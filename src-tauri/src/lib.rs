@@ -19,6 +19,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::import_video,
+            commands::reextract_video,
             commands::cancel_video_import,
             commands::load_video_project,
             commands::list_project_videos,

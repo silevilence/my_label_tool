@@ -39,6 +39,9 @@ impl Drop for ImportGuard {
 pub fn cancel() {
     CANCEL.store(true, Ordering::SeqCst);
 }
+pub(super) fn is_cancelled() -> bool {
+    CANCEL.load(Ordering::SeqCst)
+}
 
 pub fn shutdown() {
     cancel();

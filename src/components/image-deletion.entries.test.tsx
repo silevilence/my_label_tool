@@ -40,6 +40,7 @@ vi.mock("../lib/tauri-api", async (importOriginal) => ({
   listProjectVideos: vi.fn().mockResolvedValue([]),
   selectVideoFile: vi.fn().mockResolvedValue("C:/fixture/added.mp4"),
   importVideo: vi.fn(),
+  reextractVideo: vi.fn(),
   cancelVideoImport: vi.fn().mockResolvedValue(undefined),
   listTextFiles: vi.fn().mockResolvedValue([]),
   selectImageFolder: vi.fn().mockResolvedValue("C:/fixture"),
@@ -262,6 +263,68 @@ describe("image deletion entry wiring", () => {
     await click("关闭");
     expect(container.textContent).toContain("2 张图片 · 2 个视频");
     expect(button("批量抽取未准备视频").disabled).toBe(true);
+  });
+
+  it("reuses the countdown and pointer-only warning before replacing a video's frames and history", async () => {
+    const video = {
+      schemaVersion: 1 as const,
+      sourcePath: "C:/fixture/one.mp4",
+      width: 64,
+      height: 48,
+      frameInterval: 5,
+      totalFrames: 1,
+      frames: [{ name: "frame-000000.png", frameIndex: 0, timestampSeconds: 0 }],
+    };
+    vi.mocked(api.listProjectVideos).mockResolvedValueOnce([
+      { sourcePath: video.sourcePath, folderPath: "C:/fixture/old", video },
+    ]);
+    vi.mocked(api.reextractVideo).mockResolvedValueOnce({
+      folderPath: "C:/fixture/new",
+      video: { ...video, frameInterval: 30 },
+    });
+    await openFixture();
+    await act(async () => {
+      useAnnotationStore
+        .getState()
+        .addAnnotation("C:/fixture/old/frame-000000.png", {
+          id: "old",
+          labelId: "person",
+          type: "point",
+          points: [1, 2],
+        });
+      container
+        .querySelector<HTMLButtonElement>('button[title="C:/fixture/one.mp4"]')!
+        .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    });
+    await click("重新抽帧");
+    expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain(
+      "原 1 张帧图片移入回收站",
+    );
+    expect(api.reextractVideo).not.toHaveBeenCalled();
+    await key("Enter");
+    await act(async () => vi.advanceTimersByTime(3000));
+    await click("删除旧帧与标注并重新抽帧");
+    expect(api.reextractVideo).not.toHaveBeenCalled();
+    await act(async () =>
+      button("删除旧帧与标注并重新抽帧").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, detail: 1 }),
+      ),
+    );
+    expect(api.reextractVideo).toHaveBeenCalledExactlyOnceWith(
+      "C:/fixture/one.mp4",
+      "C:/fixture",
+      "C:/fixture/old",
+      30,
+    );
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(container.textContent).toContain("2 张图片 · 1 个视频");
+    expect(
+      useAnnotationStore.getState().annotationsByImage["C:/fixture/old/frame-000000.png"],
+    ).toBeUndefined();
+    await act(async () => useAnnotationStore.getState().undo());
+    expect(
+      useAnnotationStore.getState().annotationsByImage["C:/fixture/old/frame-000000.png"],
+    ).toBeUndefined();
   });
 
   it("canvas menu offers a distinct deletion action and disables it without a deletable image", async () => {

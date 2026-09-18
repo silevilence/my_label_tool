@@ -94,3 +94,21 @@ it("applies a ten-thousand-frame batch without quadratic index copying and keeps
     "shape-9999",
   );
 });
+it("retires a complete frame set and prunes its undo/redo entries without losing other images", () => {
+  useAnnotationStore.getState().replaceAnnotations({});
+  for (const path of ["old/a.png", "photo.png", "old/b.png"]) {
+    useAnnotationStore
+      .getState()
+      .addAnnotation(path, { id: path, labelId: "label", type: "point", points: [1, 2] });
+  }
+  useAnnotationStore.getState().undo();
+  useAnnotationStore.getState().removeImages(["old/a.png", "old/b.png"]);
+  expect(useAnnotationStore.getState().annotationsByImage["photo.png"]).toHaveLength(1);
+  useAnnotationStore.getState().redo();
+  expect(useAnnotationStore.getState().annotationsByImage["old/b.png"]).toBeUndefined();
+  useAnnotationStore.getState().undo();
+  useAnnotationStore.getState().undo();
+  useAnnotationStore.getState().redo();
+  expect(useAnnotationStore.getState().annotationsByImage["old/a.png"]).toBeUndefined();
+  expect(useAnnotationStore.getState().annotationsByImage["photo.png"]).toHaveLength(1);
+});
