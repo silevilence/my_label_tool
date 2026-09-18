@@ -1,6 +1,7 @@
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   baseName,
+  joinPath,
   confirmReplaceCurrentAnnotations,
   detectYoloAnnotationFolder,
   loadImageSize,
@@ -120,15 +121,14 @@ export function useProjectActions({
 
     try {
       const savedPath = await exportSelectedFormatAs();
-      if (
-        savedPath &&
-        isBuiltInProjectFormat(selectedExportFormatId) &&
-        (!videos.length || selectedExportFormatId === "json")
-      ) {
+      if (!savedPath) return false;
+      if (isBuiltInProjectFormat(selectedExportFormatId)) {
         await updateProjectConfig(selectedExportFormatId, savedPath);
       }
+      return true;
     } catch (caughtError: unknown) {
       reportError(caughtError);
+      return false;
     }
   }
 
@@ -241,34 +241,12 @@ export function useProjectActions({
     return outputDir;
   }
 
-  async function exportYoloAnnotations() {
-    setError("");
-    try {
-      await writeYoloAnnotations(await buildExportData());
-    } catch (error) {
-      reportError(error);
-    }
-  }
-
   async function saveProjectExport() {
     setError("");
 
     try {
-      if (videos.length) {
-        const outputPath =
-          activeProjectConfig?.format === "json"
-            ? activeProjectConfig.annotationPath
-            : await selectExportJsonPath();
-        if (!outputPath) return false;
-        await exportAnnotationsJson(outputPath, withProjectMedia(await buildExportData(), videos));
-        await updateProjectConfig("json", outputPath);
-        return true;
-      }
-      if (!activeProjectConfig) {
-        throw new Error("当前没有可保存的项目配置，请先导入或另存为。");
-      }
-      if (selectedExportFormatId !== activeProjectConfig.format) {
-        throw new Error("当前导出格式与项目配置不一致，请先另存为。");
+      if (!activeProjectConfig || selectedExportFormatId !== activeProjectConfig.format) {
+        return await exportSelectedFormat();
       }
 
       await exportToProjectConfig(activeProjectConfig);
@@ -485,8 +463,18 @@ export function useProjectActions({
     const labelsFromConfig = config.labels.length > 0 ? config.labels : imported.labels;
 
     const openedConfig = { ...config, labels: labelsFromConfig };
+    const importedImages =
+      config.format === "coco" || config.format === "voc"
+        ? remapImportedAnnotationLabels(
+            imported.images,
+            imported.labels,
+            imported.labels.map(
+              (label) => labelsFromConfig.find((saved) => saved.name === label.name) ?? label,
+            ),
+          )
+        : imported.images;
     applyImportedAnnotations(
-      { ...imported, labels: labelsFromConfig },
+      { ...imported, images: importedImages, labels: labelsFromConfig },
       currentImages,
       openedConfig,
       configPath,
@@ -568,15 +556,37 @@ export function useProjectActions({
     currentImages: ImageFile[],
   ): Promise<ImportedAnnotations> {
     if (config.format === "coco") {
-      return parseCocoImport(await readTextFile(config.annotationPath));
+      return parseCocoImport(
+        await readTextFile(config.annotationPath),
+        currentImages.some((image) => /[\\/]/.test(image.name)),
+      );
     }
 
+    const groups = new Map<string, ImageFile[]>();
+    for (const image of currentImages) {
+      const name = image.name.replace(/\\/g, "/");
+      const directory = name.includes("/") ? name.slice(0, name.lastIndexOf("/")) : "";
+      const group = groups.get(directory) ?? [];
+      group.push(image);
+      groups.set(directory, group);
+    }
     if (config.format === "voc") {
-      return parseVocImport(await readImportFiles(config.annotationPath, "xml"));
+      const files: TextImportFile[] = [];
+      for (const directory of groups.keys())
+        files.push(...(await readImportFiles(joinPath(config.annotationPath, directory), "xml")));
+      return parseVocImport(
+        files,
+        currentImages.some((image) => /[\\/]/.test(image.name)),
+      );
     }
-
-    const files = await readImportFiles(config.annotationPath, "txt");
-    return parseYoloImport(files, await imageSizesByBaseName(currentImages), config.labels);
+    const imported: ImportedAnnotations = { labels: config.labels, images: [] };
+    for (const [directory, group] of groups) {
+      const files = await readImportFiles(joinPath(config.annotationPath, directory), "txt");
+      const parsed = parseYoloImport(files, await imageSizesByBaseName(group), config.labels);
+      imported.images.push(...parsed.images);
+      imported.labels = parsed.labels;
+    }
+    return imported;
   }
 
   function applyImportedAnnotations(
@@ -699,7 +709,6 @@ export function useProjectActions({
     cancelActivePluginExport,
     createProjectFromExternalYolo,
     exportSelectedFormat,
-    exportYoloAnnotations,
     importAnnotations,
     maybeLoadProjectConfig,
     pluginExportProgress,

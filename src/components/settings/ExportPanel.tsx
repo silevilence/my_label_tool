@@ -7,7 +7,6 @@ import type { PluginExportProgressState } from "../../hooks/useProjectActions";
 import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface ExportPanelProps {
-  onExportYolo?: () => void;
   videoFrameCount?: number;
   pendingVideoCount?: number;
   hasVideos?: boolean;
@@ -26,7 +25,6 @@ interface ExportPanelProps {
 }
 
 export function ExportPanel({
-  onExportYolo,
   videoFrameCount = 0,
   pendingVideoCount = 0,
   hasVideos = false,
@@ -61,7 +59,7 @@ export function ExportPanel({
       <select
         className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
         value={selectedFormatId}
-        disabled={isPluginExporting}
+        disabled={isSaving || isPluginExporting}
         onChange={changeFormat}
       >
         {EXPORT_TEMPLATES.map((template) => (
@@ -135,11 +133,7 @@ export function ExportPanel({
           className="rounded bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
           type="button"
           disabled={
-            disabled ||
-            (!hasVideos && selectedPluginFormat !== undefined) ||
-            !canSaveProject ||
-            isSaving ||
-            isPluginExporting
+            disabled || selectedDisabled || !canSaveProject || isSaving || isPluginExporting
           }
           onClick={onSaveProject}
         >
@@ -148,26 +142,16 @@ export function ExportPanel({
         <button
           className="rounded border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
-          disabled={disabled || selectedDisabled || isPluginExporting}
+          disabled={disabled || selectedDisabled || isSaving || isPluginExporting}
           onClick={onExport}
         >
           另存为
         </button>
       </div>
-      {hasVideos && onExportYolo && (
-        <div className="mt-3 border-t border-slate-800 pt-3">
-          <button
-            type="button"
-            disabled={disabled || isSaving || isPluginExporting}
-            onClick={onExportYolo}
-            className="w-full rounded border border-sky-700 px-3 py-2 text-sm text-sky-200 hover:bg-sky-950 disabled:opacity-40"
-          >
-            {videoText.yoloExport}
-          </button>
-          <p className="mt-2 text-xs text-slate-400">
-            {videoText.yoloFrameCount(videoFrameCount, pendingVideoCount)}
-          </p>
-        </div>
+      {hasVideos && selectedFormatId === "yolo" && (
+        <p className="mt-2 text-xs text-slate-400">
+          {videoText.yoloFrameCount(videoFrameCount, pendingVideoCount)}
+        </p>
       )}
     </section>
   );

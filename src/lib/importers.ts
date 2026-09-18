@@ -184,7 +184,7 @@ export function parseNativeJsonImport(text: string): ImportedAnnotations {
   return { labels, images };
 }
 
-export function parseCocoImport(text: string): ImportedAnnotations {
+export function parseCocoImport(text: string, preservePaths = false): ImportedAnnotations {
   const value: unknown = JSON.parse(text);
   if (!isRecord(value)) {
     throw new Error("COCO 标注必须是 JSON 对象");
@@ -234,7 +234,11 @@ export function parseCocoImport(text: string): ImportedAnnotations {
     }
     const id = scalarId(image.id, `images[${index}].id`);
     const name =
-      typeof image.file_name === "string" && image.file_name ? fileName(image.file_name) : id;
+      typeof image.file_name === "string" && image.file_name
+        ? preservePaths
+          ? image.file_name.replace(/\\/g, "/")
+          : fileName(image.file_name)
+        : id;
     return {
       name,
       annotations: annotationsByImageId.get(id) ?? [],
@@ -244,8 +248,11 @@ export function parseCocoImport(text: string): ImportedAnnotations {
   return { labels, images };
 }
 
-export function parseVocImport(files: TextImportFile[]): ImportedAnnotations {
-  const parsedImages = files.map((file) => parseVocFile(file));
+export function parseVocImport(
+  files: TextImportFile[],
+  preservePaths = false,
+): ImportedAnnotations {
+  const parsedImages = files.map((file) => parseVocFile(file, preservePaths));
   const labelNames = unique(
     parsedImages.flatMap((image) => image.annotations.map((item) => item.labelName)),
   );
@@ -371,7 +378,10 @@ export function parseExternalYoloImport(
   return { imported: { labels, images }, summary };
 }
 
-function parseVocFile(file: TextImportFile): {
+function parseVocFile(
+  file: TextImportFile,
+  preservePaths = false,
+): {
   name: string;
   annotations: Array<{ labelName: string; points: number[] }>;
 } {
@@ -383,7 +393,7 @@ function parseVocFile(file: TextImportFile): {
   const name = firstText(document, "filename") || `${baseName(file.name)}.jpg`;
   const objects = Array.from(document.getElementsByTagName("object"));
   return {
-    name: fileName(name),
+    name: preservePaths ? name.replace(/\\/g, "/") : fileName(name),
     annotations: objects.map((object, index) => {
       const labelName = firstText(object, "name");
       if (!labelName) {

@@ -1,11 +1,18 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useProjectActions } from "./useProjectActions";
-import { projectVideos, mergeProjectImages } from "../lib/project-media";
+import { projectVideos, mergeProjectImages, projectFrameIndices } from "../lib/project-media";
 import { useAnnotationStore } from "../store/useAnnotationStore";
-import { exportTextFiles, exportAnnotationsJson, selectExportFolder } from "../lib/tauri-api";
+import {
+  exportTextFiles,
+  exportAnnotationsJson,
+  selectExportFolder,
+  listTextFiles,
+  readTextFile,
+} from "../lib/tauri-api";
 import type { AnnotationShape } from "../types/annotation";
+import type { ExportFormatId } from "../types/export";
 import { ExportPanel } from "../components/settings/ExportPanel";
 import { loadImageSize } from "../lib/app-utils";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/defaults/video";
@@ -15,6 +22,10 @@ vi.mock("../lib/tauri-api", async (original) => ({
   exportTextFiles: vi.fn(),
   exportAnnotationsJson: vi.fn(),
   selectExportFolder: vi.fn(),
+  selectExportPath: vi.fn().mockResolvedValue("C:/output/annotations.coco.json"),
+  listTextFiles: vi.fn(),
+  readTextFile: vi.fn(),
+  migratePluginConfigs: vi.fn().mockResolvedValue({ configs: [], issues: [] }),
 }));
 vi.mock("../lib/app-utils", async (original) => ({
   ...(await original<typeof import("../lib/app-utils")>()),
@@ -57,53 +68,76 @@ const existingConfig: ProjectConfig = {
   exportOptions: { format: "json" },
   settings: DEFAULT_PROJECT_SETTINGS,
 };
-function Harness({ existing = false }: { existing?: boolean }) {
+function Harness({
+  existing = false,
+  format = "json",
+  pendingOnly = false,
+}: {
+  existing?: boolean;
+  format?: ExportFormatId;
+  pendingOnly?: boolean;
+}) {
+  const [active, setActive] = useState<ProjectConfig | null>(existing ? existingConfig : null);
+  const [activePath, setActivePath] = useState(
+    existing ? "C:/project/my-label-tool.project.json" : "",
+  );
+  const [selected, setSelected] = useState(format);
   const annotations = useAnnotationStore((state) => state.annotationsByImage);
   actions = useProjectActions({
-    videos,
-    images,
+    videos: pendingOnly
+      ? projectVideos("C:/project", [{ sourcePath: "C:/one.mp4", folderPath: null, video: null }])
+      : videos,
+    images: pendingOnly ? [] : images,
     folderPath: "C:/project",
     labels: [{ id: "person", name: "人", color: "#ffffff", shapeType: "rect" }],
     annotationsByImage: annotations,
-    activeProjectConfig: existing ? existingConfig : null,
-    activeProjectConfigPath: existing ? "C:/project/my-label-tool.project.json" : "",
-    selectedExportFormatId: "json",
+    activeProjectConfig: active,
+    activeProjectConfigPath: activePath,
+    selectedExportFormatId: selected,
     customMappingText: "{}",
     pluginExportFormats: [],
     refreshPluginExtensions: async () => {},
     applyProjectTemplate: vi.fn(),
     clearProjectTemplate: vi.fn(),
-    replaceAnnotations: vi.fn(),
-    setActiveProjectConfig: config,
-    setActiveProjectConfigPath: vi.fn(),
+    replaceAnnotations: useAnnotationStore.getState().replaceAnnotations,
+    setActiveProjectConfig: (next) => {
+      config(next);
+      setActive(next);
+    },
+    setActiveProjectConfigPath: setActivePath,
     setError: error,
     setProjectTemplateId: vi.fn(),
-    setSelectedExportFormatId: vi.fn(),
+    setSelectedExportFormatId: setSelected,
   });
   return (
     <ExportPanel
       hasVideos
-      videoFrameCount={4}
+      videoFrameCount={pendingOnly ? 0 : 4}
       pendingVideoCount={1}
-      onExportYolo={() => void actions.exportYoloAnnotations()}
       customMappingText="{}"
       disabled={false}
       isSaving={false}
-      selectedFormatId="json"
+      selectedFormatId={selected}
       pluginFormats={[]}
       pluginExportProgress={null}
       canSaveProject
       onChangeCustomMappingText={vi.fn()}
       onCancelPluginExport={vi.fn()}
-      onChangeFormat={vi.fn()}
-      onExport={vi.fn()}
-      onSaveProject={vi.fn()}
+      onChangeFormat={setSelected}
+      onExport={() => void actions.exportSelectedFormat()}
+      onSaveProject={() => void actions.saveProjectExport()}
     />
   );
 }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();
+  vi.mocked(exportAnnotationsJson).mockResolvedValue(undefined);
+  vi.mocked(loadImageSize).mockImplementation(async (path) => ({
+    width: path.includes("/one/") ? 100 : 200,
+    height: 100,
+  }));
+  useAnnotationStore.getState().setFrameIndices(projectFrameIndices(videos));
   vi.mocked(selectExportFolder).mockResolvedValue("C:/output");
   vi.mocked(exportTextFiles).mockResolvedValue(undefined);
   const shape: AnnotationShape = {
@@ -125,16 +159,33 @@ beforeEach(() => {
   container = document.createElement("div");
   root = createRoot(container);
 });
+it("saves the selected YOLO format instead of the existing project's JSON format", async () => {
+  vi.mocked(exportAnnotationsJson).mockResolvedValue(undefined);
+  await act(async () => root.render(<Harness existing format="yolo" />));
+  await act(async () =>
+    [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "保存")!
+      .click(),
+  );
+  expect(exportTextFiles).toHaveBeenCalledOnce();
+  expect(exportAnnotationsJson).not.toHaveBeenCalledWith(
+    "C:/project/annotations.json",
+    expect.anything(),
+  );
+  expect(config).toHaveBeenLastCalledWith(
+    expect.objectContaining({ format: "yolo", annotationPath: "C:/output" }),
+  );
+});
 afterEach(async () => {
   await act(async () => root.unmount());
 });
 
-it("exports separate per-video frame txt files and empty frames from the explicit UI entry", async () => {
-  await act(async () => root.render(<Harness />));
+it("exports separate per-video frame txt files and empty frames from the shared format selector and Save button", async () => {
+  await act(async () => root.render(<Harness format="yolo" />));
   expect(container.textContent).toContain("1 个未抽帧视频不导出");
   await act(async () =>
     [...container.querySelectorAll("button")]
-      .find((button) => button.textContent === "导出 YOLO txt")!
+      .find((button) => button.textContent === "保存")!
       .click(),
   );
   expect(exportTextFiles).toHaveBeenCalledExactlyOnceWith("C:/output", [
@@ -146,14 +197,22 @@ it("exports separate per-video frame txt files and empty frames from the explici
     { path: "two/frame-000001.txt", content: "" },
   ]);
   expect(loadImageSize).toHaveBeenCalledExactlyOnceWith("C:/project/photo.png");
-  expect(config).not.toHaveBeenCalled();
-  expect(exportAnnotationsJson).not.toHaveBeenCalled();
+  expect(config).toHaveBeenCalledWith(
+    expect.objectContaining({ format: "yolo", annotationPath: "C:/output" }),
+  );
+  expect(exportAnnotationsJson).toHaveBeenCalledExactlyOnceWith(
+    "C:/project/my-label-tool.project.json",
+    expect.objectContaining({ format: "yolo" }),
+  );
+  expect(container.textContent).not.toContain("导出 YOLO txt");
 });
 it("writes nothing when the directory chooser is cancelled", async () => {
   vi.mocked(selectExportFolder).mockResolvedValue(null);
-  await act(async () => root.render(<Harness />));
-  await act(async () => actions.exportYoloAnnotations());
+  await act(async () => root.render(<Harness format="yolo" />));
+  await act(async () => actions.saveProjectExport());
   expect(exportTextFiles).not.toHaveBeenCalled();
+  expect(exportAnnotationsJson).not.toHaveBeenCalled();
+  expect(config).not.toHaveBeenCalled();
 });
 it("rejects unsupported shapes before choosing a directory or dropping annotations", async () => {
   useAnnotationStore.getState().replaceAnnotations({
@@ -161,8 +220,8 @@ it("rejects unsupported shapes before choosing a directory or dropping annotatio
       { id: "point", type: "point", labelId: "person", points: [10, 10] },
     ],
   });
-  await act(async () => root.render(<Harness />));
-  await act(async () => actions.exportYoloAnnotations());
+  await act(async () => root.render(<Harness format="yolo" />));
+  await act(async () => actions.saveProjectExport());
   expect(error).toHaveBeenCalledWith(expect.stringContaining("YOLO 只支持矩形"));
   expect(selectExportFolder).not.toHaveBeenCalled();
   expect(exportTextFiles).not.toHaveBeenCalled();
@@ -189,4 +248,89 @@ it("does not activate an updated project configuration if writing its file fails
   });
   expect(config).not.toHaveBeenCalled();
   expect(error).toHaveBeenLastCalledWith("disk full");
+});
+
+it("uses the dropdown for Save, reuses its destination, and Save As chooses a new directory", async () => {
+  await act(async () => root.render(<Harness existing />));
+  const select = container.querySelector("select")!;
+  await act(async () => {
+    select.value = "yolo";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await act(async () => actions.saveProjectExport());
+  await act(async () => actions.saveProjectExport());
+  expect(selectExportFolder).toHaveBeenCalledTimes(1);
+  expect(exportTextFiles).toHaveBeenCalledTimes(2);
+  vi.mocked(selectExportFolder).mockResolvedValue("C:/new-output");
+  await act(async () =>
+    [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "另存为")!
+      .click(),
+  );
+  expect(selectExportFolder).toHaveBeenCalledTimes(2);
+  expect(exportTextFiles).toHaveBeenLastCalledWith("C:/new-output", expect.any(Array));
+  expect(config).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      format: "yolo",
+      annotationPath: "C:/new-output",
+      settings: DEFAULT_PROJECT_SETTINGS,
+    }),
+  );
+});
+it.each(["yolo", "voc", "coco"] as const)(
+  "reopens %s video annotations without mixing same-named frames or losing label IDs",
+  async (format) => {
+    const files = new Map<string, string>();
+    const normalize = (path: string) => path.replace(/\\/g, "/").replace(/\/$/, "");
+    vi.mocked(exportAnnotationsJson).mockImplementation(async (path, value) => {
+      files.set(normalize(path), JSON.stringify(value));
+    });
+    vi.mocked(exportTextFiles).mockImplementation(async (folder, entries) => {
+      for (const file of entries) files.set(`${normalize(folder)}/${file.path}`, file.content);
+    });
+    vi.mocked(listTextFiles).mockImplementation(async (folder, extension) =>
+      [...files.keys()]
+        .filter(
+          (path) =>
+            path.slice(0, path.lastIndexOf("/")) === normalize(folder) &&
+            path.endsWith(`.${extension}`),
+        )
+        .map((path) => ({ path, name: path.slice(path.lastIndexOf("/") + 1) })),
+    );
+    vi.mocked(readTextFile).mockImplementation(async (path) => {
+      const result = files.get(normalize(path));
+      if (result === undefined) throw new Error(`missing ${path}`);
+      return result;
+    });
+    await act(async () => root.render(<Harness format={format} />));
+    await act(async () => actions.saveProjectExport());
+    await act(async () => useAnnotationStore.getState().replaceAnnotations({}));
+    await act(async () => actions.maybeLoadProjectConfig("C:/project", images));
+    const annotations = useAnnotationStore.getState().annotationsByImage;
+    expect(annotations[videos[0].images[0].path]).toEqual([]);
+    expect(annotations[videos[1].images[1].path]).toEqual([]);
+    expect(annotations[videos[0].images[1].path][0]).toMatchObject({
+      labelId: "person",
+      points: [10, 20, 20, 40],
+      frameIndex: 30,
+    });
+    expect(annotations[videos[1].images[0].path][0]).toMatchObject({
+      labelId: "person",
+      points: [10, 20, 20, 40],
+      frameIndex: 0,
+    });
+  },
+);
+
+it("saves only classes for an unprepared-video project and reports zero exported frames", async () => {
+  await act(async () => root.render(<Harness format="yolo" pendingOnly />));
+  expect(container.textContent).toContain("0 张已抽取视频帧");
+  await act(async () => actions.saveProjectExport());
+  expect(exportTextFiles).toHaveBeenCalledExactlyOnceWith("C:/output", [
+    { path: "classes.txt", content: "人\n" },
+  ]);
+  expect(exportAnnotationsJson).toHaveBeenCalledExactlyOnceWith(
+    "C:/project/my-label-tool.project.json",
+    expect.objectContaining({ format: "yolo" }),
+  );
 });

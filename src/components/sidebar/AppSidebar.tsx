@@ -24,7 +24,6 @@ import { ProjectMediaList } from "./ProjectMediaList";
 import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface AppSidebarProps {
-  exportYoloAnnotations?: () => void;
   reextractVideo?: (source: string) => void;
   openProjectSettings?: () => void;
   videos?: LoadedProjectVideo[];
@@ -88,7 +87,6 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
-  exportYoloAnnotations,
   reextractVideo,
   openProjectSettings,
   videos = [],
@@ -326,14 +324,10 @@ export function AppSidebar({
       </div>
 
       <ExportPanel
-        onExportYolo={exportYoloAnnotations}
         videoFrameCount={videos.reduce((sum, video) => sum + video.images.length, 0)}
         pendingVideoCount={videos.filter((video) => !video.video).length}
         hasVideos={videos.length > 0}
-        canSaveProject={
-          (activeProjectConfig !== null && selectedExportFormatId === activeProjectConfig.format) ||
-          videos.length > 0
-        }
+        canSaveProject={images.length > 0 || videos.length > 0}
         customMappingText={customMappingText}
         disabled={!folderPath}
         isSaving={isSaving}

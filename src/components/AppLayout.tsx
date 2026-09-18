@@ -65,7 +65,6 @@ const ImageSearchDialog = lazy(async () => {
 });
 
 interface AppLayoutProps {
-  exportYoloAnnotations?: () => void;
   reextractVideo?: (source: string) => void;
   openProjectSettings?: () => void;
   projectSettings?: ReactNode;
@@ -205,7 +204,6 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({
-  exportYoloAnnotations,
   reextractVideo,
   openProjectSettings,
   projectSettings,
@@ -429,7 +427,6 @@ export function AppLayout({
         }}
       >
         <AppSidebar
-          exportYoloAnnotations={exportYoloAnnotations}
           reextractVideo={reextractVideo}
           openProjectSettings={openProjectSettings}
           videos={videos}

@@ -9,7 +9,6 @@ export const VIDEO_ZH_CN = {
     mode === "fps" ? `${value} FPS` : `每 ${value} 个源帧抽取一帧`,
   pendingVideos: (count: number) => `当前项目有 ${count} 个视频尚未抽帧。`,
   batchSettingsHint: "使用已保存的项目抽帧设置。修改参数后请先保存。",
-  yoloExport: "导出 YOLO txt",
   yoloDescription:
     "每张图片和已抽取视频帧各生成同名 txt，按视频子目录区分；空帧生成空文件，另附 classes.txt。不复制图片。",
   yoloFrameCount: (frames: number, pending: number) =>
