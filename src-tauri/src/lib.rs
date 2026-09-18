@@ -21,6 +21,7 @@ pub fn run() {
             commands::import_video,
             commands::cancel_video_import,
             commands::load_video_project,
+            commands::list_project_videos,
             commands::list_image_files,
             commands::recycle_image_file,
             commands::export_annotations_json,

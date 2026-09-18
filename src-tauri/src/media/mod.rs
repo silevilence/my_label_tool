@@ -1,6 +1,7 @@
 pub mod image_deletion;
 pub mod onnx_metadata;
 pub mod prelabel;
+pub mod project_media;
 pub mod pt_conversion;
 pub mod video;
 

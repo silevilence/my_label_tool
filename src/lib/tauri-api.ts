@@ -1,6 +1,6 @@
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
-import type { VideoImportResult, VideoProject } from "../types/video";
+import type { ProjectVideo, VideoImportResult, VideoProject } from "../types/video";
 import { VIDEO_ZH_CN as videoText } from "../i18n/video.zh-CN";
 
 export async function selectVideoFile(): Promise<string | null> {
@@ -22,6 +22,9 @@ export function cancelVideoImport(): Promise<void> {
 }
 export function loadVideoProject(folderPath: string): Promise<VideoProject | null> {
   return invoke("load_video_project", { folderPath });
+}
+export function listProjectVideos(folderPath: string): Promise<ProjectVideo[]> {
+  return invoke("list_project_videos", { folderPath });
 }
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import type { ExportData, TextExportFile } from "../types/export";

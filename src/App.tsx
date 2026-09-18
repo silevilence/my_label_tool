@@ -2,14 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction 
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { AppLayout } from "./components/AppLayout";
-import type { VideoProject } from "./types/video";
-import { videoFrameIndices, videoImages } from "./lib/video-images";
-import { VideoImportBar } from "./components/video/VideoImportBar";
+import type { ProjectVideo } from "./types/video";
+import {
+  projectVideos,
+  projectFrameIndices,
+  mergeProjectImages,
+  videoForImage,
+} from "./lib/project-media";
+import { VideoImportDialog } from "./components/video/VideoImportDialog";
 import { VideoTimeline } from "./components/video/VideoTimeline";
-import { VideoExportButton } from "./components/video/VideoExportButton";
 import { VideoInterpolationPanel } from "./components/video/VideoInterpolationPanel";
 import { useVideoImport } from "./hooks/useVideoImport";
-import { listImageFiles } from "./lib/tauri-api";
+import { selectExportFolder, selectVideoFile } from "./lib/tauri-api";
 import { VIDEO_ZH_CN as videoText } from "./i18n/video.zh-CN";
 import { DeleteImageDialog } from "./components/DeleteImageDialog";
 import { useImageDeletion } from "./hooks/useImageDeletion";
@@ -78,9 +82,13 @@ function App() {
   const panStateRef = useRef<PanState | null>(null);
   const suppressContextMenuRef = useRef(false);
   const [folderPath, setFolderPath] = useState("");
-  const [video, setVideo] = useState<VideoProject | null>(null);
+  const [videoEntries, setVideoEntries] = useState<ProjectVideo[]>([]);
+  const [videoImportSource, setVideoImportSource] = useState<string | null>(null);
   const [images, setImages] = useState<ImageFile[]>([]);
   const [selectedPath, setSelectedPath] = useState("");
+  const videos = useMemo(() => projectVideos(folderPath, videoEntries), [folderPath, videoEntries]);
+  const selectedVideo = videoForImage(videos, selectedPath);
+  const video = selectedVideo?.scopedVideo ?? null;
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [imageView, setImageView] = useState<ImageLayout | null>(null);
   const [contextMenu, setContextMenu] = useState<CanvasContextMenu | null>(null);
@@ -310,7 +318,7 @@ function App() {
     retryPluginConfigMigrations,
     saveProjectExport,
   } = useProjectActions({
-    video,
+    videos,
     activeProjectConfig,
     activeProjectConfigPath,
     annotationsByImage,
@@ -357,7 +365,7 @@ function App() {
     setError,
   });
   function requestDeleteImage(path: string) {
-    if (video) {
+    if (videoForImage(videos, path)) {
       setError(videoText.deleteDisabled);
       return;
     }
@@ -400,7 +408,7 @@ function App() {
     showLabelSwitchHint,
   });
   const openFolder = useOpenFolder({
-    setVideo,
+    setProjectVideos: setVideoEntries,
     maybeLoadProjectConfig,
     setError,
     setFolderPath,
@@ -408,15 +416,44 @@ function App() {
     setSelectedPath,
   });
   const videoImport = useVideoImport(async (result) => {
-    const nextImages = videoImages(result.video, await listImageFiles(result.folderPath));
-    useAnnotationStore.getState().setFrameIndices(videoFrameIndices(result.video, nextImages));
-    setVideo(result.video);
-    setFolderPath(result.folderPath);
+    const entry = {
+      sourcePath: result.video.sourcePath,
+      folderPath: result.folderPath,
+      video: result.video,
+    };
+    const nextEntries = [
+      ...videoEntries.filter((asset) => asset.sourcePath !== entry.sourcePath),
+      entry,
+    ];
+    const nextVideos = projectVideos(folderPath, nextEntries);
+    const nextImages = mergeProjectImages(images, nextVideos);
+    useAnnotationStore.getState().setFrameIndices(projectFrameIndices(nextVideos));
+    setVideoEntries(nextEntries);
     setImages(nextImages);
-    setSelectedPath(nextImages[0]?.path ?? "");
-    replaceAnnotations({});
-    await maybeLoadProjectConfig(result.folderPath, nextImages);
+    setSelectedPath(nextVideos[nextVideos.length - 1].images[0]?.path ?? "");
+    setVideoImportSource(null);
   }, setError);
+  async function addVideo(source?: string) {
+    try {
+      const path = source || (await selectVideoFile());
+      if (!path) return;
+      const existing = videos.find(
+        (asset) => asset.sourcePath.toLowerCase() === path.toLowerCase(),
+      );
+      if (existing?.images.length) {
+        setSelectedPath(existing.images[0].path);
+        return;
+      }
+      if (!folderPath) {
+        const folder = await selectExportFolder();
+        if (!folder) return;
+        if (!(await openFolder(folder))) return;
+      }
+      setVideoImportSource(path);
+    } catch (error) {
+      setError(String(error));
+    }
+  }
   const imageLayout = imageView;
   const {
     changeAnnotationLabel,
@@ -640,7 +677,7 @@ function App() {
 
   useEffect(() => {
     function finishPolygonFromKeyboard(event: KeyboardEvent) {
-      if (videoImport.busy) return;
+      if (videoImport.busy || videoImportSource !== null) return;
       if (isEditableTarget(event.target) || currentShapeType !== "polygon") {
         return;
       }
@@ -661,11 +698,13 @@ function App() {
     selectedPath,
     currentLabel,
     videoImport.busy,
+    videoImportSource,
   ]);
 
   useKeyboardShortcuts({
     enabled:
       !videoImport.busy &&
+      videoImportSource === null &&
       !imageDeletion.target &&
       !isShortcutSettingsOpen &&
       !isPrelabelSettingsOpen &&
@@ -708,15 +747,13 @@ function App() {
   return (
     <>
       <AppLayout
-        workspaceDisabled={videoImport.busy}
-        videoToolbar={
+        workspaceDisabled={videoImport.busy || videoImportSource !== null}
+        videos={videos}
+        addVideo={(source) => {
+          if (!imageDeletionBusy && !imageDeletion.target) void addVideo(source);
+        }}
+        canvasFooter={
           <>
-            <VideoImportBar
-              busy={videoImport.busy}
-              disabled={imageDeletionBusy || Boolean(imageDeletion.target)}
-              onImport={(interval) => void videoImport.start(interval)}
-              onCancel={() => void videoImport.cancel()}
-            />
             {video && (
               <VideoTimeline
                 video={video}
@@ -726,22 +763,13 @@ function App() {
                   const frame = images.find((image) => image.name === name);
                   if (frame) setSelectedPath(frame.path);
                 }}
-              >
-                <VideoExportButton
-                  video={video}
-                  images={images}
-                  labels={labels}
-                  annotations={annotationsByImage}
-                  disabled={videoImport.busy || imageDeletionBusy}
-                  onMessage={setError}
-                />
-              </VideoTimeline>
+              />
             )}
             {video && (
               <VideoInterpolationPanel
-                key={folderPath}
+                key={selectedVideo?.sourcePath}
                 video={video}
-                images={images}
+                images={selectedVideo?.images ?? []}
                 selectedPath={selectedPath}
                 selectedShape={selectedShape}
                 disabled={videoImport.busy || imageDeletionBusy}
@@ -751,7 +779,7 @@ function App() {
             )}
           </>
         }
-        canDeleteImage={!video && !imageDeletionBusy && !imageDeletion.target}
+        canDeleteImage={!imageDeletionBusy && !imageDeletion.target}
         requestDeleteImage={requestDeleteImage}
         activeProjectConfig={activeProjectConfig}
         annotationToDelete={annotationToDelete}
@@ -873,6 +901,15 @@ function App() {
         updateShortcut={updateShortcut}
         zoomFromKeyboard={zoomFromKeyboard}
       />
+      {videoImportSource !== null && (
+        <VideoImportDialog
+          sourcePath={videoImportSource}
+          busy={videoImport.busy}
+          onClose={() => setVideoImportSource(null)}
+          onCancel={() => void videoImport.cancel()}
+          onImport={(interval) => void videoImport.start(interval, folderPath, videoImportSource)}
+        />
+      )}
       {imageDeletion.target && (
         <DeleteImageDialog
           target={imageDeletion.target}

@@ -43,3 +43,12 @@ pub async fn load_video_project(folder_path: PathBuf) -> Result<Option<VideoProj
         .await
         .map_err(text::video_failed)?
 }
+
+#[tauri::command]
+pub async fn list_project_videos(
+    folder_path: PathBuf,
+) -> Result<Vec<crate::models::video::ProjectVideo>, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::media::project_media::list(&folder_path))
+        .await
+        .map_err(text::video_failed)?
+}

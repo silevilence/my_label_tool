@@ -49,6 +49,16 @@ it("preserves the active project after failure and permits retry", async () => {
   await act(async () => controls.start(5));
   expect(api.importVideo).toHaveBeenCalledTimes(2);
 });
+it("adds a selected video to the existing project without replacement confirmation or folder chooser", async () => {
+  const result = { folderPath: "project/new", video: { frames: [] } };
+  api.importVideo.mockResolvedValue(result);
+  await act(async () => controls.start(3, "project", "second.mp4"));
+  expect(api.importVideo).toHaveBeenCalledWith("second.mp4", "project", 3);
+  expect(api.confirmAction).not.toHaveBeenCalled();
+  expect(api.selectExportFolder).not.toHaveBeenCalled();
+  expect(api.selectVideoFile).not.toHaveBeenCalled();
+  expect(imported).toHaveBeenCalledWith(result);
+});
 it("does not import after cancelling either chooser or confirmation", async () => {
   api.confirmAction.mockResolvedValueOnce(false);
   await act(async () => controls.start(1));

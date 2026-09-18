@@ -51,6 +51,7 @@ import { PLUGIN_ZH_CN as pluginText } from "../i18n/plugin.zh-CN";
 import { PROJECT_ZH_CN as projectText } from "../i18n/project.zh-CN";
 import { mergeImportedLabels, remapImportedAnnotationLabels } from "../lib/yolo-label-merge";
 import type { VideoProject } from "../types/video";
+import { withProjectMedia, type LoadedProjectVideo } from "../lib/project-media";
 
 export interface PluginExportProgressState {
   exportId: string;
@@ -62,6 +63,7 @@ export interface PluginExportProgressState {
 
 interface UseProjectActionsParams {
   video?: VideoProject | null;
+  videos?: LoadedProjectVideo[];
   activeProjectConfig: ProjectConfig | null;
   activeProjectConfigPath: string;
   annotationsByImage: Record<string, AnnotationShape[]>;
@@ -84,6 +86,7 @@ interface UseProjectActionsParams {
 
 export function useProjectActions({
   video = null,
+  videos = [],
   activeProjectConfig,
   activeProjectConfigPath,
   annotationsByImage,
@@ -116,7 +119,11 @@ export function useProjectActions({
 
     try {
       const savedPath = await exportSelectedFormatAs();
-      if (savedPath && isBuiltInProjectFormat(selectedExportFormatId)) {
+      if (
+        savedPath &&
+        isBuiltInProjectFormat(selectedExportFormatId) &&
+        (!videos.length || selectedExportFormatId === "json")
+      ) {
         await updateProjectConfig(selectedExportFormatId, savedPath);
       }
     } catch (caughtError: unknown) {
@@ -132,7 +139,7 @@ export function useProjectActions({
       if (!outputPath) {
         return null;
       }
-      await exportAnnotationsJson(outputPath, exportData);
+      await exportAnnotationsJson(outputPath, withProjectMedia(exportData, videos));
       return outputPath;
     }
 
@@ -234,6 +241,16 @@ export function useProjectActions({
     setError("");
 
     try {
+      if (videos.length) {
+        const outputPath =
+          activeProjectConfig?.format === "json"
+            ? activeProjectConfig.annotationPath
+            : await selectExportJsonPath();
+        if (!outputPath) return false;
+        await exportAnnotationsJson(outputPath, withProjectMedia(await buildExportData(), videos));
+        await updateProjectConfig("json", outputPath);
+        return true;
+      }
       if (!activeProjectConfig) {
         throw new Error("当前没有可保存的项目配置，请先导入或另存为。");
       }
@@ -254,7 +271,7 @@ export function useProjectActions({
     const exportData = await buildExportData();
 
     if (config.format === "json") {
-      await exportAnnotationsJson(config.annotationPath, exportData);
+      await exportAnnotationsJson(config.annotationPath, withProjectMedia(exportData, videos));
     } else if (config.format === "coco") {
       await exportAnnotationsJson(config.annotationPath, exportCoco(exportData));
     } else if (config.format === "voc") {
@@ -613,10 +630,18 @@ export function useProjectActions({
         })),
       };
     }
+    const videoSizes = new Map(
+      videos.flatMap((asset) =>
+        asset.images.map(
+          (image) =>
+            [image.path, { width: asset.video!.width, height: asset.video!.height }] as const,
+        ),
+      ),
+    );
     const exportImages = await Promise.all(
       images.map(async (image) => ({
         ...image,
-        ...(await loadImageSize(image.path)),
+        ...(videoSizes.get(image.path) ?? (await loadImageSize(image.path))),
         annotations: annotationsByImage[image.path] ?? [],
       })),
     );

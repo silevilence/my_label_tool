@@ -1,5 +1,47 @@
 # 视频标注开发与验收记录
 
+## 混合项目与 UI 整合复审（2026-09-18）
+
+针对用户反馈「顶部视频条与现有 UI 脱节」，范围覆盖菜单、素材列表、画布底部、
+项目加载、添加视频、统一保存/导出，以及图片与多视频混合项目。
+现有 slate/sky 样式和侧栏布局保持一致，移除 VideoImportBar；本轮仍不使用 Computer Use。
+
+完成行为：
+
+- 项目目录同时显示图片、待抽帧视频、已抽帧视频；视频为独立素材条目，选中后展示帧。
+- 时间轴和插值只出现在选中视频的画布底部；切回图片隐藏，重新选择视频恢复此前帧位置。
+- 视频添加到当前目录，不清空其它素材、标签、标注或历史；已存在的视频直接定位。
+- 原生 JSON 共用保存/另存为及 Ctrl+S，附带可选版本化 projectMedia；COCO/VOC/YOLO 另存为不改变混合项目的原生保存配置。
+- 多视频帧使用子目录前缀避免重名；插值仅处理当前视频，即使跨视频轨迹 ID 相同也不合并。
+
+审核后修复：
+
+| 问题 | 决策及修复 | 证据 |
+| --- | --- | --- |
+| 原视频导入替换整个项目，顶部控件脱离素材和导出流程 | 完全采纳；改为项目内追加、侧栏统一素材、画布底部控件及原生保存 | `src/components/AppLayout.tsx:637`、`src/components/sidebar/AppSidebar.tsx:470`、`src/lib/project-media.ts:54` |
+| 相同帧文件名/轨迹 ID 会导致多个视频相互覆盖 | 完全采纳；给帧添加项目相对目录命名空间，插值接收当前视频帧集 | `src/lib/project-media.ts:11`；project-media.test.ts 重名帧、轨迹隔离、YOLO 输出路径及原生回读测试 |
+| 旧单视频目录新增视频后重开可能只枚举根目录视频 | 完全采纳；根目录元数据作为一个素材保留，继续扫描子目录 | `src-tauri/src/media/project_media.rs:6`、`:85` 的旧目录扩展回归 |
+
+正式插件边界审核（AGENTS.md §10，ADR 0003–0007）：
+
+| 维度 | 结论与证据 | 约束 |
+| --- | --- | --- |
+| 契约与 Schema | 通过；ProjectVideo 两端对应（`src/types/video.ts:24`、`src-tauri/src/models/video.rs:33`）；projectMedia.schema.json 通过 AJV 校验，原生 JSON 附加元数据不传入插件 exportData | §10 契约先行、边界影响评估 |
+| ID 与版本分层 | 通过；没有改变插件 ID、宿主 API、能力或协议版本；新增宿主元数据独立 schemaVersion 1 | §10 版本分层，ADR 0007 |
+| 能力声明 | 通过；无插件能力变化，继续使用原 exporter/prelabel 握手与执行流程 | §10 能力声明优先，ADR 0003/0004 |
+| 向后兼容 | 通过；ProjectConfig 保持 schemaVersion 1，普通图片及旧单视频目录回归通过；labels/images 原生解析保持兼容 | §10 向后兼容，ADR 0006 |
+| 权限与隔离 | 通过；`src-tauri/src/commands/video.rs:48` 仅宿主枚举入口，未加入插件协议；帧均在项目目录内，插件继续受原代理和权限约束 | §10 权限最小化，ADR 0003/0005 |
+| 目录与工程约定 | 通过；扫描在 media/project_media，命令只转发，Tauri 调用集中封装，新文案集中 i18n；未新增依赖 | §6，§10 目录归属 |
+| 测试 | 通过；完整 App DOM 测试覆盖素材切换、时间轴归属、添加第三个视频保留原标注；混合 JSON 保存重开与 Rust 枚举测试覆盖多视频，既有插件 conformance 继续执行 | §7，§10 契约先行，ADR 0003/0004 |
+
+没有发现插件契约违规或规范缺陷。验证命令为 `scripts/verify-video-support.ps1`；
+完整输出保留在 git 忽略的 `docs/verification/video-project-ui-checks.log`。
+结果：前端 41 个文件、267 项测试通过，行覆盖率 94.51%；typecheck、lint、
+clippy（-D warnings）、前端生产构建均通过。Rust 224 项通过、12 项 ignore，
+conformance 1 项通过；真实 FFmpeg ignore 用例另行显式执行并通过。
+最后的导出面板保存按钮调整再次通过 typecheck、lint 和 8 项相关回归。
+自动化已覆盖组件结构与交互；没有声称执行实际桌面标注或视觉验收。
+
 ## 全量审核与修复（2026-09-18）
 
 范围：五个任务提交 `42eca95`、`cf969d3`、`5863d6a`、`91f45e7`、`b6fe354`，

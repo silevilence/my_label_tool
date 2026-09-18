@@ -43,6 +43,7 @@ import type { usePrelabelModels } from "../hooks/usePrelabelModels";
 import type { PrelabelClassMapping } from "../types/prelabel";
 import type { PluginExportFormatDescriptor, PluginPrelabelSourceDescriptor } from "../types/plugin";
 import type { PluginExportProgressState } from "../hooks/useProjectActions";
+import type { LoadedProjectVideo } from "../lib/project-media";
 
 const ShortcutSettings = lazy(async () => {
   const settings = await import("./settings/ShortcutSettings");
@@ -63,7 +64,9 @@ const ImageSearchDialog = lazy(async () => {
 
 interface AppLayoutProps {
   workspaceDisabled?: boolean;
-  videoToolbar?: ReactNode;
+  canvasFooter?: ReactNode;
+  videos?: LoadedProjectVideo[];
+  addVideo?: (source?: string) => void;
   canDeleteImage: boolean;
   requestDeleteImage: (path: string) => void;
   activeProjectConfig: ProjectConfig | null;
@@ -195,7 +198,9 @@ interface AppLayoutProps {
 
 export function AppLayout({
   workspaceDisabled = false,
-  videoToolbar,
+  canvasFooter,
+  videos = [],
+  addVideo,
   canDeleteImage,
   requestDeleteImage,
   activeProjectConfig,
@@ -400,7 +405,6 @@ export function AppLayout({
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
-      {videoToolbar}
       <div
         className={`flex min-h-0 flex-1 ${workspaceDisabled ? "pointer-events-none opacity-60" : ""}`}
         onKeyDownCapture={(event) => {
@@ -411,6 +415,8 @@ export function AppLayout({
         }}
       >
         <AppSidebar
+          videos={videos}
+          addVideo={addVideo}
           canDeleteImage={canDeleteImage}
           requestDeleteImage={requestDeleteImage}
           activeProjectConfig={activeProjectConfig}
@@ -469,159 +475,166 @@ export function AppLayout({
           updateStatus={updateStatus}
         />
 
-        <div
-          ref={canvasHostRef}
-          className={`relative h-full min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : canvasCursorClass}`}
-          onMouseLeave={() => setCanvasPointer(null)}
-          onMouseMove={updateCanvasPointer}
-        >
-          {selectedImage && loadedImage && imageLayout ? (
-            <>
-              <Stage
-                width={canvasSize.width}
-                height={canvasSize.height}
-                onMouseDown={handleStageMouseDown}
-                onMouseMove={handleStageMouseMove}
-                onMouseUp={handleStageMouseUp}
-                onWheel={handleStageWheel}
-                onContextMenu={openContextMenu}
-              >
-                <Layer>
-                  <KonvaImage
-                    height={imageLayout.height}
-                    image={loadedImage}
-                    imageSmoothingEnabled={!isLargeImage(loadedImage)}
-                    name="image"
-                    perfectDrawEnabled={false}
-                    width={imageLayout.width}
-                    x={imageLayout.x}
-                    y={imageLayout.y}
-                  />
-                  {annotations.map((annotation) => {
-                    const label = labelById.get(annotation.labelId) ?? labels[0];
-                    const commonProps = {
-                      annotation,
-                      imageLayout,
-                      interactionMode,
-                      isHighlighted: annotation.id === highlightedShapeId,
-                      isSelected: annotation.id === selectedShapeId,
-                      isPanning,
-                      key: annotation.id,
-                      label,
-                      showLabel: labelDisplaySettings[interactionMode],
-                      onContextMenu: openContextMenu,
-                      onPanStart: startPanning,
-                      onSelect: selectShape,
-                    };
-
-                    if (annotation.type === "polygon") {
-                      return (
-                        <AnnotationPolygon {...commonProps} onVertexDragEnd={handleVertexDragEnd} />
-                      );
-                    }
-
-                    if (annotation.type === "point") {
-                      return (
-                        <AnnotationPoint {...commonProps} onPointDragEnd={handlePointDragEnd} />
-                      );
-                    }
-
-                    return (
-                      <AnnotationRect
-                        {...commonProps}
-                        rectRef={selectedRectRef}
-                        onDragEnd={handleDragEnd}
-                        onTransformEnd={handleTransformEnd}
-                      />
-                    );
-                  })}
-                  {draftRect && (
-                    <Rect
-                      {...draftRect}
-                      dash={[6, 4]}
-                      stroke={currentLabel.color}
-                      strokeWidth={2}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div
+            ref={canvasHostRef}
+            className={`relative min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : canvasCursorClass}`}
+            onMouseLeave={() => setCanvasPointer(null)}
+            onMouseMove={updateCanvasPointer}
+          >
+            {selectedImage && loadedImage && imageLayout ? (
+              <>
+                <Stage
+                  width={canvasSize.width}
+                  height={canvasSize.height}
+                  onMouseDown={handleStageMouseDown}
+                  onMouseMove={handleStageMouseMove}
+                  onMouseUp={handleStageMouseUp}
+                  onWheel={handleStageWheel}
+                  onContextMenu={openContextMenu}
+                >
+                  <Layer>
+                    <KonvaImage
+                      height={imageLayout.height}
+                      image={loadedImage}
+                      imageSmoothingEnabled={!isLargeImage(loadedImage)}
+                      name="image"
+                      perfectDrawEnabled={false}
+                      width={imageLayout.width}
+                      x={imageLayout.x}
+                      y={imageLayout.y}
                     />
-                  )}
-                  {draftPolygonPoints && (
-                    <Line
-                      dash={[6, 4]}
-                      listening={false}
-                      points={draftPolygonPoints}
-                      stroke={currentLabel.color}
-                      strokeWidth={2}
+                    {annotations.map((annotation) => {
+                      const label = labelById.get(annotation.labelId) ?? labels[0];
+                      const commonProps = {
+                        annotation,
+                        imageLayout,
+                        interactionMode,
+                        isHighlighted: annotation.id === highlightedShapeId,
+                        isSelected: annotation.id === selectedShapeId,
+                        isPanning,
+                        key: annotation.id,
+                        label,
+                        showLabel: labelDisplaySettings[interactionMode],
+                        onContextMenu: openContextMenu,
+                        onPanStart: startPanning,
+                        onSelect: selectShape,
+                      };
+
+                      if (annotation.type === "polygon") {
+                        return (
+                          <AnnotationPolygon
+                            {...commonProps}
+                            onVertexDragEnd={handleVertexDragEnd}
+                          />
+                        );
+                      }
+
+                      if (annotation.type === "point") {
+                        return (
+                          <AnnotationPoint {...commonProps} onPointDragEnd={handlePointDragEnd} />
+                        );
+                      }
+
+                      return (
+                        <AnnotationRect
+                          {...commonProps}
+                          rectRef={selectedRectRef}
+                          onDragEnd={handleDragEnd}
+                          onTransformEnd={handleTransformEnd}
+                        />
+                      );
+                    })}
+                    {draftRect && (
+                      <Rect
+                        {...draftRect}
+                        dash={[6, 4]}
+                        stroke={currentLabel.color}
+                        strokeWidth={2}
+                      />
+                    )}
+                    {draftPolygonPoints && (
+                      <Line
+                        dash={[6, 4]}
+                        listening={false}
+                        points={draftPolygonPoints}
+                        stroke={currentLabel.color}
+                        strokeWidth={2}
+                      />
+                    )}
+                    {annotationGuideLines && (
+                      <>
+                        <Line
+                          listening={false}
+                          opacity={0.9}
+                          perfectDrawEnabled={false}
+                          points={annotationGuideLines.horizontal}
+                          stroke="#facc15"
+                          strokeWidth={1}
+                        />
+                        <Line
+                          listening={false}
+                          opacity={0.9}
+                          perfectDrawEnabled={false}
+                          points={annotationGuideLines.vertical}
+                          stroke="#facc15"
+                          strokeWidth={1}
+                        />
+                      </>
+                    )}
+                    <Transformer
+                      ref={transformerRef}
+                      keepRatio={false}
+                      listening={interactionMode === "default"}
+                      rotateEnabled={false}
+                      visible={interactionMode === "default"}
                     />
-                  )}
-                  {annotationGuideLines && (
-                    <>
-                      <Line
-                        listening={false}
-                        opacity={0.9}
-                        perfectDrawEnabled={false}
-                        points={annotationGuideLines.horizontal}
-                        stroke="#facc15"
-                        strokeWidth={1}
-                      />
-                      <Line
-                        listening={false}
-                        opacity={0.9}
-                        perfectDrawEnabled={false}
-                        points={annotationGuideLines.vertical}
-                        stroke="#facc15"
-                        strokeWidth={1}
-                      />
-                    </>
-                  )}
-                  <Transformer
-                    ref={transformerRef}
-                    keepRatio={false}
-                    listening={interactionMode === "default"}
-                    rotateEnabled={false}
-                    visible={interactionMode === "default"}
+                  </Layer>
+                </Stage>
+                {helpDisplaySettings.showModeHelp && (
+                  <ModeHelpOverlay
+                    corner={modeHelpCorner}
+                    mode={interactionMode}
+                    shortcuts={shortcuts}
                   />
-                </Layer>
-              </Stage>
-              {helpDisplaySettings.showModeHelp && (
-                <ModeHelpOverlay
-                  corner={modeHelpCorner}
-                  mode={interactionMode}
-                  shortcuts={shortcuts}
-                />
-              )}
-              {interactionMode === "default" && helpDisplaySettings.showLabelShortcuts && (
-                <LabelShortcutOverlay
-                  corner={labelShortcutCorner}
-                  currentLabelId={currentLabel.id}
-                  labels={labels}
-                />
-              )}
-              {labelSwitchHint && (
-                <div className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700/80 bg-slate-950/85 px-4 py-2 text-sm text-slate-100 shadow-xl">
-                  <span
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: labelSwitchHint.color }}
+                )}
+                {interactionMode === "default" && helpDisplaySettings.showLabelShortcuts && (
+                  <LabelShortcutOverlay
+                    corner={labelShortcutCorner}
+                    currentLabelId={currentLabel.id}
+                    labels={labels}
                   />
-                  <span>当前标签：{labelSwitchHint.name}</span>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-slate-500">
-              {selectedImage && isImageLoading ? (
-                <div className="w-56 text-center">
-                  <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
-                    <div className="progress-indeterminate h-full w-1/2 rounded-full bg-sky-400" />
+                )}
+                {labelSwitchHint && (
+                  <div className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700/80 bg-slate-950/85 px-4 py-2 text-sm text-slate-100 shadow-xl">
+                    <span
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: labelSwitchHint.color }}
+                    />
+                    <span>当前标签：{labelSwitchHint.name}</span>
                   </div>
-                  <div>正在加载图片...</div>
-                </div>
-              ) : selectedImage ? (
-                imageLoadError ||
-                (loadedImage ? "画布区域尺寸异常，无法显示图片。" : "正在加载图片...")
-              ) : (
-                "选择文件夹后，在这里预览图片。"
-              )}
-            </div>
-          )}
+                )}
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                {selectedImage && isImageLoading ? (
+                  <div className="w-56 text-center">
+                    <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                      <div className="progress-indeterminate h-full w-1/2 rounded-full bg-sky-400" />
+                    </div>
+                    <div>正在加载图片...</div>
+                  </div>
+                ) : selectedImage ? (
+                  imageLoadError ||
+                  (loadedImage ? "画布区域尺寸异常，无法显示图片。" : "正在加载图片...")
+                ) : (
+                  "选择文件夹后，在这里预览图片。"
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="shrink-0">{canvasFooter}</div>
         </div>
 
         {isSaving && (
@@ -780,7 +793,11 @@ export function AppLayout({
 
         {contextMenu && (
           <CanvasContextMenu
-            canDeleteImage={canDeleteImage && Boolean(selectedImage)}
+            canDeleteImage={
+              canDeleteImage &&
+              Boolean(selectedImage) &&
+              !videos.some((video) => video.images.some((image) => image.path === selectedPath))
+            }
             onDeleteImage={() => {
               setContextMenu(null);
               requestDeleteImage(selectedPath);

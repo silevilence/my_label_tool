@@ -21,7 +21,7 @@ export function VideoTimeline({
   return (
     <section
       aria-label={text.timeline}
-      className="flex items-center gap-4 border-b border-slate-700 bg-slate-900 px-4 py-2 text-sm"
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-800 bg-slate-900 px-4 py-3 text-xs"
     >
       <span className="shrink-0 tabular-nums">
         {text.position(current.frameIndex + 1, video.totalFrames)}

@@ -82,7 +82,7 @@ export function VideoInterpolationPanel({
     setPreview(null);
   }
   return (
-    <details className="border-b border-slate-700 bg-slate-900 px-4 py-2 text-sm">
+    <details className="border-t border-slate-800 bg-slate-900 px-4 py-2 text-xs">
       <summary className="cursor-pointer text-sky-300">{text.interpolation}</summary>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <label>

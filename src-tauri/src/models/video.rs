@@ -27,3 +27,11 @@ pub struct VideoImportResult {
     pub folder_path: PathBuf,
     pub video: VideoProject,
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectVideo {
+    pub source_path: PathBuf,
+    pub folder_path: Option<PathBuf>,
+    pub video: Option<VideoProject>,
+}

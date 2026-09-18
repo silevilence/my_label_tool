@@ -37,6 +37,10 @@ vi.mock("../lib/tauri-api", async (importOriginal) => ({
   loadPrelabelModelLibrary: vi.fn(),
   listImageFiles: vi.fn(),
   loadVideoProject: vi.fn().mockResolvedValue(null),
+  listProjectVideos: vi.fn().mockResolvedValue([]),
+  selectVideoFile: vi.fn().mockResolvedValue("C:/fixture/added.mp4"),
+  importVideo: vi.fn(),
+  cancelVideoImport: vi.fn().mockResolvedValue(undefined),
   listTextFiles: vi.fn().mockResolvedValue([]),
   selectImageFolder: vi.fn().mockResolvedValue("C:/fixture"),
   recycleImageFile: vi.fn().mockResolvedValue(undefined),
@@ -92,7 +96,7 @@ describe("image deletion entry wiring", () => {
   }
   async function openFixture() {
     await act(async () => root.render(<App />));
-    await click("打开图片文件夹");
+    await click("打开项目文件夹");
   }
   it("list context menu targets the clicked file without changing the selected image; F8 targets current", async () => {
     await openFixture();
@@ -119,6 +123,78 @@ describe("image deletion entry wiring", () => {
     });
     expect(api.recycleImageFile).toHaveBeenCalledExactlyOnceWith("C:/fixture", "C:/fixture/a.png");
     expect(button("b.png").className).toContain("bg-sky-500");
+  });
+
+  it("integrates multiple videos into the project list, shows the timeline only for video and adds without clearing annotations", async () => {
+    const video = (name: string) => ({
+      schemaVersion: 1 as const,
+      sourcePath: `C:/fixture/${name}.mp4`,
+      width: 64,
+      height: 48,
+      frameInterval: 3,
+      totalFrames: 4,
+      frames: [0, 3].map((frameIndex, index) => ({
+        name: `frame-00000${index}.png`,
+        frameIndex,
+        timestampSeconds: frameIndex / 10,
+      })),
+    });
+    vi.mocked(api.listProjectVideos).mockResolvedValueOnce(
+      ["one", "two"].map((name) => ({
+        sourcePath: `C:/fixture/${name}.mp4`,
+        folderPath: `C:/fixture/${name}`,
+        video: video(name),
+      })),
+    );
+    await openFixture();
+    expect(container.querySelector('[aria-label="视频时间轴"]')).toBeNull();
+    expect(container.querySelector("main")?.firstElementChild?.tagName).toBe("DIV");
+    const clickVideo = async (name: string) => {
+      await act(async () =>
+        container
+          .querySelector<HTMLButtonElement>(`button[title="C:/fixture/${name}.mp4"]`)!
+          .click(),
+      );
+    };
+    await clickVideo("one");
+    await click("帧 40.300 秒");
+    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+      "源帧 4 / 4",
+    );
+    const timeline = container.querySelector('section[aria-label="视频时间轴"]')!;
+    expect(timeline.closest("aside")).toBeNull();
+    expect(timeline.parentElement?.parentElement?.className).toContain("flex-col");
+    await act(async () =>
+      useAnnotationStore.getState().addAnnotation("C:/fixture/one/frame-000001.png", {
+        id: "kept",
+        labelId: "person",
+        type: "rect",
+        points: [1, 2, 3, 4],
+      }),
+    );
+    await clickVideo("two");
+    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+      "源帧 1 / 4",
+    );
+    await clickVideo("one");
+    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+      "源帧 4 / 4",
+    );
+    await click("a.png");
+    expect(container.querySelector('[aria-label="视频时间轴"]')).toBeNull();
+    await click("添加视频到项目");
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("抽帧间隔");
+    vi.mocked(api.importVideo).mockResolvedValueOnce({
+      folderPath: "C:/fixture/added",
+      video: video("added"),
+    });
+    await click("准备视频帧");
+    expect(api.importVideo).toHaveBeenCalledWith("C:/fixture/added.mp4", "C:/fixture", 30);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.textContent).toContain("2 张图片 · 3 个视频");
+    expect(
+      useAnnotationStore.getState().annotationsByImage["C:/fixture/one/frame-000001.png"][0],
+    ).toMatchObject({ id: "kept", frameIndex: 3 });
   });
 
   it("canvas menu offers a distinct deletion action and disables it without a deletable image", async () => {

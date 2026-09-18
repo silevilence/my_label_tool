@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://my-label-tool.local/schemas/project-media-v1.json",
+  "title": "Host-only optional projectMedia field in native annotation JSON",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "videos"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "videos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourcePath", "frameFolder", "video"],
+        "properties": {
+          "sourcePath": { "type": "string", "minLength": 1 },
+          "frameFolder": { "type": ["string", "null"] },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "https://my-label-tool.local/schemas/video-annotation-v1.json#/$defs/video"
+              },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

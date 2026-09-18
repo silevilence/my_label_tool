@@ -4,8 +4,10 @@ import type { ExportFormatId } from "../../types/export";
 import type { PluginExportFormatDescriptor } from "../../types/plugin";
 import { PLUGIN_ZH_CN as pluginText } from "../../i18n/plugin.zh-CN";
 import type { PluginExportProgressState } from "../../hooks/useProjectActions";
+import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface ExportPanelProps {
+  hasVideos?: boolean;
   customMappingText: string;
   disabled: boolean;
   isSaving: boolean;
@@ -21,6 +23,7 @@ interface ExportPanelProps {
 }
 
 export function ExportPanel({
+  hasVideos = false,
   customMappingText,
   disabled,
   isSaving,
@@ -57,7 +60,7 @@ export function ExportPanel({
       >
         {EXPORT_TEMPLATES.map((template) => (
           <option key={template.id} value={template.id}>
-            {template.name}
+            {hasVideos && template.id === "json" ? videoText.jsonName : template.name}
           </option>
         ))}
         {pluginFormats.length > 0 && (
@@ -76,8 +79,10 @@ export function ExportPanel({
       </select>
       <p className="mt-2 text-xs text-slate-400">
         {selectedPluginFormat
-          ? selectedPluginFormat.disabledReason ?? pluginText.exportFormatDescription
-          : selectedTemplate.description}
+          ? (selectedPluginFormat.disabledReason ?? pluginText.exportFormatDescription)
+          : hasVideos && selectedFormatId === "json"
+            ? videoText.jsonDescription
+            : selectedTemplate.description}
       </p>
       {selectedFormatId === "custom" && (
         <textarea
@@ -123,7 +128,7 @@ export function ExportPanel({
           type="button"
           disabled={
             disabled ||
-            selectedPluginFormat !== undefined ||
+            (!hasVideos && selectedPluginFormat !== undefined) ||
             !canSaveProject ||
             isSaving ||
             isPluginExporting

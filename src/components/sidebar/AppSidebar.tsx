@@ -19,8 +19,13 @@ import { PLUGIN_ZH_CN } from "../../i18n/plugin.zh-CN";
 import { PluginSettings } from "../settings/PluginSettings";
 import type { PluginExportFormatDescriptor } from "../../types/plugin";
 import type { PluginExportProgressState } from "../../hooks/useProjectActions";
+import type { LoadedProjectVideo } from "../../lib/project-media";
+import { ProjectMediaList } from "./ProjectMediaList";
+import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface AppSidebarProps {
+  videos?: LoadedProjectVideo[];
+  addVideo?: (source?: string) => void;
   canDeleteImage: boolean;
   requestDeleteImage: (path: string) => void;
   activeProjectConfig: ProjectConfig | null;
@@ -80,6 +85,8 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
+  videos = [],
+  addVideo,
   canDeleteImage,
   requestDeleteImage,
   activeProjectConfig,
@@ -158,7 +165,7 @@ export function AppSidebar({
   }
 
   return (
-    <aside className="flex h-screen w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
+    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
       <div className="shrink-0 border-b border-slate-800 p-4">
         <div className="flex items-center justify-between gap-2">
           <h1 className="truncate text-lg font-semibold">my_label_tool</h1>
@@ -179,8 +186,20 @@ export function AppSidebar({
                   openFolder();
                 }}
               >
-                打开图片文件夹
+                {videoText.openProject}
               </button>
+              {addVideo && (
+                <button
+                  type="button"
+                  className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800"
+                  onClick={() => {
+                    closeMenu();
+                    addVideo();
+                  }}
+                >
+                  {videoText.add}
+                </button>
+              )}
               <div className="border-t border-slate-800 pt-1">
                 <div className="px-2 py-1 text-xs text-slate-500">导入标注</div>
                 <button
@@ -291,8 +310,10 @@ export function AppSidebar({
       </div>
 
       <ExportPanel
+        hasVideos={videos.length > 0}
         canSaveProject={
-          activeProjectConfig !== null && selectedExportFormatId === activeProjectConfig.format
+          (activeProjectConfig !== null && selectedExportFormatId === activeProjectConfig.format) ||
+          videos.length > 0
         }
         customMappingText={customMappingText}
         disabled={!folderPath}
@@ -396,7 +417,9 @@ export function AppSidebar({
             type="button"
             onClick={clearCurrentImageAnnotations}
           >
-            清空当前图片标注
+            {videos.some((video) => video.images.some((image) => image.path === selectedPath))
+              ? videoText.clearFrame
+              : "清空当前图片标注"}
           </button>
         </section>
       </div>
@@ -404,11 +427,16 @@ export function AppSidebar({
       <section className="flex min-h-44 flex-1 flex-col border-t border-slate-800 bg-slate-900">
         <div className="border-b border-slate-800 px-4 py-2">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-200">图片列表</h2>
+            <h2 className="text-sm font-semibold text-slate-200">{videoText.mediaList}</h2>
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-xs text-slate-500">
-                已标注 {annotatedCount} / 未标注 {images.length - annotatedCount} / 总数{" "}
-                {images.length}
+                {videos.length
+                  ? videoText.assetCount(
+                      images.length -
+                        videos.reduce((total, video) => total + video.images.length, 0),
+                      videos.length,
+                    )
+                  : videoText.imageCount(annotatedCount, images.length)}
               </span>
               <button
                 aria-label="搜索图片"
@@ -432,12 +460,23 @@ export function AppSidebar({
           </div>
         </div>
         <div className="scrollbar-dark min-h-0 flex-1 overflow-auto p-2">
-          {images.length === 0 ? (
+          {images.length === 0 && videos.length === 0 ? (
             <p className="p-2 text-sm text-slate-400">
               {folderPath
                 ? "没有找到可加载的 jpg/png/bmp 图片；空文件或损坏图片会被跳过。"
                 : "请选择包含 jpg/png/bmp 的文件夹。"}
             </p>
+          ) : videos.length > 0 ? (
+            <ProjectMediaList
+              images={images}
+              videos={videos}
+              selectedPath={selectedPath}
+              annotations={annotationsByImage}
+              selectedRef={selectedImageButtonRef}
+              onSelect={setSelectedPath}
+              onPrepare={(source) => addVideo?.(source)}
+              onImageMenu={(image, x, y) => setImageMenu({ image, x, y })}
+            />
           ) : (
             images.map((image) => (
               <button

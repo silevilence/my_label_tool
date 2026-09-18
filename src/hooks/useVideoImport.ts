@@ -15,15 +15,15 @@ export function useVideoImport(
 ) {
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
-  async function start(interval: number) {
+  async function start(interval: number, projectFolder?: string, sourcePath?: string) {
     if (pending.current || !Number.isSafeInteger(interval) || interval < 1 || interval > 1_000_000)
       return;
     pending.current = true;
     try {
-      if (!(await confirmAction(text.replace))) return;
-      const source = await selectVideoFile();
+      if (!projectFolder && !(await confirmAction(text.replace))) return;
+      const source = sourcePath || (await selectVideoFile());
       if (!source) return;
-      const folder = await selectExportFolder();
+      const folder = projectFolder || (await selectExportFolder());
       if (!folder) return;
       setBusy(true);
       setError("");

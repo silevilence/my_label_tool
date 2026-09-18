@@ -20,6 +20,13 @@ export interface VideoImportResult {
   video: VideoProject;
 }
 
+/** Host-only project entry. Unprepared local videos have no frame folder yet. */
+export interface ProjectVideo {
+  sourcePath: string;
+  folderPath: string | null;
+  video: VideoProject | null;
+}
+
 /** Host-only portable envelope; never sent as plugin exporter.export params. */
 export interface VideoAnnotationExport {
   schemaVersion: 1;
