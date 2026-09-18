@@ -69,6 +69,14 @@ YouTubeVIS 有自己的视频实例分割接口，因此本次选择自定义结
 版本和校验记录放入 `video-tools` 资源目录，运行时不下载工具。
 打包前自动执行 `scripts/prepare-video-tools.ps1`，工具缺失则构建失败。
 Windows 发布工作流准备同样的构建工具。
+当前使用 FFmpeg 7.1.1 完整静态发行版，两个程序合计约 283 MiB（安装器压缩前），
+因此带视频能力的发行包会明显增大；可执行程序部署时需保留相邻的 `video-tools` 目录。
+
+自动化验证可运行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-video-support.ps1`。
+脚本检查前端类型、lint、覆盖率、Rust lint/测试、真实 FFmpeg 抽帧及前端构建；
+开发机需提供 FFmpeg/FFprobe，测试会生成恒定帧率、变帧率和旋转元数据视频。
+另用 `npm run tauri build -- --debug --no-bundle` 检查桌面构建，不启动应用窗口。
+完整结果与审核修复见 [验收记录](verification/video-annotation.md)。
 
 实现依据：[FFmpeg select 过滤器](https://ffmpeg.org/ffmpeg-filters.html#select_002c-aselect)、
 [FFprobe 逐帧时间戳](https://ffmpeg.org/ffprobe.html)。固定间隔按解码帧号选择，

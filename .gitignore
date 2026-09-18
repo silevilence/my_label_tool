@@ -15,6 +15,7 @@ src-tauri/target
 .codegraph
 *.local
 /.local-models/
+/.local-video-qa/
 /src-tauri/video-tools/*
 !/src-tauri/video-tools/README.md
 

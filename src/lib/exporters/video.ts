@@ -2,6 +2,7 @@ import type { AnnotationShape, LabelConfig } from "../../types/annotation";
 import type { VideoAnnotationExport, VideoProject } from "../../types/video";
 import type { ImageFile } from "../tauri-api";
 import { videoImages } from "../video-images";
+import { validVideoShape } from "../video-interpolation";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
 
 export function exportVideo(
@@ -14,7 +15,7 @@ export function exportVideo(
   const exportedImages = videoImages(video, images).map((image, index) => {
     const frame = video.frames[index];
     const shapes = (annotations[image.path] ?? []).map((shape) => {
-      if (!labelIds.has(shape.labelId) || !shape.points.every(Number.isFinite))
+      if (!labelIds.has(shape.labelId) || !validVideoShape(shape))
         throw new Error(text.invalidExport);
       return {
         ...shape,

@@ -18,6 +18,17 @@ foreach ($name in @('ffmpeg', 'ffprobe')) {
     Copy-Item -LiteralPath $license -Destination (Join-Path $destination 'LICENSE-FFmpeg.txt') -Force
     & $source.FullName -version | Select-Object -First 3 | Set-Content (Join-Path $destination "$name-version.txt")
 }
-Get-FileHash (Join-Path $destination '*.exe') -Algorithm SHA256 |
-    Select-Object Hash, @{Name='File';Expression={Split-Path $_.Path -Leaf}} |
-    ConvertTo-Json | Set-Content (Join-Path $destination 'checksums.json')
+# Use the base .NET API so packaging also works in Windows PowerShell hosts
+# where Microsoft.PowerShell.Utility does not expose Get-FileHash.
+$checksums = foreach ($binary in Get-ChildItem -LiteralPath $destination -Filter '*.exe') {
+    $stream = [System.IO.File]::OpenRead($binary.FullName)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = [System.BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '')
+        [PSCustomObject]@{ Hash = $hash; File = $binary.Name }
+    } finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+$checksums | ConvertTo-Json | Set-Content (Join-Path $destination 'checksums.json')

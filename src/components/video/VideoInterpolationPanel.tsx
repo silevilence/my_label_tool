@@ -140,7 +140,7 @@ export function VideoInterpolationPanel({
         <ul className="mt-2 max-h-24 overflow-auto text-xs text-slate-300">
           {preview.plan.entries.map((entry) => (
             <li key={entry.imagePath}>
-              <button onClick={() => onSelect(entry.imagePath)}>
+              <button disabled={disabled} onClick={() => onSelect(entry.imagePath)}>
                 {text.viewFrame(entry.frameIndex + 1)}
               </button>
               {": "}

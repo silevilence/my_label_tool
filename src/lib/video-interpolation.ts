@@ -65,8 +65,8 @@ export function interpolateVideoTrack(
       a.type !== b.type ||
       a.labelId !== b.labelId ||
       a.points.length !== b.points.length ||
-      !validPoints(a) ||
-      !validPoints(b)
+      !validVideoShape(a) ||
+      !validVideoShape(b)
     )
       throw new Error(text.incompatibleKeyframes);
     for (let index = start.index + 1; index < end.index; index++) {
@@ -107,13 +107,13 @@ export function interpolateVideoTrack(
   return { trackId, entries };
 }
 
-function validPoints(shape: AnnotationShape): boolean {
+export function validVideoShape(shape: AnnotationShape): boolean {
   return (
     shape.points.every(Number.isFinite) &&
     (shape.type === "rect"
       ? shape.points.length === 4 && shape.points[2] > 0 && shape.points[3] > 0
       : shape.type === "point"
         ? shape.points.length === 2
-        : shape.points.length >= 6 && shape.points.length % 2 === 0)
+        : shape.type === "polygon" && shape.points.length >= 6 && shape.points.length % 2 === 0)
   );
 }

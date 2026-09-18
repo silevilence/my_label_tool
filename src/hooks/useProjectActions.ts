@@ -50,6 +50,7 @@ import { mergePluginConfigMigration } from "../lib/plugin-config-migration";
 import { PLUGIN_ZH_CN as pluginText } from "../i18n/plugin.zh-CN";
 import { PROJECT_ZH_CN as projectText } from "../i18n/project.zh-CN";
 import { mergeImportedLabels, remapImportedAnnotationLabels } from "../lib/yolo-label-merge";
+import type { VideoProject } from "../types/video";
 
 export interface PluginExportProgressState {
   exportId: string;
@@ -60,6 +61,7 @@ export interface PluginExportProgressState {
 }
 
 interface UseProjectActionsParams {
+  video?: VideoProject | null;
   activeProjectConfig: ProjectConfig | null;
   activeProjectConfigPath: string;
   annotationsByImage: Record<string, AnnotationShape[]>;
@@ -81,6 +83,7 @@ interface UseProjectActionsParams {
 }
 
 export function useProjectActions({
+  video = null,
   activeProjectConfig,
   activeProjectConfigPath,
   annotationsByImage,
@@ -208,9 +211,7 @@ export function useProjectActions({
         );
         setError(pluginText.exportComplete(result.files.length));
       } finally {
-        setPluginExportProgress((current) =>
-          current?.exportId === exportId ? null : current,
-        );
+        setPluginExportProgress((current) => (current?.exportId === exportId ? null : current));
         void refreshPluginExtensions().catch(reportError);
       }
       return outputDir;
@@ -601,6 +602,17 @@ export function useProjectActions({
   }
 
   async function buildExportData(): Promise<ExportData> {
+    if (video) {
+      return {
+        labels,
+        images: images.map((image) => ({
+          ...image,
+          width: video.width,
+          height: video.height,
+          annotations: annotationsByImage[image.path] ?? [],
+        })),
+      };
+    }
     const exportImages = await Promise.all(
       images.map(async (image) => ({
         ...image,
@@ -658,9 +670,7 @@ export function useProjectActions({
   };
 }
 
-function isBuiltInProjectFormat(
-  format: ExportFormatId,
-): format is ProjectConfig["format"] {
+function isBuiltInProjectFormat(format: ExportFormatId): format is ProjectConfig["format"] {
   return ["json", "coco", "voc", "yolo"].includes(format);
 }
 

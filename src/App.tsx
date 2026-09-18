@@ -310,6 +310,7 @@ function App() {
     retryPluginConfigMigrations,
     saveProjectExport,
   } = useProjectActions({
+    video,
     activeProjectConfig,
     activeProjectConfigPath,
     annotationsByImage,

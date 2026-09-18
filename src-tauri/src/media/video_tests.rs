@@ -65,6 +65,64 @@ fn real_video_extract_reload_cancel_and_failure_cleanup() {
     assert_eq!((result.video.width, result.video.height), (64, 48));
     assert_eq!(result.video.frames[3].timestamp_seconds, 0.9);
     assert_eq!(load(&result.folder_path).unwrap().unwrap().frames.len(), 4);
+    for interval in [0, 1_000_001] {
+        let mut invalid = result.video.clone();
+        invalid.frame_interval = interval;
+        assert!(validate(&invalid, &result.folder_path).is_err());
+    }
+    let mut invalid = result.video.clone();
+    invalid.frames[0].timestamp_seconds = 0.1;
+    assert!(validate(&invalid, &result.folder_path).is_err());
+    invalid = result.video.clone();
+    invalid.source_path = PathBuf::new();
+    assert!(validate(&invalid, &result.folder_path).is_err());
+    let variable = root.join("variable.mkv");
+    run(
+        Command::new(&ffmpeg)
+            .args(["-v", "error", "-i"])
+            .arg(&source)
+            .args([
+                "-vf",
+                "setpts=PTS+gte(N\\,5)*0.5/TB",
+                "-fps_mode",
+                "vfr",
+                "-c:v",
+                "ffv1",
+                "-y",
+            ])
+            .arg(&variable),
+        &root,
+    )
+    .unwrap();
+    let variable_result = extract(&variable, &root, 3, &ffmpeg, &ffprobe).unwrap();
+    assert_eq!(variable_result.video.total_frames, 10);
+    assert!((variable_result.video.frames[2].timestamp_seconds - 1.1).abs() < 0.001);
+    assert!((variable_result.video.frames[3].timestamp_seconds - 1.4).abs() < 0.001);
+    let base = root.join("base.mp4");
+    run(
+        Command::new(&ffmpeg)
+            .args(["-v", "error", "-i"])
+            .arg(&source)
+            .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-y"])
+            .arg(&base),
+        &root,
+    )
+    .unwrap();
+    let rotated = root.join("rotated.mp4");
+    run(
+        Command::new(&ffmpeg)
+            .args(["-v", "error", "-display_rotation", "90", "-i"])
+            .arg(&base)
+            .args(["-c", "copy", "-y"])
+            .arg(&rotated),
+        &root,
+    )
+    .unwrap();
+    let rotated_result = extract(&rotated, &root, 3, &ffmpeg, &ffprobe).unwrap();
+    assert_eq!(
+        (rotated_result.video.width, rotated_result.video.height),
+        (48, 64)
+    );
     let mut malicious = result.video.clone();
     malicious.frames[0].name = "../source.png".into();
     assert!(validate(&malicious, &result.folder_path).is_err());
@@ -79,4 +137,17 @@ fn real_video_extract_reload_cancel_and_failure_cleanup() {
     assert!(extract(&root.join("bad.mp4"), &root, 3, &ffmpeg, &ffprobe).is_err());
     assert_eq!(fs::read_dir(&root).unwrap().count(), before + 1);
     drop(output);
+}
+
+#[test]
+fn bundled_video_tools_take_precedence_over_development_path() {
+    let root =
+        std::env::temp_dir().join(format!("annotool-video-tools-test-{}", std::process::id()));
+    fs::create_dir_all(root.join("video-tools")).unwrap();
+    let _guard = OutputGuard(root.clone(), false);
+    let expected = root
+        .join("video-tools")
+        .join(format!("ffmpeg{}", std::env::consts::EXE_SUFFIX));
+    fs::write(&expected, []).unwrap();
+    assert_eq!(executable(&root, "ffmpeg").unwrap(), expected);
 }

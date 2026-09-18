@@ -146,19 +146,43 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
     if (requestedGroupId === undefined) {
       nextHistoryGroupId += 1;
     }
-    set((state) =>
-      entries.reduce((nextState, entry) => {
-        const before = nextState.annotationsByImage[entry.imagePath] ?? [];
-        const after = mode === "append" ? [...before, ...entry.annotations] : entry.annotations;
+    set((state) => {
+      const annotationsByImage = { ...state.annotationsByImage };
+      let selectedShapeId = state.selectedShapeId;
+      const history: AnnotationHistoryEntry[] = [];
+      for (const entry of entries) {
+        const before = annotationsByImage[entry.imagePath] ?? [];
+        const after = bindFrame(
+          mode === "append" ? [...before, ...entry.annotations] : entry.annotations,
+          state.frameIndices[entry.imagePath],
+        );
+        if (annotationShapesEqual(before, after)) continue;
         const selectedAfter =
-          nextState.selectedShapeId &&
-          before.some((annotation) => annotation.id === nextState.selectedShapeId) &&
-          !after.some((annotation) => annotation.id === nextState.selectedShapeId)
+          selectedShapeId &&
+          before.some((annotation) => annotation.id === selectedShapeId) &&
+          !after.some((annotation) => annotation.id === selectedShapeId)
             ? null
-            : nextState.selectedShapeId;
-        return applyImageHistory(nextState, entry.imagePath, after, selectedAfter, groupId);
-      }, state),
-    );
+            : selectedShapeId;
+        history.push({
+          imagePath: entry.imagePath,
+          before: cloneAnnotations(before),
+          after: cloneAnnotations(after),
+          selectedBefore: selectedShapeId,
+          selectedAfter,
+          groupId,
+        });
+        annotationsByImage[entry.imagePath] = cloneAnnotations(after);
+        selectedShapeId = selectedAfter;
+      }
+      if (history.length === 0) return state;
+      return withHistoryFlags({
+        ...state,
+        annotationsByImage,
+        selectedShapeId,
+        undoStack: trimHistory([...state.undoStack, ...history]),
+        redoStack: [],
+      });
+    });
   },
   undo: () =>
     set((state) => {

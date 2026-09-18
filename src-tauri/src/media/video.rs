@@ -273,6 +273,8 @@ pub fn extract(
 pub fn validate(video: &VideoProject, folder: &Path) -> Result<(), String> {
     if video.schema_version != 1
         || video.frame_interval == 0
+        || video.frame_interval > 1_000_000
+        || video.source_path.as_os_str().is_empty()
         || video.total_frames == 0
         || video.total_frames > 1_000_000
         || video.frames.len() > MAX_FRAMES
@@ -288,6 +290,7 @@ pub fn validate(video: &VideoProject, folder: &Path) -> Result<(), String> {
             || frame.frame_index != index * video.frame_interval
             || !frame.timestamp_seconds.is_finite()
             || frame.timestamp_seconds < previous
+            || (index == 0 && frame.timestamp_seconds != 0.0)
             || image::image_dimensions(folder.join(&frame.name)).map_err(failure)?
                 != (video.width, video.height)
         {

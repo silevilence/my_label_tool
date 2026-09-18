@@ -75,3 +75,22 @@ it("leaves the existing image-only annotation contract unchanged", () => {
   useAnnotationStore.getState().addAnnotation("photo.png", shape("still"));
   expect(useAnnotationStore.getState().annotationsByImage["photo.png"]).toEqual([shape("still")]);
 });
+
+it("applies a ten-thousand-frame batch without quadratic index copying and keeps frame history", () => {
+  const store = useAnnotationStore.getState();
+  const entries = Array.from({ length: 10_000 }, (_, index) => ({
+    imagePath: `frame-${index}.png`,
+    annotations: [shape(`shape-${index}`)],
+  }));
+  store.replaceAnnotations(Object.fromEntries(entries.map((entry) => [entry.imagePath, []])));
+  const started = performance.now();
+  store.insertAnnotationsBatch(entries, "replace");
+  expect(performance.now() - started).toBeLessThan(5000);
+  expect(useAnnotationStore.getState().undoStack).toHaveLength(10_000);
+  store.undo();
+  expect(useAnnotationStore.getState().annotationsByImage["frame-9999.png"]).toEqual([]);
+  store.redo();
+  expect(useAnnotationStore.getState().annotationsByImage["frame-9999.png"][0].id).toBe(
+    "shape-9999",
+  );
+});

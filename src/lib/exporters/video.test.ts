@@ -72,6 +72,17 @@ it("rejects missing images, dangling label references and nonfinite coordinates"
     exportVideo(video, images, labels, { [images[0].path]: [{ ...rect, points: [NaN, 0, 1, 1] }] }),
   ).toThrow();
 });
+
+it("rejects malformed geometry instead of exporting invalid video shapes", () => {
+  const invalid: AnnotationShape[] = [
+    { ...rect, points: [0, 0, -1, 2] },
+    { ...rect, points: [0, 0] },
+    { ...rect, type: "point", points: [0, 0, 1] },
+    { ...rect, type: "polygon", points: [0, 0, 1, 1, 2, 2, 3] },
+  ];
+  for (const shape of invalid)
+    expect(() => exportVideo(video, images, labels, { [images[0].path]: [shape] })).toThrow();
+});
 it("schema rejects incompatible versions and malformed metadata", () => {
   const result = exportVideo(video, images, labels, {});
   expect(validate({ ...result, schemaVersion: 2 })).toBe(false);
