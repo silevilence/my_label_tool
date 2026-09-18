@@ -1,4 +1,9 @@
 export const VIDEO_ZH_CN = {
+  batchPrepare: "批量抽取未准备视频",
+  batchProgress: (done: number, total: number, failed: number) =>
+    `完成 ${done} / ${total} 个视频，失败 ${failed} 个`,
+  batchCancelled: "已停止抽帧，已完成的视频帧和原有标注均已保留。",
+  batchFinished: "批量抽帧已结束。失败的视频可重试。",
   projectSettings: "项目设置 · 视频抽帧",
   defaultInterval: "默认抽帧间隔（源帧）",
   defaultExtractionHint:

@@ -3,20 +3,15 @@ import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { AppLayout } from "./components/AppLayout";
 import type { ProjectVideo } from "./types/video";
-import {
-  projectVideos,
-  projectFrameIndices,
-  mergeProjectImages,
-  videoForImage,
-} from "./lib/project-media";
+import { projectVideos, videoForImage } from "./lib/project-media";
 import { VideoImportDialog } from "./components/video/VideoImportDialog";
 import { VideoTimeline } from "./components/video/VideoTimeline";
 import {
   VideoInterpolationPanel,
   type InterpolationPreview,
 } from "./components/video/VideoInterpolationPanel";
-import { useVideoImport } from "./hooks/useVideoImport";
-import { selectExportFolder, selectVideoFile } from "./lib/tauri-api";
+import { useProjectVideoActions } from "./hooks/useProjectVideoActions";
+import { VideoBatchDialog } from "./components/video/VideoBatchDialog";
 import { VIDEO_ZH_CN as videoText } from "./i18n/video.zh-CN";
 import { DeleteImageDialog } from "./components/DeleteImageDialog";
 import { useImageDeletion } from "./hooks/useImageDeletion";
@@ -89,7 +84,6 @@ function App() {
   const [folderPath, setFolderPath] = useState("");
   const projectSettings = useProjectSettings(folderPath);
   const [videoEntries, setVideoEntries] = useState<ProjectVideo[]>([]);
-  const [videoImportSource, setVideoImportSource] = useState<string | null>(null);
   const [interpolationPreview, setInterpolationPreview] = useState<InterpolationPreview | null>(
     null,
   );
@@ -424,45 +418,17 @@ function App() {
     setImages,
     setSelectedPath,
   });
-  const videoImport = useVideoImport(async (result) => {
-    const entry = {
-      sourcePath: result.video.sourcePath,
-      folderPath: result.folderPath,
-      video: result.video,
-    };
-    const nextEntries = [
-      ...videoEntries.filter((asset) => asset.sourcePath !== entry.sourcePath),
-      entry,
-    ];
-    const nextVideos = projectVideos(folderPath, nextEntries);
-    const nextImages = mergeProjectImages(images, nextVideos);
-    useAnnotationStore.getState().setFrameIndices(projectFrameIndices(nextVideos));
-    setVideoEntries(nextEntries);
-    setImages(nextImages);
-    setSelectedPath(nextVideos[nextVideos.length - 1].images[0]?.path ?? "");
-    setVideoImportSource(null);
-  }, setError);
-  async function addVideo(source?: string) {
-    try {
-      const path = source || (await selectVideoFile());
-      if (!path) return;
-      const existing = videos.find(
-        (asset) => asset.sourcePath.toLowerCase() === path.toLowerCase(),
-      );
-      if (existing?.images.length) {
-        setSelectedPath(existing.images[0].path);
-        return;
-      }
-      if (!folderPath) {
-        const folder = await selectExportFolder();
-        if (!folder) return;
-        if (!(await openFolder(folder))) return;
-      }
-      setVideoImportSource(path);
-    } catch (error) {
-      setError(String(error));
-    }
-  }
+  const videoImport = useProjectVideoActions({
+    folderPath,
+    entries: videoEntries,
+    images,
+    setEntries: setVideoEntries,
+    setImages,
+    setSelectedPath,
+    setError,
+    openFolder,
+  });
+  const { source: videoImportSource, setSource: setVideoImportSource, addVideo } = videoImport;
   const imageLayout = imageView;
   const {
     changeAnnotationLabel,
@@ -686,7 +652,7 @@ function App() {
 
   useEffect(() => {
     function finishPolygonFromKeyboard(event: KeyboardEvent) {
-      if (videoImport.busy || videoImportSource !== null) return;
+      if (videoImport.busy || videoImportSource !== null || videoImport.batch !== null) return;
       if (isEditableTarget(event.target) || currentShapeType !== "polygon") {
         return;
       }
@@ -707,6 +673,7 @@ function App() {
     selectedPath,
     currentLabel,
     videoImport.busy,
+    videoImport.batch,
     videoImportSource,
   ]);
 
@@ -721,6 +688,7 @@ function App() {
     enabled:
       !videoImport.busy &&
       videoImportSource === null &&
+      videoImport.batch === null &&
       !imageDeletion.target &&
       !isShortcutSettingsOpen &&
       !isPrelabelSettingsOpen &&
@@ -772,7 +740,19 @@ function App() {
             : null
         }
         onDismissError={() => setError("")}
-        workspaceDisabled={videoImport.busy || videoImportSource !== null}
+        batchPrepare={
+          !projectSettings.loading && !projectSettings.error && videos.some((asset) => !asset.video)
+            ? () =>
+                void videoImport.startBatch(
+                  projectSettings.settings.videoExtraction.frameInterval,
+                  folderPath,
+                  videos.filter((asset) => !asset.video).map((asset) => asset.sourcePath),
+                )
+            : undefined
+        }
+        workspaceDisabled={
+          videoImport.busy || videoImportSource !== null || videoImport.batch !== null
+        }
         videos={videos}
         addVideo={(source) => {
           if (!imageDeletionBusy && !imageDeletion.target) void addVideo(source);
@@ -927,6 +907,13 @@ function App() {
         updateShortcut={updateShortcut}
         zoomFromKeyboard={zoomFromKeyboard}
       />
+      {videoImport.batch && (
+        <VideoBatchDialog
+          progress={videoImport.batch}
+          onCancel={() => void videoImport.cancel()}
+          onClose={videoImport.closeBatch}
+        />
+      )}
       {videoImportSource !== null && !projectSettings.loading && (
         <VideoImportDialog
           defaultInterval={projectSettings.settings.videoExtraction.frameInterval}

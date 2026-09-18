@@ -65,6 +65,7 @@ const ImageSearchDialog = lazy(async () => {
 });
 
 interface AppLayoutProps {
+  batchPrepare?: () => void;
   projectSettings?: ReactNode;
   interpolationShape?: AnnotationShape | null;
   onDismissError?: () => void;
@@ -202,6 +203,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({
+  batchPrepare,
   projectSettings,
   interpolationShape,
   onDismissError,
@@ -423,6 +425,7 @@ export function AppLayout({
         }}
       >
         <AppSidebar
+          batchPrepare={batchPrepare}
           videos={videos}
           addVideo={addVideo}
           canDeleteImage={canDeleteImage}

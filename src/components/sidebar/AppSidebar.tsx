@@ -24,6 +24,7 @@ import { ProjectMediaList } from "./ProjectMediaList";
 import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface AppSidebarProps {
+  batchPrepare?: () => void;
   videos?: LoadedProjectVideo[];
   addVideo?: (source?: string) => void;
   canDeleteImage: boolean;
@@ -85,6 +86,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
+  batchPrepare,
   videos = [],
   addVideo,
   canDeleteImage,
@@ -200,6 +202,17 @@ export function AppSidebar({
                   {videoText.add}
                 </button>
               )}
+              <button
+                type="button"
+                disabled={!batchPrepare}
+                className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:opacity-40"
+                onClick={() => {
+                  closeMenu();
+                  batchPrepare?.();
+                }}
+              >
+                {videoText.batchPrepare}
+              </button>
               <div className="border-t border-slate-800 pt-1">
                 <div className="px-2 py-1 text-xs text-slate-500">导入标注</div>
                 <button

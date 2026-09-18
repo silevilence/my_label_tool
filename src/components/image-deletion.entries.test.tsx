@@ -234,6 +234,36 @@ describe("image deletion entry wiring", () => {
     ).toMatchObject({ id: "kept", frameIndex: 3 });
   });
 
+  it("prepares all pending videos from the project menu and preserves ordinary images", async () => {
+    vi.mocked(api.listProjectVideos).mockResolvedValueOnce(
+      ["one", "two"].map((name) => ({
+        sourcePath: `C:/fixture/${name}.mp4`,
+        folderPath: null,
+        video: null,
+      })),
+    );
+    vi.mocked(api.importVideo).mockImplementation(async (sourcePath, _folder, frameInterval) => ({
+      folderPath: `C:/fixture/${sourcePath.includes("one") ? "one" : "two"}`,
+      video: {
+        schemaVersion: 1,
+        sourcePath,
+        width: 64,
+        height: 48,
+        frameInterval,
+        totalFrames: 1,
+        frames: [{ name: "frame-000000.png", frameIndex: 0, timestampSeconds: 0 }],
+      },
+    }));
+    await openFixture();
+    await click("批量抽取未准备视频");
+    expect(api.importVideo).toHaveBeenCalledTimes(2);
+    expect(api.importVideo).toHaveBeenNthCalledWith(2, "C:/fixture/two.mp4", "C:/fixture", 30);
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("完成 2 / 2");
+    await click("关闭");
+    expect(container.textContent).toContain("2 张图片 · 2 个视频");
+    expect(button("批量抽取未准备视频").disabled).toBe(true);
+  });
+
   it("canvas menu offers a distinct deletion action and disables it without a deletable image", async () => {
     const onDeleteImage = vi.fn();
     const props = {
