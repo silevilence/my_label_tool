@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-video-tools.ps1 && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -29,6 +29,7 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": "all",
+    "resources": ["video-tools/"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

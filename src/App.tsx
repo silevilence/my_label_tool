@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction 
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { AppLayout } from "./components/AppLayout";
+import type { VideoProject } from "./types/video";
+import { videoImages } from "./lib/video-images";
+import { VideoImportBar } from "./components/video/VideoImportBar";
+import { useVideoImport } from "./hooks/useVideoImport";
+import { listImageFiles } from "./lib/tauri-api";
+import { VIDEO_ZH_CN as videoText } from "./i18n/video.zh-CN";
 import { DeleteImageDialog } from "./components/DeleteImageDialog";
 import { useImageDeletion } from "./hooks/useImageDeletion";
 import { normalizeShortcutKey } from "./lib/shortcut-utils";
@@ -69,6 +75,7 @@ function App() {
   const panStateRef = useRef<PanState | null>(null);
   const suppressContextMenuRef = useRef(false);
   const [folderPath, setFolderPath] = useState("");
+  const [video, setVideo] = useState<VideoProject | null>(null);
   const [images, setImages] = useState<ImageFile[]>([]);
   const [selectedPath, setSelectedPath] = useState("");
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -346,6 +353,10 @@ function App() {
     setError,
   });
   function requestDeleteImage(path: string) {
+    if (video) {
+      setError(videoText.deleteDisabled);
+      return;
+    }
     setContextMenu(null);
     imageDeletion.request(path);
   }
@@ -385,12 +396,22 @@ function App() {
     showLabelSwitchHint,
   });
   const openFolder = useOpenFolder({
+    setVideo,
     maybeLoadProjectConfig,
     setError,
     setFolderPath,
     setImages,
     setSelectedPath,
   });
+  const videoImport = useVideoImport(async (result) => {
+    const nextImages = videoImages(result.video, await listImageFiles(result.folderPath));
+    setVideo(result.video);
+    setFolderPath(result.folderPath);
+    setImages(nextImages);
+    setSelectedPath(nextImages[0]?.path ?? "");
+    replaceAnnotations({});
+    await maybeLoadProjectConfig(result.folderPath, nextImages);
+  }, setError);
   const imageLayout = imageView;
   const {
     changeAnnotationLabel,
@@ -614,6 +635,7 @@ function App() {
 
   useEffect(() => {
     function finishPolygonFromKeyboard(event: KeyboardEvent) {
+      if (videoImport.busy) return;
       if (isEditableTarget(event.target) || currentShapeType !== "polygon") {
         return;
       }
@@ -627,10 +649,18 @@ function App() {
 
     window.addEventListener("keydown", finishPolygonFromKeyboard);
     return () => window.removeEventListener("keydown", finishPolygonFromKeyboard);
-  }, [clearPolygonDraft, currentShapeType, polygonPoints, selectedPath, currentLabel]);
+  }, [
+    clearPolygonDraft,
+    currentShapeType,
+    polygonPoints,
+    selectedPath,
+    currentLabel,
+    videoImport.busy,
+  ]);
 
   useKeyboardShortcuts({
     enabled:
+      !videoImport.busy &&
       !imageDeletion.target &&
       !isShortcutSettingsOpen &&
       !isPrelabelSettingsOpen &&
@@ -673,7 +703,16 @@ function App() {
   return (
     <>
       <AppLayout
-        canDeleteImage={!imageDeletionBusy && !imageDeletion.target}
+        workspaceDisabled={videoImport.busy}
+        videoToolbar={
+          <VideoImportBar
+            busy={videoImport.busy}
+            disabled={imageDeletionBusy || Boolean(imageDeletion.target)}
+            onImport={(interval) => void videoImport.start(interval)}
+            onCancel={() => void videoImport.cancel()}
+          />
+        }
+        canDeleteImage={!video && !imageDeletionBusy && !imageDeletion.target}
         requestDeleteImage={requestDeleteImage}
         activeProjectConfig={activeProjectConfig}
         annotationToDelete={annotationToDelete}
@@ -757,7 +796,9 @@ function App() {
         installUpdate={() => void installUpdate()}
         newTemplate={newTemplate}
         openContextMenu={openContextMenu}
-        openFolder={openFolder}
+        openFolder={() => {
+          if (!videoImport.busy) void openFolder();
+        }}
         redo={redo}
         retryPluginConfigMigrations={retryPluginConfigMigrations}
         refreshPluginLabelPresets={refreshPluginLabelPresets}

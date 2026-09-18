@@ -12,6 +12,7 @@ const tauriMocks = vi.hoisted(() => ({
   exportAnnotationsJson: vi.fn(),
   exportTextFiles: vi.fn(),
   listImageFiles: vi.fn(),
+  loadVideoProject: vi.fn().mockResolvedValue(null),
   listTextFiles: vi.fn(),
   loadLabelConfigs: vi.fn(),
   loadLabelTemplates: vi.fn(),

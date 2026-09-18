@@ -693,9 +693,11 @@ mod tests {
 
     #[tokio::test]
     async fn header_stall_is_interrupted_by_timeout() {
-        let (url, server) = spawn_http_server(|mut stream| {
-            read_request(&mut stream);
+        let (url, server) = spawn_http_server(|stream| {
+            // Hold the accepted connection without reading: the client may time out
+            // before sending a request under load, so a blocking read could hang join.
             thread::sleep(Duration::from_millis(150));
+            drop(stream);
         });
         let error = download_checked_asset_from_url(
             &AsyncCancellation::new(),

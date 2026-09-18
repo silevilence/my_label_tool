@@ -1,4 +1,6 @@
 mod image_deletion;
+mod video;
+pub use video::*;
 mod plugin;
 pub use image_deletion::*;
 mod prelabel;

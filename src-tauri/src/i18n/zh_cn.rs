@@ -834,3 +834,14 @@ pub fn pt_conversion_worker_failed(error: impl std::fmt::Display) -> String {
 pub fn pt_environment_worker_failed(error: impl std::fmt::Display) -> String {
     format!("转换环境检测后台任务异常结束：{error}")
 }
+
+pub const VIDEO_BUSY: &str = "已有视频正在导入，请等待或取消。";
+pub const VIDEO_INVALID: &str = "视频或帧信息无效，请选择有效视频和输出目录。";
+pub const VIDEO_LIMIT: &str =
+    "视频超出处理上限（源帧 100 万、抽取帧 1 万），请增大间隔或分段导入。";
+pub const VIDEO_INTERRUPTED: &str = "视频导入已取消、超时或超出资源上限，原项目未改变。";
+pub const VIDEO_TOOLS_MISSING: &str =
+    "安装包缺少视频工具，请重新安装完整版本。开发环境需提供 FFmpeg 和 FFprobe。";
+pub fn video_failed(error: impl std::fmt::Display) -> String {
+    format!("视频处理失败：{error}")
+}

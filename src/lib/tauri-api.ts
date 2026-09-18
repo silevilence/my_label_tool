@@ -1,5 +1,28 @@
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+import type { VideoImportResult, VideoProject } from "../types/video";
+import { VIDEO_ZH_CN as videoText } from "../i18n/video.zh-CN";
+
+export async function selectVideoFile(): Promise<string | null> {
+  const path = await open({
+    multiple: false,
+    filters: [{ name: videoText.open, extensions: ["mp4", "mkv", "avi", "mov", "webm", "m4v"] }],
+  });
+  return typeof path === "string" ? path : null;
+}
+export function importVideo(
+  sourcePath: string,
+  outputFolder: string,
+  frameInterval: number,
+): Promise<VideoImportResult> {
+  return invoke("import_video", { sourcePath, outputFolder, frameInterval });
+}
+export function cancelVideoImport(): Promise<void> {
+  return invoke("cancel_video_import");
+}
+export function loadVideoProject(folderPath: string): Promise<VideoProject | null> {
+  return invoke("load_video_project", { folderPath });
+}
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import type { ExportData, TextExportFile } from "../types/export";
 import type { ShortcutMap } from "./defaults/shortcuts";

@@ -18,6 +18,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::import_video,
+            commands::cancel_video_import,
+            commands::load_video_project,
             commands::list_image_files,
             commands::recycle_image_file,
             commands::export_annotations_json,
@@ -74,6 +77,7 @@ pub fn run() {
                 tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
             ) {
                 commands::cancel_all_pt_conversions_and_wait();
+                media::video::shutdown();
                 commands::cancel_all_prelabel_tasks();
                 commands::cancel_all_runtime_downloads();
                 commands::cancel_all_prelabel_model_downloads();

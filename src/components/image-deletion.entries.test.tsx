@@ -36,6 +36,7 @@ vi.mock("../lib/tauri-api", async (importOriginal) => ({
   loadPluginPrelabelSources: vi.fn().mockResolvedValue({ sources: [], warning: null }),
   loadPrelabelModelLibrary: vi.fn(),
   listImageFiles: vi.fn(),
+  loadVideoProject: vi.fn().mockResolvedValue(null),
   listTextFiles: vi.fn().mockResolvedValue([]),
   selectImageFolder: vi.fn().mockResolvedValue("C:/fixture"),
   recycleImageFile: vi.fn().mockResolvedValue(undefined),
@@ -160,7 +161,7 @@ describe("image deletion entry wiring", () => {
     // Lazy settings import is not timer-driven; flush its module load using real timers.
     vi.useRealTimers();
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await import("./settings/ShortcutSettings");
     });
     const description = [...container.querySelectorAll("p")].find(
       (node) => node.textContent === text.deleteCurrentImage,
