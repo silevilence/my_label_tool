@@ -11,3 +11,13 @@ export function videoImages(video: VideoProject | null, images: ImageFile[]): Im
     return image;
   });
 }
+
+export function videoFrameIndices(
+  video: VideoProject | null,
+  images: ImageFile[],
+): Record<string, number> {
+  if (!video) return {};
+  return Object.fromEntries(
+    videoImages(video, images).map((image, index) => [image.path, video.frames[index].frameIndex]),
+  );
+}

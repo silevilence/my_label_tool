@@ -3,6 +3,8 @@ import { annotationShapesEqual } from "../lib/annotation-utils";
 import type { AnnotationShape } from "../types/annotation";
 
 interface AnnotationState {
+  frameIndices: Record<string, number>;
+  setFrameIndices: (indices: Record<string, number>) => void;
   annotationsByImage: Record<string, AnnotationShape[]>;
   selectedShapeId: string | null;
   undoStack: AnnotationHistoryEntry[];
@@ -43,6 +45,17 @@ const HISTORY_LIMIT = 100;
 let nextHistoryGroupId = 1;
 
 export const useAnnotationStore = create<AnnotationState>((set) => ({
+  frameIndices: {},
+  setFrameIndices: (frameIndices) =>
+    set((state) => ({
+      frameIndices,
+      annotationsByImage: Object.fromEntries(
+        Object.entries(state.annotationsByImage).map(([path, annotations]) => [
+          path,
+          bindFrame(annotations, frameIndices[path]),
+        ]),
+      ),
+    })),
   annotationsByImage: {},
   selectedShapeId: null,
   undoStack: [],
@@ -148,7 +161,9 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
         ...state,
         annotationsByImage: {
           ...state.annotationsByImage,
-          [entry.imagePath]: cloneAnnotations(entry.before),
+          [entry.imagePath]: cloneAnnotations(
+            bindFrame(entry.before, state.frameIndices[entry.imagePath]),
+          ),
         },
         selectedShapeId: entry.selectedBefore,
         undoStack,
@@ -168,7 +183,9 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
         ...state,
         annotationsByImage: {
           ...state.annotationsByImage,
-          [entry.imagePath]: cloneAnnotations(entry.after),
+          [entry.imagePath]: cloneAnnotations(
+            bindFrame(entry.after, state.frameIndices[entry.imagePath]),
+          ),
         },
         selectedShapeId: entry.selectedAfter,
         undoStack,
@@ -179,7 +196,12 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
     set((state) =>
       withHistoryFlags({
         ...state,
-        annotationsByImage,
+        annotationsByImage: Object.fromEntries(
+          Object.entries(annotationsByImage).map(([path, annotations]) => [
+            path,
+            bindFrame(annotations, state.frameIndices[path]),
+          ]),
+        ),
         selectedShapeId: null,
         undoStack: [],
         redoStack: [],
@@ -204,10 +226,11 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
 function applyImageHistory(
   state: AnnotationState,
   imagePath: string,
-  after: AnnotationShape[],
+  annotations: AnnotationShape[],
   selectedAfter: string | null,
   groupId?: string,
 ): AnnotationState {
+  const after = bindFrame(annotations, state.frameIndices[imagePath]);
   const before = state.annotationsByImage[imagePath] ?? [];
   if (annotationShapesEqual(before, after)) {
     return state;
@@ -262,4 +285,13 @@ function cloneAnnotations(annotations: AnnotationShape[]): AnnotationShape[] {
     points: [...annotation.points],
     attributes: annotation.attributes ? { ...annotation.attributes } : undefined,
   }));
+}
+
+function bindFrame(
+  annotations: AnnotationShape[],
+  frameIndex: number | undefined,
+): AnnotationShape[] {
+  return frameIndex === undefined
+    ? annotations
+    : annotations.map((annotation) => ({ ...annotation, frameIndex }));
 }

@@ -5,7 +5,8 @@ import {
   type ImageFile,
 } from "../lib/tauri-api";
 import type { VideoProject } from "../types/video";
-import { videoImages } from "../lib/video-images";
+import { videoFrameIndices, videoImages } from "../lib/video-images";
+import { useAnnotationStore } from "../store/useAnnotationStore";
 
 export function useOpenFolder({
   maybeLoadProjectConfig,
@@ -34,6 +35,7 @@ export function useOpenFolder({
       const listedImages = await listImageFiles(path);
       const video = setVideo ? await loadVideoProject(path) : null;
       const nextImages = videoImages(video, listedImages);
+      useAnnotationStore.getState().setFrameIndices(videoFrameIndices(video, nextImages));
       setVideo?.(video);
       setFolderPath(path);
       setImages(nextImages);

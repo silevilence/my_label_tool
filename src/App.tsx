@@ -3,7 +3,7 @@ import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
 import { AppLayout } from "./components/AppLayout";
 import type { VideoProject } from "./types/video";
-import { videoImages } from "./lib/video-images";
+import { videoFrameIndices, videoImages } from "./lib/video-images";
 import { VideoImportBar } from "./components/video/VideoImportBar";
 import { VideoTimeline } from "./components/video/VideoTimeline";
 import { useVideoImport } from "./hooks/useVideoImport";
@@ -406,6 +406,7 @@ function App() {
   });
   const videoImport = useVideoImport(async (result) => {
     const nextImages = videoImages(result.video, await listImageFiles(result.folderPath));
+    useAnnotationStore.getState().setFrameIndices(videoFrameIndices(result.video, nextImages));
     setVideo(result.video);
     setFolderPath(result.folderPath);
     setImages(nextImages);

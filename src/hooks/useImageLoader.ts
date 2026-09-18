@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { imageFileSrc, type ImageFile } from "../lib/tauri-api";
+import { cacheDecodedImage, getCachedImage } from "../lib/image-cache";
 
 export function useImageLoader(images: ImageFile[], selectedPath: string) {
   const cacheRef = useRef(new Map<string, HTMLImageElement>());
-  const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
+  const [loaded, setLoaded] = useState<{ path: string; image: HTMLImageElement } | null>(null);
+  const loadedImage = loaded?.path === selectedPath ? loaded.image : null;
   const [imageLoadError, setImageLoadError] = useState("");
   const selectedImage = useMemo(
     () => images.find((image) => image.path === selectedPath) ?? null,
@@ -19,27 +21,27 @@ export function useImageLoader(images: ImageFile[], selectedPath: string) {
 
   useEffect(() => {
     if (!selectedImage) {
-      setLoadedImage(null);
+      setLoaded(null);
       setImageLoadError("");
       return;
     }
 
-    const cachedImage = cacheRef.current.get(selectedImage.path);
+    const cachedImage = getCachedImage(cacheRef.current, selectedImage.path);
     if (cachedImage) {
-      setLoadedImage(cachedImage);
+      setLoaded({ path: selectedImage.path, image: cachedImage });
       setImageLoadError("");
       return;
     }
 
     let cancelled = false;
     const image = new Image();
-    setLoadedImage(null);
+    setLoaded(null);
     setImageLoadError("");
 
     image.onload = () => {
       if (!cancelled) {
-        cacheRef.current.set(selectedImage.path, image);
-        setLoadedImage(image);
+        cacheDecodedImage(cacheRef.current, selectedImage.path, image);
+        setLoaded({ path: selectedImage.path, image });
       }
     };
     image.onerror = () => {
@@ -64,7 +66,7 @@ export function useImageLoader(images: ImageFile[], selectedPath: string) {
     }
 
     const image = new Image();
-    image.onload = () => cacheRef.current.set(nextImage.path, image);
+    image.onload = () => cacheDecodedImage(cacheRef.current, nextImage.path, image);
     image.onerror = null;
     image.src = imageFileSrc(nextImage.path);
 
