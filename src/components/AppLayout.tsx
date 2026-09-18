@@ -44,6 +44,8 @@ import type { PrelabelClassMapping } from "../types/prelabel";
 import type { PluginExportFormatDescriptor, PluginPrelabelSourceDescriptor } from "../types/plugin";
 import type { PluginExportProgressState } from "../hooks/useProjectActions";
 import type { LoadedProjectVideo } from "../lib/project-media";
+import { VideoInterpolationPreview } from "./video/VideoInterpolationPreview";
+import { APP_ZH_CN as appText } from "../i18n/app.zh-CN";
 
 const ShortcutSettings = lazy(async () => {
   const settings = await import("./settings/ShortcutSettings");
@@ -63,6 +65,8 @@ const ImageSearchDialog = lazy(async () => {
 });
 
 interface AppLayoutProps {
+  interpolationShape?: AnnotationShape | null;
+  onDismissError?: () => void;
   workspaceDisabled?: boolean;
   canvasFooter?: ReactNode;
   videos?: LoadedProjectVideo[];
@@ -197,6 +201,8 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({
+  interpolationShape,
+  onDismissError,
   workspaceDisabled = false,
   canvasFooter,
   videos = [],
@@ -591,6 +597,9 @@ export function AppLayout({
                     />
                   </Layer>
                 </Stage>
+                {interpolationShape && (
+                  <VideoInterpolationPreview shape={interpolationShape} layout={imageLayout} />
+                )}
                 {helpDisplaySettings.showModeHelp && (
                   <ModeHelpOverlay
                     corner={modeHelpCorner}
@@ -663,10 +672,20 @@ export function AppLayout({
 
         {error && (
           <div
-            className="pointer-events-none fixed left-1/2 top-5 z-[80] max-w-xl -translate-x-1/2 rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-sm text-red-100 shadow-2xl"
+            className="fixed left-1/2 top-5 z-[80] flex max-w-xl -translate-x-1/2 items-start gap-3 rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-sm text-red-100 shadow-2xl"
             role="alert"
           >
-            {error}
+            <span>{error}</span>
+            {onDismissError && (
+              <button
+                type="button"
+                aria-label={appText.dismissError}
+                className="shrink-0 rounded px-1 text-red-200 hover:bg-red-900 focus-visible:outline focus-visible:outline-red-300"
+                onClick={onDismissError}
+              >
+                ×
+              </button>
+            )}
           </div>
         )}
 

@@ -11,7 +11,10 @@ import {
 } from "./lib/project-media";
 import { VideoImportDialog } from "./components/video/VideoImportDialog";
 import { VideoTimeline } from "./components/video/VideoTimeline";
-import { VideoInterpolationPanel } from "./components/video/VideoInterpolationPanel";
+import {
+  VideoInterpolationPanel,
+  type InterpolationPreview,
+} from "./components/video/VideoInterpolationPanel";
 import { useVideoImport } from "./hooks/useVideoImport";
 import { selectExportFolder, selectVideoFile } from "./lib/tauri-api";
 import { VIDEO_ZH_CN as videoText } from "./i18n/video.zh-CN";
@@ -84,6 +87,9 @@ function App() {
   const [folderPath, setFolderPath] = useState("");
   const [videoEntries, setVideoEntries] = useState<ProjectVideo[]>([]);
   const [videoImportSource, setVideoImportSource] = useState<string | null>(null);
+  const [interpolationPreview, setInterpolationPreview] = useState<InterpolationPreview | null>(
+    null,
+  );
   const [images, setImages] = useState<ImageFile[]>([]);
   const [selectedPath, setSelectedPath] = useState("");
   const videos = useMemo(() => projectVideos(folderPath, videoEntries), [folderPath, videoEntries]);
@@ -140,7 +146,7 @@ function App() {
   const [isShortcutSettingsOpen, setIsShortcutSettingsOpen] = useState(false);
   const [isPrelabelSettingsOpen, setIsPrelabelSettingsOpen] = useState(false);
   const [isPrelabelExecutionOpen, setIsPrelabelExecutionOpen] = useState(false);
-  const [error, setError] = useState("");
+  const { message: error, showMessage: setError } = useTransientMessage(5000);
 
   const prelabelModels = usePrelabelModels(setError);
 
@@ -754,6 +760,14 @@ function App() {
   return (
     <>
       <AppLayout
+        interpolationShape={
+          interpolationPreview?.source === annotationsByImage &&
+          interpolationPreview.video === video
+            ? (interpolationPreview.plan.entries.find((entry) => entry.imagePath === selectedPath)
+                ?.generated ?? null)
+            : null
+        }
+        onDismissError={() => setError("")}
         workspaceDisabled={videoImport.busy || videoImportSource !== null}
         videos={videos}
         addVideo={(source) => {
@@ -782,6 +796,7 @@ function App() {
                 disabled={videoImport.busy || imageDeletionBusy}
                 onSelect={setSelectedPath}
                 onError={setError}
+                onPreviewChange={setInterpolationPreview}
               />
             )}
           </>

@@ -51,23 +51,21 @@ beforeEach(() => {
   error.mockClear();
   select.mockClear();
   useAnnotationStore.getState().setFrameIndices({ "0.png": 0, "1.png": 1, "2.png": 2 });
-  useAnnotationStore
-    .getState()
-    .replaceAnnotations(
-      Object.fromEntries(
-        [0, 2].map((frame) => [
-          `${frame}.png`,
-          [
-            {
-              id: String(frame),
-              type: "rect" as const,
-              labelId: "label",
-              points: [frame * 10, 0, 10, 10],
-            },
-          ],
-        ]),
-      ),
-    );
+  useAnnotationStore.getState().replaceAnnotations(
+    Object.fromEntries(
+      [0, 2].map((frame) => [
+        `${frame}.png`,
+        [
+          {
+            id: String(frame),
+            type: "rect" as const,
+            labelId: "label",
+            points: [frame * 10, 0, 10, 10],
+          },
+        ],
+      ]),
+    ),
+  );
   container = document.createElement("div");
   root = createRoot(container);
 });
@@ -94,7 +92,7 @@ it("marks two selected shapes, previews without writing, and applies the interme
     points: [10, 0, 10, 10],
     frameIndex: 1,
   });
-  expect(error).not.toHaveBeenCalled();
+  expect(error.mock.calls.every(([message]) => message === "")).toBe(true);
 });
 it("rejects incomplete tracks and invalidates a preview when annotations change", async () => {
   await render("0.png");
