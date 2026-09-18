@@ -103,7 +103,7 @@ my_label_tool/
 ├── examples/plugins/               # 插件开发示例（label-preset-demo / exporter-labelme-demo / prelabel-demo）
 ├── scripts/                        # 插件打包与验证脚本（package-plugin.mjs、verify-plugin-*.ps1）
 ├── .github/workflows/              # GitHub Actions：ci.yml、official-models.yml、release.yml
-├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、插件 JSON Schema、verification/、adr/）
+├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、frontend-interaction.md、架构评审报告目录、插件 JSON Schema、verification/、adr/）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md
 └── package.json

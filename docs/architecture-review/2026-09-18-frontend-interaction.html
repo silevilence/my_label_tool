@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>架构评审 — my_label_tool（前端交互）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose", flowchart: { curve: "basis" } });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 5 4; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .chip { font-variant-ligatures: none; }
+      .mermaid { display: flex; justify-content: center; }
+      .mermaid svg { max-height: 330px; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans antialiased">
+    <main class="max-w-6xl mx-auto px-6 py-12 space-y-12">
+
+      <!-- ── Header ───────────────────────────────────────────── -->
+      <header class="space-y-4 border-b border-slate-200 pb-8">
+        <div class="flex items-baseline justify-between gap-6 flex-wrap">
+          <h1 class="font-serif text-4xl tracking-tight">my_label_tool — 前端交互架构评审</h1>
+          <p class="text-sm text-slate-500">2026-09-18 · 前端 <span class="font-mono">src/</span> · 216 commits 热点取样</p>
+        </div>
+        <p class="text-slate-600 max-w-3xl">
+          视角：<strong>用户操作友好与人机交互</strong>。每个候选都是<strong>加深</strong>（deepening）机会：让一个模块用更小的接口承载更多行为，
+          把「用户按下的东西会发生什么」这件事收敛到一处的<strong>局部性</strong>（locality），并可以从同一个<strong>接缝</strong>（seam）测试。
+        </p>
+        <div class="flex flex-wrap gap-x-6 gap-y-2 text-xs uppercase tracking-wider text-slate-500">
+          <span class="flex items-center gap-2"><span class="inline-block w-4 h-3 border-2 border-slate-400 bg-white"></span>模块</span>
+          <span class="flex items-center gap-2"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#64748b" stroke-width="2" class="seam"/></svg>接缝</span>
+          <span class="flex items-center gap-2"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#dc2626" stroke-width="2"/></svg>重复 / 泄漏</span>
+          <span class="flex items-center gap-2"><span class="inline-block w-4 h-3 deep border-2 border-slate-900"></span>深模块</span>
+        </div>
+        <p class="text-xs text-slate-500">
+          热点依据：<span class="font-mono">App.tsx 47 次 · AppLayout.tsx 32 次 · tauri-api.ts 30 次 · AppSidebar.tsx 16 次 · useProjectActions.ts 15 次 · useAnnotationStore.ts 13 次</span> 变更。
+        </p>
+      </header>
+
+      <section id="candidates" class="space-y-14">
+
+        <!-- ══ C1 ══════════════════════════════════════════════ -->
+        <article id="c1" class="space-y-5">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">① 把「谁盖在画布上」做成一个 Overlay 模块</h2>
+            <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold px-3 py-1">Strong</span>
+            <span class="rounded-full bg-slate-200 text-slate-700 text-xs font-mono px-3 py-1">in-process</span>
+          </div>
+          <p class="font-mono text-xs text-slate-500 leading-relaxed">
+            DeleteImageDialog.tsx · CanvasChrome.tsx(DeleteAnnotationDialog) · LabelSettings.tsx · ShortcutSettings.tsx · PrelabelSettings.tsx ·
+            PrelabelExecutionDialog.tsx · PtConversionDialog.tsx · PluginSettings.tsx · ProjectSettingsDialog.tsx · ImageSearchDialog.tsx ·
+            ImageListContextMenu.tsx · VideoImportDialog.tsx · VideoBatchDialog.tsx · VideoReextractDialog.tsx ·
+            App.tsx:141-150,705-713 · AppLayout.tsx:337 · AppSidebar.tsx:152
+          </p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — 17 个遮罩，3 套门禁</p>
+              <pre class="mermaid">
+flowchart TB
+  K["14 处键盘监听"] --> Q{"有东西在顶上吗?"}
+  M["Ctrl+F / 模式切换"] --> Q
+  Q -.-> G["App.tsx:709<br/>9 个布尔量与运算"]
+  G -. 名单已过期 .-> L["快捷键穿透到画布"]
+  D["17 个遮罩层"] --> B1["13 处内联背板"]
+  D --> B2["5 种 ESC 策略"]
+  D --> B3["焦点归还 2 / 16"]
+  classDef leak stroke:#dc2626,stroke-width:2px,fill:#fef2f2,color:#7f1d1d;
+  class G,L,B3 leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — 一个深模块，一个谓词</p>
+              <div class="deep rounded-lg p-4 h-[280px] flex flex-col justify-between">
+                <div>
+                  <p class="text-[11px] uppercase tracking-wider text-slate-400">Overlay 模块</p>
+                  <p class="text-white font-semibold text-lg leading-tight mb-3">栈 + 背板 + ESC + 焦点进出 + 高度上限 + aria</p>
+                  <div class="grid grid-cols-3 gap-1.5 text-[10px] text-slate-300">
+                    <span class="border border-slate-600 rounded px-1.5 py-1 text-center">设置类 ×6</span>
+                    <span class="border border-slate-600 rounded px-1.5 py-1 text-center">确认类 ×3</span>
+                    <span class="border border-slate-600 rounded px-1.5 py-1 text-center">视频类 ×4</span>
+                    <span class="border border-slate-600 rounded px-1.5 py-1 text-center">搜索 / 菜单 ×2</span>
+                    <span class="border border-slate-600 rounded px-1.5 py-1 text-center">导出 ×1</span>
+                    <span class="border border-dashed border-slate-500 rounded px-1.5 py-1 text-center text-slate-400">+ 新增</span>
+                  </div>
+                </div>
+                <div class="text-[11px] text-slate-300 border-t border-slate-700 pt-3">
+                  输入消费者 → <span class="font-mono text-emerald-300">hasOverlay()</span> · 一行代替 9 项与运算
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm"><strong class="text-red-700">Problem —</strong> 17 个遮罩层各自重写背板 / ESC / 焦点 / 滚动 / aria，而「有没有东西盖在画布上」要靠 <span class="font-mono text-xs">App.tsx:705-713</span> 一串 9 项布尔量与运算回答——漏登记一个弹窗，快捷键就静默穿透到画布。</p>
+          <p class="text-sm"><strong class="text-emerald-700">Solution —</strong> 一个 Overlay 模块：接口 <span class="font-mono text-xs">{ open, onClose, size, labelledBy, children }</span>，实现在内部完成背板、<span class="font-mono text-xs">role=dialog</span>、捕获阶段 ESC、焦点进入 / 归还、视口高度上限，并把打开的遮罩注册进同一个栈供全局查询。</p>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>ESC 一律可用（今天 8 个弹窗键盘关不掉）</li>
+              <li>焦点归还触发点（今天 2 / 16）</li>
+              <li>小窗口不再藏住确认按钮（今天 5 个无高度上限）</li>
+            </ul>
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>局部性：门禁规则只写一次</li>
+              <li>杠杆：17 个调用点共用一条接缝</li>
+              <li>接口即测试面：渲染 → ESC / 焦点 / 键盘不逃逸</li>
+            </ul>
+          </div>
+
+          <div class="rounded border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+            既有先例：<span class="font-mono">VideoReextractDialog.tsx</span> 已经把 <span class="font-mono">DeleteImageDialog</span> 当适配器复用（<span class="font-mono">messages</span> 属性）——接缝已被证明可行，只是只有一个。
+          </div>
+        </article>
+
+        <!-- ══ C2 ══════════════════════════════════════════════ -->
+        <article id="c2" class="space-y-5 border-t border-slate-200 pt-10">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">② 把快捷键从 110 行 if 链变成一张可解析的动作表</h2>
+            <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold px-3 py-1">Strong</span>
+            <span class="rounded-full bg-slate-200 text-slate-700 text-xs font-mono px-3 py-1">in-process</span>
+          </div>
+          <p class="font-mono text-xs text-slate-500 leading-relaxed">
+            useKeyboardShortcuts.ts:47-175 · lib/defaults/shortcuts.ts · ShortcutSettings.tsx:47-90,199-208 · LabelSettings.tsx:75-94 ·
+            lib/app-utils.ts:24-34 · CanvasChrome.tsx:105-113 · App.tsx:697-729
+          </p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-3">Before — 接口几乎与实现等宽（浅）</p>
+              <div class="space-y-2">
+                <div class="border-2 border-red-300 bg-red-50 rounded px-3 py-2">
+                  <p class="text-[11px] uppercase tracking-wider text-red-700">接口：调用方必须知道</p>
+                  <p class="text-xs text-red-900 mt-1">17 个回调 + ShortcutMap + enabled + 6 个状态值 = 24 项</p>
+                </div>
+                <div class="border-2 border-slate-300 bg-white rounded px-3 py-2 h-24">
+                  <p class="text-[11px] uppercase tracking-wider text-slate-500">实现</p>
+                  <p class="text-xs text-slate-700 mt-1">优先序 if 链 ≈ 110 行 · 表只用于设置界面与冲突文案</p>
+                </div>
+                <div class="grid grid-cols-2 gap-1.5 text-[10px] text-red-800">
+                  <span class="border border-red-300 rounded px-1.5 py-1">冲突判定 ×3 份</span>
+                  <span class="border border-red-300 rounded px-1.5 py-1">键名格式化 ×2 份</span>
+                  <span class="border border-red-300 rounded px-1.5 py-1">新增动作 ≈ 6 处改动</span>
+                  <span class="border border-red-300 rounded px-1.5 py-1">Ctrl+Z/Y/S 不可改绑</span>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-3">After — 小接口，深实现</p>
+              <div class="space-y-2">
+                <div class="border-2 border-emerald-400 bg-emerald-50 rounded px-3 py-2">
+                  <p class="text-[11px] uppercase tracking-wider text-emerald-700">接口：调用方只需知道</p>
+                  <p class="text-xs text-emerald-900 mt-1 font-mono">resolveShortcut(event, ctx) → actionId | null</p>
+                </div>
+                <div class="deep rounded px-3 py-3 h-24 text-slate-300">
+                  <p class="text-[11px] uppercase tracking-wider text-slate-400">实现：一张表 + 一个解析器</p>
+                  <p class="text-xs mt-1 font-mono text-slate-200">{ id, label, defaultKey, when, run }</p>
+                  <p class="text-[11px] mt-1 text-slate-400">匹配 · 优先级 · 门禁 · 迁移 · 提示 · 冲突解释</p>
+                </div>
+                <p class="text-[11px] text-slate-500">设置界面 / 运行时 / 提示浮层 / 迁移读同一张表；解析器是纯函数，无 DOM 即可测。</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm"><strong class="text-red-700">Problem —</strong> 真正决定「按下 = 做什么」的是 <span class="font-mono text-xs">useKeyboardShortcuts.ts:58-142</span> 的优先序 if 链，而 <span class="font-mono text-xs">SHORTCUT_ACTIONS</span> 只是设置界面的元数据——两套真相；新增一个可改绑动作要改约 6 处，漏掉分派分支时键位在设置里可见、按下却什么都不发生。</p>
+          <p class="text-sm"><strong class="text-emerald-700">Solution —</strong> 表项自带 <span class="font-mono text-xs">when</span>（门禁）与 <span class="font-mono text-xs">run</span>（行为），一个解析器负责匹配、优先级、门禁与冲突裁决，设置界面、运行时、迁移名单、提示浮层全部消费同一张表。</p>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>用户改绑后行为与设置面板一致</li>
+              <li>冲突有唯一裁决，并给出解释而非静默</li>
+              <li>撤销 / 保存 / 删除框也纳入可改绑</li>
+            </ul>
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>接口收缩：24 项 → 1 个解析器</li>
+              <li>杠杆：4 个消费方共用一张表</li>
+              <li>测试穿透优先级与门禁，不需要 DOM</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ══ C3 ══════════════════════════════════════════════ -->
+        <article id="c3" class="space-y-5 border-t border-slate-200 pt-10">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">③ 一个操作状态模块，替掉 22 个 slot 与两条会被覆盖的提示通道</h2>
+            <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold px-3 py-1">Strong</span>
+            <span class="rounded-full bg-slate-200 text-slate-700 text-xs font-mono px-3 py-1">in-process</span>
+          </div>
+          <p class="font-mono text-xs text-slate-500 leading-relaxed">
+            App.tsx:151,314,315 · useTransientMessage.ts · usePrelabelExecution.ts:103 · useProjectActions.ts:112,214 · useVideoImport.ts ·
+            useSaveFeedback.ts · useAppUpdate.ts:11-14 · useImageDeletion.ts · useProjectSettings.ts · useProjectVideoActions.ts ·
+            ExportPanel.tsx · PrelabelExecutionDialog.tsx · VideoBatchDialog.tsx · DeleteImageDialog.tsx
+          </p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — 三个长任务，一个消息槽</p>
+              <svg viewBox="0 0 360 260" class="w-full h-[280px]">
+                <text x="0" y="14" font-size="10" fill="#64748b" letter-spacing="1">用户视角</text>
+                <rect x="0" y="26" width="150" height="16" rx="3" fill="#c7d2fe"/><text x="6" y="38" font-size="9" fill="#312e81">预打标 · 批量 120 张</text>
+                <rect x="60" y="50" width="200" height="16" rx="3" fill="#fde68a"/><text x="66" y="62" font-size="9" fill="#78350f">插件导出 · 进度未知</text>
+                <rect x="170" y="74" width="120" height="16" rx="3" fill="#bbf7d0"/><text x="176" y="86" font-size="9" fill="#14532d">视频抽帧 · 2 / 5</text>
+                <line x1="210" y1="66" x2="210" y2="104" stroke="#dc2626" stroke-width="1.5"/>
+                <line x1="270" y1="90" x2="270" y2="104" stroke="#dc2626" stroke-width="1.5"/>
+                <text x="0" y="118" font-size="10" fill="#64748b" letter-spacing="1">5 秒红框 · 失败通道</text>
+                <rect x="0" y="126" width="360" height="30" rx="4" fill="#fef2f2" stroke="#dc2626" stroke-dasharray="4 3"/>
+                <text x="8" y="145" font-size="9" fill="#7f1d1d" font-family="monospace">setError(第 N 条) ← 后写覆盖前写，无来源标注</text>
+                <text x="0" y="176" font-size="10" fill="#64748b" letter-spacing="1">2.2 秒琥珀条 · 也走这条</text>
+                <rect x="0" y="184" width="360" height="30" rx="4" fill="#fffbeb" stroke="#d97706" stroke-dasharray="4 3"/>
+                <text x="8" y="203" font-size="9" fill="#78350f" font-family="monospace">exportComplete("导出完成") ← useProjectActions.ts:214</text>
+                <text x="0" y="234" font-size="10" fill="#7f1d1d">22 个 hook 级 slot + 13 个组件级 slot，四套确认机制</text>
+                <text x="0" y="250" font-size="10" fill="#7f1d1d">alert ×8 · confirmAction ×9 · 原生 confirm · 定制倒计时弹窗</text>
+              </svg>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — 按操作归属，而不是按最后一次写入</p>
+              <div class="deep rounded-lg p-4 h-[280px] flex flex-col justify-between">
+                <div>
+                  <p class="text-[11px] uppercase tracking-wider text-slate-400">操作注册表模块</p>
+                  <p class="font-mono text-xs text-emerald-300 mt-1">begin(op) → { id, label, percent, cancel }</p>
+                  <div class="mt-3 space-y-1.5 text-[11px] text-slate-300">
+                    <div class="flex justify-between border border-slate-600 rounded px-2 py-1"><span>预打标 · 批量</span><span class="text-emerald-300">62% · 可取消</span></div>
+                    <div class="flex justify-between border border-slate-600 rounded px-2 py-1"><span>插件导出</span><span class="text-slate-400">进行中 · 可取消</span></div>
+                    <div class="flex justify-between border border-slate-600 rounded px-2 py-1"><span>视频抽帧</span><span class="text-emerald-300">2 / 5 · 可取消</span></div>
+                  </div>
+                </div>
+                <div class="text-[11px] text-slate-300 border-t border-slate-700 pt-3 space-y-1">
+                  <p>消息带 kind + 来源操作，成功不再借用错误样式</p>
+                  <p class="text-slate-400">各界面退化为薄适配器</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm"><strong class="text-red-700">Problem —</strong> 「现在在跑什么、跑到哪、能不能取消、刚才那句话是谁说的」分散在 11 个 hook 的 22 个状态槽里，失败共用一条 5 秒红框、成功与失败共用一条 2.2 秒琥珀条——三个长任务可以同时进行，提示按最后写入者呈现。</p>
+          <p class="text-sm"><strong class="text-emerald-700">Solution —</strong> 一个操作注册表模块：<span class="font-mono text-xs">begin / progress / complete / fail / cancel</span> 按操作 id 归属，界面（进度框、取消按钮、消息）成为读同一份状态的薄适配器。</p>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>用户看到的是最要紧的一条，不是最后一条</li>
+              <li>成功不再穿错误配色</li>
+              <li>取消语义统一（更新下载今天没有取消）</li>
+            </ul>
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>局部性：并发与归属只有一个模块</li>
+              <li>杠杆：6 个界面共用一份状态</li>
+              <li>接口即测试面：并发操作的归约可纯函数化</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ══ C4 ══════════════════════════════════════════════ -->
+        <article id="c4" class="space-y-5 border-t border-slate-200 pt-10">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">④ 让「当前图片」只有一个权威模块——连同它的作用域</h2>
+            <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold px-3 py-1">Strong</span>
+            <span class="rounded-full bg-slate-200 text-slate-700 text-xs font-mono px-3 py-1">in-process</span>
+          </div>
+          <p class="font-mono text-xs text-slate-500 leading-relaxed">
+            App.tsx:89,696-701 · useImageNavigation.ts:15-56 · useImageDeletion.ts:71-75 · useOpenFolder.ts:50,60 · useProjectVideoActions.ts:73,137 ·
+            AppLayout.tsx:708 · AppSidebar.tsx:489,513 · ProjectMediaList.tsx:44,54,96-106 · ImageSearchDialog.tsx:28,107-110,133-139
+          </p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — 11 个写入点 + 3 个影子游标</p>
+              <pre class="mermaid">
+flowchart LR
+  A1["键盘 ←/→"] --> S["selectedPath<br/>App.tsx:89"]
+  A2["画布右键菜单"] --> S
+  A3["侧栏行点击"] --> S
+  A4["删除后接续"] --> S
+  A5["跳过未标注"] --> S
+  A6["打开文件夹 / 抽帧"] --> S
+  A7["搜索确认"] --> S
+  A8["帧步进 ←→ 图片步进<br/>两套索引空间"] --> S
+  C1["搜索候选 cursor"] -.影子.-> S
+  C2["视频 remembered map"] -.影子.-> S
+  classDef leak stroke:#dc2626,stroke-width:2px,fill:#fef2f2,color:#7f1d1d;
+  class C1,C2,A8 leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — 一个切片拥有选择与作用域</p>
+              <div class="deep rounded-lg p-4 h-[280px] flex flex-col">
+                <p class="text-[11px] uppercase tracking-wider text-slate-400">选择切片（store）</p>
+                <div class="mt-2 space-y-1.5 font-mono text-[11px] text-emerald-300">
+                  <p>select(path)</p>
+                  <p>selectAdjacent(scope) <span class="text-slate-400">// 项目序 / 结果集 / 单视频帧</span></p>
+                  <p>selectUnannotated(scope)</p>
+                  <p>removeImages(paths) <span class="text-slate-400">// 一次夹取</span></p>
+                </div>
+                <div class="mt-auto text-[11px] text-slate-300 space-y-1 border-t border-slate-700 pt-3">
+                  <p>写入点从 11 个意图收敛到一个接口</p>
+                  <p class="text-slate-400">滚入视口由列表行注册，不再靠 App 的 ref 约定</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm"><strong class="text-red-700">Problem —</strong> 「当前图片」是一个字符串状态加 11 个各自夹取索引的写入点，外加 3 个影子游标——<span class="font-mono text-xs">useImageDeletion.ts:74</span> 的 <span class="font-mono text-xs">remaining[Math.min(index, remaining.length - 1)]</span> 在 <span class="font-mono text-xs">index = -1</span> 时等于 <span class="font-mono text-xs">undefined</span>，选择被清成空串：删掉一张图后画布变白，而不是停在邻图。</p>
+          <p class="text-sm"><strong class="text-emerald-700">Solution —</strong> 选择连同它的作用域进入 store 的一个切片，对外只暴露意图（<span class="font-mono text-xs">select / selectAdjacent / selectUnannotated / removeImages</span>），索引夹取与邻图接续只实现一次；搜索确认后的作用域成为可传参的事实，而不是对话框的私有状态。</p>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>搜索结果确认后「下一张」留在结果集内</li>
+              <li>删除后选择可预测，画布不再变白</li>
+              <li>帧步进与图片步进共用一个作用域概念</li>
+            </ul>
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>局部性：索引数学只写一次</li>
+              <li>杠杆：8 个触发面共用 4 个意图</li>
+              <li>测试穿透：越界 / 删除后接续 / 结果集内相邻</li>
+            </ul>
+          </div>
+
+          <div class="rounded border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+            与 <span class="font-mono">AGENTS.md §6</span> 的状态分层约定冲突：「画布交互状态保留在 App.tsx 的本地 useState，不进 store」。值得重开这个约定——当前图片是有业务语义的数据（列表、导出、批处理、视频帧都依赖它），而不是缩放 / 平移 / 绘制中图形那类瞬时交互态；<span class="font-mono">selectedShapeId</span> 本来就已经在 store 里。
+          </div>
+        </article>
+
+        <!-- ══ C5 ══════════════════════════════════════════════ -->
+        <article id="c5" class="space-y-5 border-t border-slate-200 pt-10">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">⑤ 画布手势：一个意图解析 + 一个草稿状态机</h2>
+            <span class="rounded-full bg-amber-100 text-amber-900 text-xs font-semibold px-3 py-1">Worth exploring</span>
+            <span class="rounded-full bg-slate-200 text-slate-700 text-xs font-mono px-3 py-1">in-process</span>
+          </div>
+          <p class="font-mono text-xs text-slate-500 leading-relaxed">
+            useCanvasInteractions.ts:292,304-341,353-377,490-551 · usePolygonDraft.ts · App.tsx:93-101,604-680 ·
+            CanvasChrome.tsx:391-419,484-489,503,558,568-573,593-615 · AppLayout.tsx:376-416 · geometry.ts:151-158 · useZoomControls.ts:56-58
+          </p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — 同一判断 13 处，三种草稿各活各的</p>
+              <pre class="mermaid">
+flowchart TB
+  E["pointer 事件"] --> D1["geometry:151 算模式"]
+  D1 --> D2["App:617 键盘改模式"]
+  D2 --> D3["hook:324 再算一遍"]
+  D3 --> D4["hook:353 图形类型分支"]
+  D4 --> R["Rect 守卫 :403"]
+  D4 --> P["Polygon 守卫 :503"]
+  D4 --> T["Point 守卫 :558"]
+  R --> ST["drawingRect / polygonPoints / panState<br/>三套并行状态"]
+  P --> ST
+  T --> ST
+  classDef leak stroke:#dc2626,stroke-width:2px,fill:#fef2f2,color:#7f1d1d;
+  class D3,D4,ST leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — 一个解析器 + 一个状态机</p>
+              <pre class="mermaid">
+stateDiagram-v2
+  [*] --> idle
+  idle --> rect : 意图 draw-rect
+  idle --> polygon : 意图 draw-polygon
+  idle --> point : 意图 draw-point
+  idle --> pan : 中键 / 空格
+  rect --> idle : 提交 / Esc / 中键
+  polygon --> idle : 提交 / Esc（逐点撤销）
+  point --> idle : 提交 / Esc
+  pan --> idle : 抬起
+              </pre>
+            </div>
+          </div>
+
+          <p class="text-sm"><strong class="text-red-700">Problem —</strong> 「这一下手势是什么意思」被决定 13 次（几何函数、App 的键盘监听、hook 内部重新推导、三个图形渲染器各自重复的按钮 / 模式守卫），而绘制草稿是三套并行的状态、分别由三个 effect 清理——<strong>矩形画到一半没有 Esc 取消</strong>，只能靠中键，多边形却可以。</p>
+          <p class="text-sm"><strong class="text-emerald-700">Solution —</strong> 一个纯函数 <span class="font-mono text-xs">resolveGesture(event, { mode, shapeType, hit }) → draw-rect | draw-polygon | draw-point | select | pan | context</span>，加一个 <span class="font-mono text-xs">idle | rect | polygon | point | pan</span> 草稿状态机统一开始 / 更新 / 提交 / 取消；屏幕 ↔ 原图坐标转换收成一个 adapter，供画布、缩放、多边形草稿与插值预览共用。</p>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>Esc 到处可用，包括矩形绘制中</li>
+              <li>Ctrl / Shift 语义在所有入口一致</li>
+              <li>光标与意图一致（悬停 / 绘制 / 平移）</li>
+            </ul>
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>局部性：手势语义只定义一次</li>
+              <li>逆变换 5 处收成 1 个 adapter</li>
+              <li>接口即测试面：今天 Konva 被 mock 成 null，手势完全测不到</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ══ C6 ══════════════════════════════════════════════ -->
+        <article id="c6" class="space-y-5 border-t border-slate-200 pt-10">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">⑥ 把时间轴做成真正的帧导航模块</h2>
+            <span class="rounded-full bg-amber-100 text-amber-900 text-xs font-semibold px-3 py-1">Worth exploring</span>
+            <span class="rounded-full bg-slate-200 text-slate-700 text-xs font-mono px-3 py-1">in-process</span>
+          </div>
+          <p class="font-mono text-xs text-slate-500 leading-relaxed">
+            VideoTimeline.tsx:6-48 · ProjectMediaList.tsx:52-108 · VideoInterpolationPanel.tsx:185-196 · App.tsx:695-702,806-815 ·
+            lib/video-interpolation.ts · lib/video-images.ts
+          </p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — 一个 range 输入，三个界面各答一半</p>
+              <svg viewBox="0 0 360 260" class="w-full h-[280px]">
+                <text x="0" y="14" font-size="10" fill="#64748b" letter-spacing="1">时间轴（VideoTimeline.tsx·40 行）</text>
+                <line x1="10" y1="40" x2="350" y2="40" stroke="#cbd5e1" stroke-width="6" stroke-linecap="round"/>
+                <circle cx="150" cy="40" r="8" fill="#0f172a"/>
+                <text x="10" y="66" font-size="9" fill="#64748b">只认 frames 索引 · 不知道标注 / 关键帧</text>
+                <rect x="0" y="84" width="360" height="1" fill="#e2e8f0"/>
+                <text x="0" y="104" font-size="10" fill="#64748b" letter-spacing="1">侧边栏（ProjectMediaList）</text>
+                <text x="0" y="122" font-size="10" fill="#334155">已标注 37 / 120 · 帧列表独立一份索引</text>
+                <rect x="0" y="140" width="360" height="1" fill="#e2e8f0"/>
+                <text x="0" y="160" font-size="10" fill="#64748b" letter-spacing="1">插值浮窗（VideoInterpolationPanel）</text>
+                <g>
+                  <rect x="0" y="170" width="24" height="14" rx="3" fill="#e0e7ff"/><rect x="30" y="170" width="24" height="14" rx="3" fill="#e0e7ff"/>
+                  <rect x="60" y="170" width="24" height="14" rx="3" fill="none" stroke="#94a3b8" stroke-dasharray="3 2"/>
+                  <rect x="90" y="170" width="24" height="14" rx="3" fill="none" stroke="#94a3b8" stroke-dasharray="3 2"/>
+                  <rect x="120" y="170" width="24" height="14" rx="3" fill="#e0e7ff"/>
+                </g>
+                <text x="0" y="204" font-size="9" fill="#64748b">关键帧标签只在浮窗里出现</text>
+                <rect x="0" y="220" width="360" height="30" rx="4" fill="#fef2f2" stroke="#dc2626" stroke-dasharray="4 3"/>
+                <text x="8" y="239" font-size="9" fill="#7f1d1d" font-family="monospace">两个索引空间靠字符串名字互相翻译</text>
+                <text x="8" y="250" font-size="9" fill="#7f1d1d" font-family="monospace">video.frames.findIndex ↔ images.findIndex</text>
+              </svg>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — 时间轴自己回答「标注在哪」</p>
+              <svg viewBox="0 0 360 260" class="w-full h-[280px]">
+                <text x="0" y="14" font-size="10" fill="#047857" letter-spacing="1">时间轴模块 · 接口：video · images · annotations · selectedPath</text>
+                <line x1="10" y1="60" x2="350" y2="60" stroke="#e2e8f0" stroke-width="8" stroke-linecap="round"/>
+                <g fill="#10b981">
+                  <rect x="14" y="52" width="4" height="16"/><rect x="60" y="52" width="4" height="16"/><rect x="76" y="52" width="4" height="16"/>
+                  <rect x="120" y="52" width="4" height="16"/><rect x="200" y="52" width="4" height="16"/><rect x="246" y="52" width="4" height="16"/>
+                  <rect x="262" y="52" width="4" height="16"/><rect x="320" y="52" width="4" height="16"/>
+                </g>
+                <g fill="#4338ca">
+                  <path d="M40 44 l6 8 -6 8 -6 -8 z"/><path d="M150 44 l6 8 -6 8 -6 -8 z"/><path d="M290 44 l6 8 -6 8 -6 -8 z"/>
+                </g>
+                <line x1="200" y1="34" x2="200" y2="86" stroke="#0f172a" stroke-width="2"/>
+                <text x="10" y="106" font-size="9" fill="#64748b">绿 = 已标注帧密度　靛 = 关键帧　竖线 = 播放头</text>
+                <rect x="0" y="122" width="360" height="1" fill="#e2e8f0"/>
+                <text x="0" y="142" font-size="10" fill="#334155">帧 ↔ 路径映射只做一次；侧边栏与浮窗读同一份事实</text>
+                <text x="0" y="160" font-size="10" fill="#334155">帧步进 / 跳转 / 未来的播放共用同一处</text>
+                <rect x="0" y="180" width="360" height="64" rx="6" fill="#0f172a"/>
+                <text x="10" y="200" font-size="10" fill="#94a3b8" letter-spacing="1">已经在深侧的邻居</text>
+                <text x="10" y="218" font-size="10" fill="#e2e8f0">lib/video-interpolation.ts 是纯函数核心</text>
+                <text x="10" y="234" font-size="10" fill="#e2e8f0">时间轴只差把这份事实接到界面上</text>
+              </svg>
+            </div>
+          </div>
+
+          <p class="text-sm"><strong class="text-red-700">Problem —</strong> 时间轴是模块但只有 40 行、只认识 <span class="font-mono text-xs">frames</span> 索引——「这一帧标过没有、附近有没有关键帧」分别由侧边栏的计数与插值浮窗的帧片回答，同一个帧位置存在两个索引空间（<span class="font-mono text-xs">video.frames.findIndex</span> 与 <span class="font-mono text-xs">selectedVideo.images.findIndex</span>），靠字符串名字互相翻译。</p>
+          <p class="text-sm"><strong class="text-emerald-700">Solution —</strong> 时间轴的接口升级为 <span class="font-mono text-xs">{ video, images, annotations, selectedPath, onSelectFrame }</span>，实现在内部完成帧 ↔ 路径映射、已标注密度与关键帧标记；播放头、帧步进与跳转共享同一处。</p>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>用户直接在时间轴上看到标注分布</li>
+              <li>关键帧位置不再藏在浮窗里</li>
+              <li>跳转 / 步进 / 侧边栏行为一致</li>
+            </ul>
+            <ul class="space-y-1 text-slate-700 list-disc list-inside">
+              <li>局部性：两个索引空间合一</li>
+              <li>杠杆：三块界面读一份事实</li>
+              <li>测试穿透：标记渲染 + onSelectFrame 载荷</li>
+            </ul>
+          </div>
+        </article>
+      </section>
+
+      <!-- ── Top recommendation ─────────────────────────────── -->
+      <section id="top-recommendation" class="border-t border-slate-200 pt-10">
+        <div class="rounded-xl border-2 border-emerald-500 bg-white p-6 space-y-3">
+          <p class="text-xs uppercase tracking-wider text-emerald-700">Top recommendation</p>
+          <h2 class="font-serif text-2xl"><a href="#c1" class="underline decoration-emerald-400 decoration-2">① Overlay 模块——把「谁盖在画布上」收敛成一条接缝</a></h2>
+          <p class="text-slate-700 max-w-3xl">
+            先做它，因为它是<strong>最宽一类交互 bug 的根因</strong>：14 处键盘监听要跨 3 套门禁机制猜「现在能不能响应」，
+            而唯一那份名单（<span class="font-mono text-xs">App.tsx:709-719</span>）已经过期 4 个弹窗；ESC、焦点归还、小窗口高度上限也都是同一类「逐个弹窗自己记得」的缺陷。
+            它的<strong>接口最小</strong>（打开 / 关闭 + 一个存在性谓词），却一次覆盖 17 个调用点；并且它是路线图里
+            「人工与 MCP 工具的互斥操作控制权 + 界面持续显示当前控制方」的前置——控制权指示本身就是一层需要被输入的遮罩状态。
+          </p>
+          <p class="text-xs text-slate-500">次选：④ 选择权威（有可复现的用户可见缺陷：搜索后「下一张」脱离结果集、删除后画布变白）。</p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

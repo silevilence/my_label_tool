@@ -1,0 +1,200 @@
+# 前端交互架构：遮罩、快捷键、操作、选择、手势与帧导航
+
+本文定稿六个前端模块的接口与接缝，供分批实现。设计语言沿用「模块 / 接口 / 实现 / 接缝 / 深 / 浅」：每个模块用一个尽量小的接口承载尽量多的行为，**这个接口同时是它的测试面**——调用方与测试跨过同一道接缝。
+
+相关决策记录：ADR 0008（遮罩分层与输入门禁单一裁决）、ADR 0009（选择与作用域归属）、ADR 0010（操作注册表与资源互斥）。实现顺序与 ROADMAP「前端交互架构」条目一致。
+
+---
+
+## 1. 遮罩模块（Overlay）
+
+**接口**
+
+```tsx
+<Overlay
+  open
+  onClose
+  kind="blocking" | "light"
+  canDismiss={boolean | (() => boolean)}   // 例：删除中禁止 Esc
+  labelledBy
+  size="sm" | "md" | "lg" | "xl" | "wide"
+/>
+```
+
+```ts
+useOverlayStore → { hasBlocking(): boolean; hasLight(): boolean; depth(): number }
+```
+
+**实现**
+
+- 组件在挂载时把自身注册进栈、卸载时出栈——**调用方无从遗忘登记**，这是本模块存在的首要理由。
+- 模块负责：背板、按栈深度推导的 `z-index`、仅栈顶响应 `Esc`、打开时把焦点移入并在关闭时归还到打开前的元素、视口高度上限（`max-h` 百分比 + 内部滚动槽）、`role=dialog` / `aria-modal` / `aria-labelledby`。
+- 面板内容与视觉留在各遮罩自身；本模块不做标题栏与按钮排布的统一（见「非目标」）。
+- 非模态菜单与浮层用 `kind="light"`：它们同样进栈（从而获得 Esc 归属与 z-index），但只吞掉画布写操作类快捷键。
+
+**迁移清单**（17 个遮罩）
+
+- 已具备完整行为、作为行为样板：`DeleteImageDialog.tsx`（捕获阶段按键封锁、焦点陷阱与归还、`role=alertdialog`、高度上限）；其适配器 `VideoReextractDialog.tsx` 保留。
+- 转为 `blocking`：`ProjectSettingsDialog`、`VideoImportDialog`、`VideoBatchDialog`、`PtConversionDialog`（嵌套在 `PrelabelSettings` 之上）、`PrelabelExecutionDialog`、`PluginSettings` 与其 `PermissionDialog`、`LabelSettings` 的管理弹窗、`ShortcutSettings`、`PrelabelSettings`、`DeleteAnnotationDialog`、`ImageSearchDialog`（原本靠输入框局部 `onKeyDown` 处理 Esc）。
+- 转为 `light`：`CanvasContextMenu`、`ImageListContextMenu`（今天菜单开着时画布仍会被快捷键改动）。
+- 删除各文件内的 `fixed inset-0` 背板与散落的 `z-*`（现状为 50/60/65/85/90/95/100 七个值）。
+
+**测试面**：渲染 → `Esc` 只在栈顶生效且 `canDismiss=false` 时不生效；`Tab` 不出面板、关闭后焦点回到触发元素；矮视口下（如 320px 高）面板不超过视口且关闭控件可达；打开 blocking 遮罩时全局快捷键不触发画布改动。
+
+---
+
+## 2. 快捷键动作表（Shortcut Table）
+
+**接口**
+
+```ts
+// 静态元数据：设置界面、迁移、提示浮层读它
+type ShortcutActionMeta = {
+  id: string;
+  label: string;
+  defaultKey: string;
+  scope: "canvas" | "global";   // light 遮罩只吞 canvas 类
+  rebindable: boolean;          // Ctrl+Z/Y/S、Delete（删除标注框）为 false，设置面板固定行展示
+  priority?: number;            // 同层内的显式次序，缺省按 id 稳定排序
+};
+```
+
+```ts
+useShortcut(id, handler)                       // 功能模块挂载时注册行为；未注册 = 该动作「不可用」
+resolveShortcut(event, ctx) → actionId | null  // 纯函数：匹配 · 优先级 · 门禁 · 冲突
+```
+
+`ctx` 至少包含：`hasBlockingOverlay` / `hasLightOverlay`（来自 §1）、`isEditableTarget`、`busy`（来自 §3）、`mode`（来自 §5）、用户键位表与标签键位表。
+
+**实现**
+
+- 优先级由 `scope` 推导：`blocking > light > canvas > global`，同层再比 `priority`；标签快捷键永远最低。
+- 一次按键至多命中一个动作，命中即 `preventDefault`；标签键与固定动作或可改绑动作冲突时，冲突必须被**报告**而不是按书写顺序静默取胜（今天的 `notifyConfigConflict` 只覆盖两种碰撞）。
+- 冲突判定只有一份 `detectConflicts(shortcuts, labelShortcuts)`，设置面板、标签编辑器与运行时都消费它；重绑时阻止、运行时给解释。
+- 新增动作 = 表里加一项 + 拥有该行为的模块调 `useShortcut`，不再需要修改 `App.tsx` 的交换机与 `AppLayout` 的属性表。
+- 迁移名单（`mergeShortcuts`）改由表推导，新增默认键不再需要手写「别抢已有用户键」的例外。
+
+**测试面**：纯函数覆盖优先级（blocking/light/canvas/global 四层）、门禁（可编辑焦点、遮罩、忙碌）、冲突裁决与解释文案；组件级用现有 `react-dom/client + act` 直接派发 `keydown`（无需新增依赖）。
+
+---
+
+## 3. 操作注册表（Operation Registry）
+
+**接口**
+
+```ts
+useOperations() → {
+  begin(op: { label: string; resource: OperationResource; cancel?: () => void }): OperationHandle;
+  canStart(resource: OperationResource): boolean;   // 唯一互斥裁决处
+  operations: OperationView[];                      // { id, label, kind, message, percent, canCancel, status }
+}
+// OperationHandle: { id, progress(percent, message?), complete(message?), fail(error), cancelRequested }
+```
+
+`OperationResource` 取值（首批）：`project-annotations`、`export-dir`、`video-frames`、`model-download`、`onnx-runtime`。
+
+**实现**
+
+- 允许并发；占用同一资源的操作互斥，裁决只在 `canStart` 一处。今天的 `workspaceDisabled`、键盘门禁、`canDeleteImage` 与写三遍的视频导入锁表达式退化为读它的数据。
+- 消息按操作归属并带 `kind`（`success | warning | error`）：成功不再穿错误配色，两条提示通道（5 秒红框 / 2.2 秒琥珀条）按 kind 分流，不再是「后写覆盖前写」。
+- 取消是操作的属性：界面上「哪里能取消」不再由各组件自行判断（当前更新下载没有任何取消入口）。
+- 各界面（`ExportPanel`、`PrelabelExecutionDialog`、`VideoBatchDialog`、`DeleteImageDialog`、`AppLayout` 的保存遮罩与更新面板）退化为薄适配器。
+
+**测试面**：注册表的归约（并发登记、资源互斥、终态与消息归属、取消传播）可纯函数化测试；界面只断言「读同一份状态」。
+
+---
+
+## 4. 选择与作用域（Selection & Scope）
+
+**接口**（`useAnnotationStore` 新增切片）
+
+```ts
+selectedPath: string
+scopeStack: Scope[]              // 栈底恒为 { kind: "project" }
+select(path: string): void
+pushScope(scope: { kind: "search" | "video"; ids: string[]; label: string }): void
+popScope(): void
+selectAdjacent(delta: 1 | -1): void        // 在栈顶作用域内移动
+selectUnannotated(delta: 1 | -1): void
+removeImages(paths: string[]): void        // 删除 + 接续 + 标注清理 + 历史裁剪，一次原子更新
+```
+
+**实现**
+
+- 删除与接续在同一次更新内完成：今天 `removeImage`（store）与 `setImages`（hook）分开写，`useImageDeletion.ts` 的 `remaining[Math.min(index, remaining.length - 1)]` 在 `index = -1` 时把选择清成空串（画布变白而不是停在邻图）。
+- 作用域栈顶决定「上一张 / 下一张 / 下一个未标注」：项目序（图片与视频帧按项目序合并）→ 搜索结果 → 单个视频的帧序。今天的 `←/→`（全项目序）、`PageUp/PageDown`（当前视频帧序）与搜索对话框私有游标成为同一模型的三个实例。
+- 作用域必须**常驻可见、可退出**（侧栏作用域条，如「搜索结果：含 person 的 37 张 ✕」）；`ProjectMediaList` 的 `remembered` 影子游标与 `ImageSearchDialog` 的 `candidatePath` 随之删除。
+- 列表行注册滚入视口（今天由 App 的 `selectedImageButtonRef` + 两个渲染器各自赋值约定，漏赋值即静默失效）——抽成一个列表行模块，行自己持有注册责任。
+
+**测试面**：索引数学与夹取（越界、首尾、删除末张、删除当前张）、作用域 push/pop 后「下一张」的落点、搜索结果集内相邻、视频帧序内相邻。
+
+---
+
+## 5. 画布手势（Gesture）
+
+**接口**
+
+```ts
+resolveGesture(event, { mode, shapeType, hit }) →
+  "draw-rect" | "draw-polygon" | "draw-point" | "select" | "pan" | "context"
+```
+
+```ts
+useDraftGesture() → { state: "idle" | "rect" | "polygon" | "point" | "pan",
+                      start(intent, point), update(point), commit(), cancel() }
+```
+
+**实现**
+
+- Stage 用 `resolveGesture` 统一分类；Konva 保留拖拽与 `Transformer` 变换（不自实现），三个图形渲染器只向同一解析器询问「当前模式下我能否被拖动 / 被选中」，删除各自的按钮与模式守卫。
+- 草稿状态机统一开始 / 更新 / 提交 / 取消：`Esc` 处处可用（**当前矩形绘制中无法取消**，只能中键；多边形可以），取消语义与中键一致。
+- 屏幕 ↔ 原图坐标转换收成一个 adapter（`createTransform(layout)`），供画布交互、缩放、多边形草稿与插值预览共用（当前反向变换在 5 处各自重推）。
+- 交互状态仍留在组件本地（见 ADR 0009 对 `AGENTS.md §6` 的修订范围）。
+
+**测试面**：`resolveGesture` 的分类矩阵（按钮 × 模式 × 命中/背景）、草稿状态机的转移与取消、坐标往返一致性与缩放锚点不变量。
+
+---
+
+## 6. 视频帧模型（Video Frames）
+
+**接口**
+
+```ts
+// 纯模型（lib/video-frames.ts）
+frameSummaries(video, annotations, framePaths) → Array<{ index, timestampSeconds, name, path, annotated: boolean, keyframe: boolean }>
+```
+
+```ts
+useVideoFrameNavigation(video, images, selectedPath) → { currentIndex, select, step(delta), canStep(delta) }
+```
+
+**实现**
+
+- 帧 ↔ 路径映射、每帧是否已标注、关键帧集合只算一次，供时间轴、侧栏帧列表、键盘步进与插值浮窗共用；删除以字符串名字互相翻译的两个索引空间（`video.frames.findIndex` 与 `selectedVideo.images.findIndex`）。
+- `VideoTimeline` 保持薄：渲染刻度、标注密度、关键帧标记与播放头，回调只有 `onSelectFrame`。
+- 关键帧语义沿用 `lib/video-interpolation.ts` 的纯函数，不新增第二套判定。
+- 播放（时间轴拖动播放）不在本次范围，但当前帧的归属从此有唯一落点。
+
+**测试面**：纯模型的摘要计算（空视频、单帧、无标注、部分标注、关键帧稀疏）+ 接缝的边界行为（首尾步进、跳转到不存在的路径）。
+
+---
+
+## 批次与验收
+
+| 批次 | 模块 | 独立验收 |
+|---|---|---|
+| ① | 遮罩模块 | 17 个遮罩迁移完成；矮视口与 Esc / 焦点契约测试通过；`App.tsx` 的 9 项门禁与运算删除 |
+| ② | 快捷键动作表 | 纯函数覆盖四层优先级与冲突；固定键以不可改绑行出现在设置面板；新增动作不再改动 `App.tsx` / `AppLayout.tsx` |
+| ③ | 操作注册表 | 并发登记与资源互斥测试；消息按操作归属；`workspaceDisabled` 与三处重复锁表达式删除 |
+| ④ | 选择与作用域 | 删除接续、作用域栈、滚入视口测试；`AGENTS.md §6` 措辞随之修订 |
+| ⑤ | 画布手势 | 分类矩阵与草稿状态机测试；矩形绘制中 `Esc` 可用；逆变换 adapter 落地 |
+| ⑥ | 视频帧模型 | 纯模型与边界测试；时间轴显示标注密度与关键帧；侧栏与键盘读同一份 |
+
+每批独立可交付，独立通过 `npm run typecheck`、`npm run lint`、`npm run test:coverage`；触及 Rust 时加 `cargo clippy --manifest-path src-tauri/Cargo.toml`。
+
+## 非目标
+
+- 不统一遮罩的标题栏、关闭按钮与按钮排布（视觉一致性不是本轮的接缝问题）。
+- 不做按键级输入所有权（每个动作声明可用遮罩层）；`blocking` / `light` 两类已覆盖现有全部场景。
+- 不实现视频播放，不引入 `@testing-library/react`（现有 `react-dom/client` + `act` 足够）。
+- 不引入新的状态管理库；新增状态按 `AGENTS.md §6` 修订后的分层归属。
