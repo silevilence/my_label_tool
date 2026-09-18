@@ -307,6 +307,7 @@ export function useProjectActions({
       labels,
       template,
       exportOptions: { format },
+      ...(activeProjectConfig?.settings ? { settings: activeProjectConfig.settings } : {}),
       ...(activeProjectConfig?.prelabelMappings
         ? { prelabelMappings: activeProjectConfig.prelabelMappings }
         : {}),
@@ -315,11 +316,11 @@ export function useProjectActions({
         : {}),
     };
 
+    await saveProjectConfig(configPath, nextConfig);
     setActiveProjectConfig(nextConfig);
     setActiveProjectConfigPath(configPath);
     setProjectTemplateId(template.id);
     applyProjectTemplate(template, labels);
-    await saveProjectConfig(configPath, nextConfig);
   }
 
   async function importAnnotations() {

@@ -1,4 +1,14 @@
 export const VIDEO_ZH_CN = {
+  extractionMode: "抽帧方式",
+  fpsMode: "按 FPS 抽帧",
+  intervalMode: "固定帧间隔",
+  fps: "抽帧帧率（FPS）",
+  fpsHint: "默认每秒抽取 5 帧，按视频时间戳采样；源帧率不足时保留可用帧，不复制帧。",
+  intervalHint: "每隔指定数量的源帧抽取一帧，例如间隔 30 时抽取源帧 1、31、61…",
+  extractionSummary: (mode: "fps" | "interval", value: number) =>
+    mode === "fps" ? `${value} FPS` : `每 ${value} 个源帧抽取一帧`,
+  pendingVideos: (count: number) => `当前项目有 ${count} 个视频尚未抽帧。`,
+  batchSettingsHint: "使用已保存的项目抽帧设置。修改参数后请先保存。",
   yoloExport: "导出 YOLO txt",
   yoloDescription:
     "每张图片和已抽取视频帧各生成同名 txt，按视频子目录区分；空帧生成空文件，另附 classes.txt。不复制图片。",
@@ -12,8 +22,8 @@ export const VIDEO_ZH_CN = {
   duplicateYoloPath: (name: string) => `YOLO 输出文件名冲突：${name}。请先重命名同名素材。`,
   reextract: "重新抽帧",
   reextractConfirm: "删除旧帧与标注并重新抽帧",
-  reextractConsequence: (frames: number, interval: number) =>
-    `将按每 ${interval} 个源帧抽取一帧重新生成视频帧。成功后，原 ${frames} 张帧图片移入回收站，对应标注和撤销记录一并删除。其它素材与源视频保留；失败或取消保留旧帧。`,
+  reextractConsequence: (frames: number, sampling: string) =>
+    `将按 ${sampling} 重新生成视频帧。成功后，原 ${frames} 张帧图片移入回收站，对应标注和撤销记录一并删除。其它素材与源视频保留；失败或取消保留旧帧。`,
   reextractBusy: "请等待保存、导出或预打标结束后再重新抽帧。",
   reextractStale: "项目或视频已变化，请重新发起抽帧。",
   batchPrepare: "批量抽取未准备视频",
@@ -21,12 +31,13 @@ export const VIDEO_ZH_CN = {
     `完成 ${done} / ${total} 个视频，失败 ${failed} 个`,
   batchCancelled: "已停止抽帧，已完成的视频帧和原有标注均已保留。",
   batchFinished: "批量抽帧已结束。失败的视频可重试。",
-  projectSettings: "项目设置 · 视频抽帧",
+  projectSettings: "项目设置",
+  extractionDefaults: "默认抽帧设置",
   defaultInterval: "默认抽帧间隔（源帧）",
   defaultExtractionHint:
     "仅用于当前项目的新抽帧任务，不改变已抽取的视频帧。单个视频仍可临时调整间隔。",
-  settingsNeedProject: "打开项目文件夹后，可配置此项目的默认抽帧间隔。",
-  invalidSettings: "项目抽帧设置无效：间隔须为 1 至 1000000 的整数。",
+  settingsNeedProject: "请先保存或导入项目文件，再配置项目设置。",
+  invalidSettings: "项目抽帧设置无效：FPS 须大于 0 且不超过 1000；帧间隔须为 1 至 1000000 的整数。",
   saveSettings: "保存项目设置",
   savingSettings: "正在保存…",
   settingsSaved: "项目设置已保存",

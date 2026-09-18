@@ -1,3 +1,4 @@
+import type { VideoExtractionSettings } from "../types/project-settings";
 import { useRef, useState } from "react";
 import {
   confirmAction,
@@ -9,7 +10,7 @@ import {
 import { VIDEO_ZH_CN as text } from "../i18n/video.zh-CN";
 import type { VideoImportResult } from "../types/video";
 import { runVideoImportQueue, type VideoBatchProgress } from "../lib/video-import-queue";
-import { validFrameInterval } from "../lib/project-settings";
+import { validExtraction, extractionSettings } from "../lib/project-settings";
 
 export function useVideoImport(
   onImported: (result: VideoImportResult) => Promise<void>,
@@ -19,8 +20,18 @@ export function useVideoImport(
   const pending = useRef(false);
   const cancelled = useRef(false);
   const [batch, setBatch] = useState<VideoBatchProgress | null>(null);
-  async function startBatch(interval: number, folder: string, sources: string[]) {
-    if (pending.current || !folder || !sources.length || !validFrameInterval(interval)) return;
+  async function startBatch(
+    interval: number | VideoExtractionSettings,
+    folder: string,
+    sources: string[],
+  ) {
+    if (
+      pending.current ||
+      !folder ||
+      !sources.length ||
+      !validExtraction(extractionSettings(interval))
+    )
+      return;
     pending.current = true;
     cancelled.current = false;
     setBusy(true);
@@ -39,8 +50,12 @@ export function useVideoImport(
       setBusy(false);
     }
   }
-  async function start(interval: number, projectFolder?: string, sourcePath?: string) {
-    if (pending.current || !validFrameInterval(interval)) return;
+  async function start(
+    interval: number | VideoExtractionSettings,
+    projectFolder?: string,
+    sourcePath?: string,
+  ) {
+    if (pending.current || !validExtraction(extractionSettings(interval))) return;
     pending.current = true;
     try {
       if (!projectFolder && !(await confirmAction(text.replace))) return;

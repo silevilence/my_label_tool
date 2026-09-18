@@ -8,6 +8,8 @@ import { exportTextFiles, exportAnnotationsJson, selectExportFolder } from "../l
 import type { AnnotationShape } from "../types/annotation";
 import { ExportPanel } from "../components/settings/ExportPanel";
 import { loadImageSize } from "../lib/app-utils";
+import { DEFAULT_PROJECT_SETTINGS } from "../lib/defaults/video";
+import { projectConfigTemplate, type ProjectConfig } from "../lib/importers";
 vi.mock("../lib/tauri-api", async (original) => ({
   ...(await original<typeof import("../lib/tauri-api")>()),
   exportTextFiles: vi.fn(),
@@ -44,7 +46,18 @@ const videos = projectVideos(
 );
 const images = mergeProjectImages([{ path: "C:/project/photo.png", name: "photo.png" }], videos);
 let actions: ReturnType<typeof useProjectActions>;
-function Harness() {
+const existingConfig: ProjectConfig = {
+  schemaVersion: 1,
+  format: "json",
+  annotationPath: "C:/project/annotations.json",
+  imageFolder: "C:/project",
+  exportedAt: "",
+  labels: [],
+  template: projectConfigTemplate(),
+  exportOptions: { format: "json" },
+  settings: DEFAULT_PROJECT_SETTINGS,
+};
+function Harness({ existing = false }: { existing?: boolean }) {
   const annotations = useAnnotationStore((state) => state.annotationsByImage);
   actions = useProjectActions({
     videos,
@@ -52,8 +65,8 @@ function Harness() {
     folderPath: "C:/project",
     labels: [{ id: "person", name: "人", color: "#ffffff", shapeType: "rect" }],
     annotationsByImage: annotations,
-    activeProjectConfig: null,
-    activeProjectConfigPath: "",
+    activeProjectConfig: existing ? existingConfig : null,
+    activeProjectConfigPath: existing ? "C:/project/my-label-tool.project.json" : "",
     selectedExportFormatId: "json",
     customMappingText: "{}",
     pluginExportFormats: [],
@@ -143,16 +156,37 @@ it("writes nothing when the directory chooser is cancelled", async () => {
   expect(exportTextFiles).not.toHaveBeenCalled();
 });
 it("rejects unsupported shapes before choosing a directory or dropping annotations", async () => {
-  useAnnotationStore
-    .getState()
-    .replaceAnnotations({
-      [videos[0].images[0].path]: [
-        { id: "point", type: "point", labelId: "person", points: [10, 10] },
-      ],
-    });
+  useAnnotationStore.getState().replaceAnnotations({
+    [videos[0].images[0].path]: [
+      { id: "point", type: "point", labelId: "person", points: [10, 10] },
+    ],
+  });
   await act(async () => root.render(<Harness />));
   await act(async () => actions.exportYoloAnnotations());
   expect(error).toHaveBeenCalledWith(expect.stringContaining("YOLO 只支持矩形"));
   expect(selectExportFolder).not.toHaveBeenCalled();
   expect(exportTextFiles).not.toHaveBeenCalled();
+});
+
+it("preserves project sampling settings during subsequent annotation saves", async () => {
+  vi.mocked(exportAnnotationsJson).mockResolvedValue(undefined);
+  await act(async () => root.render(<Harness existing />));
+  await act(async () => {
+    expect(await actions.saveProjectExport()).toBe(true);
+  });
+  expect(exportAnnotationsJson).toHaveBeenLastCalledWith(
+    "C:/project/my-label-tool.project.json",
+    expect.objectContaining({ settings: DEFAULT_PROJECT_SETTINGS }),
+  );
+});
+it("does not activate an updated project configuration if writing its file fails", async () => {
+  vi.mocked(exportAnnotationsJson)
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(new Error("disk full"));
+  await act(async () => root.render(<Harness existing />));
+  await act(async () => {
+    expect(await actions.saveProjectExport()).toBe(false);
+  });
+  expect(config).not.toHaveBeenCalled();
+  expect(error).toHaveBeenLastCalledWith("disk full");
 });

@@ -9,6 +9,7 @@ export interface VideoProject {
   schemaVersion: 1;
   sourcePath: string;
   frameInterval: number;
+  targetFps?: number;
   totalFrames: number;
   width: number;
   height: number;

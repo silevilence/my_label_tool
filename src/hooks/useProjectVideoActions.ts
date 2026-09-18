@@ -1,3 +1,4 @@
+import type { VideoExtractionSettings } from "../types/project-settings";
 import { useRef, useState } from "react";
 import type { ProjectVideo, VideoImportResult } from "../types/video";
 import { selectExportFolder, selectVideoFile, type ImageFile } from "../lib/tauri-api";
@@ -13,7 +14,7 @@ export interface VideoReextractTarget {
   asset: LoadedProjectVideo;
   readyAt: number;
   folderPath: string;
-  interval: number;
+  interval: number | VideoExtractionSettings;
 }
 
 export function useProjectVideoActions({
@@ -73,7 +74,7 @@ export function useProjectVideoActions({
     setSource(null);
   }
   const importer = useVideoImport(applyImported, setError);
-  function requestReextract(path: string, interval: number) {
+  function requestReextract(path: string, interval: number | VideoExtractionSettings) {
     if (blocked || importer.busy || replacingRef.current) {
       setError(text.reextractBusy);
       return;

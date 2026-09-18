@@ -140,10 +140,24 @@ pub fn parse_timestamps(bytes: &[u8]) -> Result<Vec<f64>, String> {
         return Err(text::VIDEO_LIMIT.to_string());
     }
     let mut timestamps = Vec::with_capacity(frames.len());
+    // Integer PTS avoids FFprobe's six-decimal time string rounding near sampling boundaries.
+    let time_base = value["streams"][0]["time_base"].as_str().and_then(|base| {
+        let (numerator, denominator) = base.split_once('/')?;
+        let scale = numerator.parse::<f64>().ok()? / denominator.parse::<f64>().ok()?;
+        (scale.is_finite() && scale > 0.0).then_some(scale)
+    });
     for frame in frames {
-        let time = frame["best_effort_timestamp_time"]
-            .as_str()
-            .and_then(|value| value.parse::<f64>().ok())
+        let time = time_base
+            .and_then(|base| {
+                frame["best_effort_timestamp"]
+                    .as_i64()
+                    .map(|pts| pts as f64 * base)
+            })
+            .or_else(|| {
+                frame["best_effort_timestamp_time"]
+                    .as_str()
+                    .and_then(|value| value.parse::<f64>().ok())
+            })
             .filter(|value| value.is_finite())
             .ok_or(text::VIDEO_INVALID)?;
         if timestamps.last().is_some_and(|last| time < *last) {
@@ -155,6 +169,7 @@ pub fn parse_timestamps(bytes: &[u8]) -> Result<Vec<f64>, String> {
     Ok(timestamps.into_iter().map(|time| time - start).collect())
 }
 
+#[cfg(test)]
 pub fn extract(
     source: &Path,
     parent: &Path,
@@ -162,7 +177,23 @@ pub fn extract(
     ffmpeg: &Path,
     ffprobe: &Path,
 ) -> Result<VideoImportResult, String> {
-    if interval == 0 || interval > 1_000_000 || !source.is_file() || !parent.is_dir() {
+    extract_with_sampling(source, parent, interval, None, ffmpeg, ffprobe)
+}
+
+pub fn extract_with_sampling(
+    source: &Path,
+    parent: &Path,
+    interval: usize,
+    target_fps: Option<f64>,
+    ffmpeg: &Path,
+    ffprobe: &Path,
+) -> Result<VideoImportResult, String> {
+    if interval == 0
+        || interval > 1_000_000
+        || !valid_fps(target_fps)
+        || !source.is_file()
+        || !parent.is_dir()
+    {
         return Err(text::VIDEO_INVALID.to_string());
     }
     let source = fs::canonicalize(source).map_err(failure)?;
@@ -193,17 +224,24 @@ pub fn extract(
                 "-select_streams",
                 "v:0",
                 "-show_frames",
+                "-show_streams",
                 "-show_entries",
-                "frame=best_effort_timestamp_time",
+                "frame=best_effort_timestamp,best_effort_timestamp_time:stream=time_base",
                 "-of",
                 "json",
             ])
             .arg(&source),
         &folder,
     )?)?;
-    if times.len().div_ceil(interval) > MAX_FRAMES {
+    let selected = sampling_indices(&times, interval, target_fps);
+    if selected.len() > MAX_FRAMES {
         return Err(text::VIDEO_LIMIT.to_string());
     }
+    // Same time buckets as sampling_indices; select preserves original pixels and source indices.
+    let filter = target_fps.map_or_else(
+        || format!("select=not(mod(n\\,{interval}))"),
+        |fps| format!("select=isnan(prev_selected_t)+gt(floor((t-start_t)*{fps}+0.00001)\\,floor((prev_selected_t-start_t)*{fps}+0.00001))"),
+    );
     run(
         Command::new(ffmpeg)
             .args([
@@ -224,7 +262,7 @@ pub fn extract(
                 "-an",
                 "-sn",
                 "-vf",
-                &format!("select=not(mod(n\\,{interval}))"),
+                &filter,
                 "-fps_mode",
                 "passthrough",
                 "-threads",
@@ -236,15 +274,13 @@ pub fn extract(
             .arg(folder.join("frame-%06d.png")),
         &folder,
     )?;
-    let frames: Vec<_> = times
+    let frames: Vec<_> = selected
         .iter()
         .enumerate()
-        .step_by(interval)
-        .enumerate()
-        .map(|(index, (frame_index, &timestamp_seconds))| VideoFrame {
+        .map(|(index, &frame_index)| VideoFrame {
             name: format!("frame-{index:06}.png"),
             frame_index,
-            timestamp_seconds,
+            timestamp_seconds: times[frame_index],
         })
         .collect();
     let (width, height) = image::image_dimensions(folder.join(&frames[0].name)).map_err(failure)?;
@@ -252,6 +288,7 @@ pub fn extract(
         schema_version: 1,
         source_path: source,
         frame_interval: interval,
+        target_fps,
         total_frames: times.len(),
         width,
         height,
@@ -281,7 +318,10 @@ pub fn validate(video: &VideoProject, folder: &Path) -> Result<(), String> {
         || video.total_frames == 0
         || video.total_frames > 1_000_000
         || video.frames.len() > MAX_FRAMES
-        || video.frames.len() != video.total_frames.div_ceil(video.frame_interval)
+        || video.frames.is_empty()
+        || !valid_fps(video.target_fps)
+        || (video.target_fps.is_none()
+            && video.frames.len() != video.total_frames.div_ceil(video.frame_interval))
         || video.width == 0
         || video.height == 0
     {
@@ -290,7 +330,14 @@ pub fn validate(video: &VideoProject, folder: &Path) -> Result<(), String> {
     let mut previous = 0.0;
     for (index, frame) in video.frames.iter().enumerate() {
         if frame.name != format!("frame-{index:06}.png")
-            || frame.frame_index != index * video.frame_interval
+            || frame.frame_index >= video.total_frames
+            || (index == 0 && frame.frame_index != 0)
+            || (index > 0 && frame.frame_index <= video.frames[index - 1].frame_index)
+            || (video.target_fps.is_none() && frame.frame_index != index * video.frame_interval)
+            || (index > 0
+                && video.target_fps.is_some_and(|fps| {
+                    bucket(frame.timestamp_seconds, fps) <= bucket(previous, fps)
+                }))
             || !frame.timestamp_seconds.is_finite()
             || frame.timestamp_seconds < previous
             || (index == 0 && frame.timestamp_seconds != 0.0)
@@ -315,4 +362,30 @@ pub fn load(folder: &Path) -> Result<Option<VideoProject>, String> {
     let video = serde_json::from_slice(&fs::read(path).map_err(failure)?).map_err(failure)?;
     validate(&video, folder)?;
     Ok(Some(video))
+}
+
+fn valid_fps(fps: Option<f64>) -> bool {
+    fps.is_none_or(|fps| fps.is_finite() && fps > 0.0 && fps <= 1000.0)
+}
+fn bucket(time: f64, fps: f64) -> f64 {
+    (time * fps + 0.00001).floor()
+}
+fn sampling_indices(times: &[f64], interval: usize, fps: Option<f64>) -> Vec<usize> {
+    let Some(fps) = fps else {
+        return (0..times.len()).step_by(interval).collect();
+    };
+    let mut previous = -1.0;
+    times
+        .iter()
+        .enumerate()
+        .filter_map(|(index, &time)| {
+            let current = bucket(time, fps);
+            if current > previous {
+                previous = current;
+                Some(index)
+            } else {
+                None
+            }
+        })
+        .collect()
 }

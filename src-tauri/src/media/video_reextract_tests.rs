@@ -24,6 +24,7 @@ impl Fixture {
             schema_version: 1,
             source_path: self.0.join("source.mp4"),
             frame_interval: 30,
+            target_fps: None,
             total_frames: 1,
             width: 3,
             height: 4,
@@ -207,14 +208,23 @@ fn real_ffmpeg_reextract_recycles_old_frame_directory() {
         .success());
     let old = video::extract(&source, &fixture.0, 3, &ffmpeg, &ffprobe).unwrap();
     assert_eq!(old.video.frames.len(), 4);
-    let new = reextract(&source, &fixture.0, &old.folder_path, 5, &ffmpeg, &ffprobe).unwrap();
+    let new = reextract(
+        &source,
+        &fixture.0,
+        &old.folder_path,
+        1,
+        Some(5.0),
+        &ffmpeg,
+        &ffprobe,
+    )
+    .unwrap();
     assert_eq!(
         new.video
             .frames
             .iter()
             .map(|frame| frame.frame_index)
             .collect::<Vec<_>>(),
-        [0, 5]
+        [0, 2, 4, 6, 8]
     );
     assert!(!old.folder_path.exists());
     assert!(video::load(&new.folder_path).unwrap().is_some());

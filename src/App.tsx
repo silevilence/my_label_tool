@@ -4,15 +4,13 @@ import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transform
 import { AppLayout } from "./components/AppLayout";
 import type { ProjectVideo } from "./types/video";
 import { projectVideos, videoForImage } from "./lib/project-media";
-import { VideoImportDialog } from "./components/video/VideoImportDialog";
+import { ProjectVideoDialogs } from "./components/video/ProjectVideoDialogs";
 import { VideoTimeline } from "./components/video/VideoTimeline";
 import {
   VideoInterpolationPanel,
   type InterpolationPreview,
 } from "./components/video/VideoInterpolationPanel";
 import { useProjectVideoActions } from "./hooks/useProjectVideoActions";
-import { VideoBatchDialog } from "./components/video/VideoBatchDialog";
-import { VideoReextractDialog } from "./components/video/VideoReextractDialog";
 import { VIDEO_ZH_CN as videoText } from "./i18n/video.zh-CN";
 import { DeleteImageDialog } from "./components/DeleteImageDialog";
 import { useImageDeletion } from "./hooks/useImageDeletion";
@@ -41,7 +39,7 @@ import { useShortcutsConfig } from "./hooks/useShortcutsConfig";
 import { useShapeToolSelection } from "./hooks/useShapeToolSelection";
 import { useTransientMessage } from "./hooks/useTransientMessage";
 import { useProjectSettings } from "./hooks/useProjectSettings";
-import { ProjectVideoSettings } from "./components/settings/ProjectVideoSettings";
+import { ProjectSettingsDialog } from "./components/settings/ProjectSettingsDialog";
 import { useZoomControls } from "./hooks/useZoomControls";
 import { usePrelabelModels } from "./hooks/usePrelabelModels";
 import { usePrelabelExecution } from "./hooks/usePrelabelExecution";
@@ -83,7 +81,6 @@ function App() {
   const panStateRef = useRef<PanState | null>(null);
   const suppressContextMenuRef = useRef(false);
   const [folderPath, setFolderPath] = useState("");
-  const projectSettings = useProjectSettings(folderPath);
   const [videoEntries, setVideoEntries] = useState<ProjectVideo[]>([]);
   const [interpolationPreview, setInterpolationPreview] = useState<InterpolationPreview | null>(
     null,
@@ -135,6 +132,13 @@ function App() {
     activeProjectConfigRef.current = nextConfig;
     setActiveProjectConfigState(nextConfig);
   }, []);
+  const projectSettings = useProjectSettings(
+    folderPath,
+    activeProjectConfig,
+    activeProjectConfigPath,
+    setActiveProjectConfig,
+  );
+  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
   const [currentLabelId, setCurrentLabelId] = useState(DEFAULT_LABELS[0].id);
   const [isLabelDirty, setIsLabelDirty] = useState(false);
   const [selectedExportFormatId, setSelectedExportFormatId] = useState<ExportFormatId>("json");
@@ -431,7 +435,7 @@ function App() {
     setError,
     openFolder,
   });
-  const { source: videoImportSource, setSource: setVideoImportSource, addVideo } = videoImport;
+  const { source: videoImportSource, addVideo } = videoImport;
   const imageLayout = imageView;
   const {
     changeAnnotationLabel,
@@ -659,7 +663,8 @@ function App() {
         videoImport.busy ||
         videoImportSource !== null ||
         videoImport.batch !== null ||
-        videoImport.replacement !== null
+        videoImport.replacement !== null ||
+        isProjectSettingsOpen
       )
         return;
       if (isEditableTarget(event.target) || currentShapeType !== "polygon") {
@@ -684,6 +689,7 @@ function App() {
     videoImport.busy,
     videoImport.batch,
     videoImport.replacement,
+    isProjectSettingsOpen,
     videoImportSource,
   ]);
 
@@ -702,6 +708,7 @@ function App() {
       videoImport.replacement === null &&
       !imageDeletion.target &&
       !isShortcutSettingsOpen &&
+      !isProjectSettingsOpen &&
       !isPrelabelSettingsOpen &&
       !isPrelabelExecutionOpen &&
       !annotationToDelete,
@@ -746,13 +753,32 @@ function App() {
         reextractVideo={
           !projectSettings.loading
             ? (source) =>
-                videoImport.requestReextract(
-                  source,
-                  projectSettings.settings.videoExtraction.frameInterval,
-                )
+                videoImport.requestReextract(source, projectSettings.settings.videoExtraction)
             : undefined
         }
-        projectSettings={<ProjectVideoSettings folder={folderPath} model={projectSettings} />}
+        projectSettings={
+          isProjectSettingsOpen &&
+          activeProjectConfig && (
+            <ProjectSettingsDialog
+              folder={folderPath}
+              model={projectSettings}
+              pendingCount={videos.filter((asset) => !asset.video).length}
+              onClose={() => setIsProjectSettingsOpen(false)}
+              onBatch={
+                !imageDeletionBusy && videos.some((asset) => !asset.video)
+                  ? () => {
+                      setIsProjectSettingsOpen(false);
+                      void videoImport.startBatch(
+                        projectSettings.settings.videoExtraction,
+                        folderPath,
+                        videos.filter((asset) => !asset.video).map((asset) => asset.sourcePath),
+                      );
+                    }
+                  : undefined
+              }
+            />
+          )
+        }
         interpolationShape={
           interpolationPreview?.source === annotationsByImage &&
           interpolationPreview.video === video
@@ -761,21 +787,17 @@ function App() {
             : null
         }
         onDismissError={() => setError("")}
-        batchPrepare={
-          !projectSettings.loading && !projectSettings.error && videos.some((asset) => !asset.video)
-            ? () =>
-                void videoImport.startBatch(
-                  projectSettings.settings.videoExtraction.frameInterval,
-                  folderPath,
-                  videos.filter((asset) => !asset.video).map((asset) => asset.sourcePath),
-                )
+        openProjectSettings={
+          activeProjectConfig && activeProjectConfigPath && !imageDeletionBusy
+            ? () => setIsProjectSettingsOpen(true)
             : undefined
         }
         workspaceDisabled={
           videoImport.busy ||
           videoImportSource !== null ||
           videoImport.batch !== null ||
-          videoImport.replacement !== null
+          videoImport.replacement !== null ||
+          isProjectSettingsOpen
         }
         videos={videos}
         addVideo={(source) => {
@@ -931,32 +953,7 @@ function App() {
         updateShortcut={updateShortcut}
         zoomFromKeyboard={zoomFromKeyboard}
       />
-      {videoImport.replacement && (
-        <VideoReextractDialog
-          target={videoImport.replacement}
-          busy={videoImport.replacing}
-          error={videoImport.replacementError}
-          onConfirm={() => void videoImport.confirmReextract()}
-          onCancel={videoImport.cancelReextract}
-        />
-      )}
-      {videoImport.batch && (
-        <VideoBatchDialog
-          progress={videoImport.batch}
-          onCancel={() => void videoImport.cancel()}
-          onClose={videoImport.closeBatch}
-        />
-      )}
-      {videoImportSource !== null && !projectSettings.loading && (
-        <VideoImportDialog
-          defaultInterval={projectSettings.settings.videoExtraction.frameInterval}
-          sourcePath={videoImportSource}
-          busy={videoImport.busy}
-          onClose={() => setVideoImportSource(null)}
-          onCancel={() => void videoImport.cancel()}
-          onImport={(interval) => void videoImport.start(interval, folderPath, videoImportSource)}
-        />
-      )}
+      <ProjectVideoDialogs actions={videoImport} settings={projectSettings} folder={folderPath} />
       {imageDeletion.target && (
         <DeleteImageDialog
           target={imageDeletion.target}

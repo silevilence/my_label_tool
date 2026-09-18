@@ -67,7 +67,7 @@ const ImageSearchDialog = lazy(async () => {
 interface AppLayoutProps {
   exportYoloAnnotations?: () => void;
   reextractVideo?: (source: string) => void;
-  batchPrepare?: () => void;
+  openProjectSettings?: () => void;
   projectSettings?: ReactNode;
   interpolationShape?: AnnotationShape | null;
   onDismissError?: () => void;
@@ -207,7 +207,7 @@ interface AppLayoutProps {
 export function AppLayout({
   exportYoloAnnotations,
   reextractVideo,
-  batchPrepare,
+  openProjectSettings,
   projectSettings,
   interpolationShape,
   onDismissError,
@@ -431,7 +431,7 @@ export function AppLayout({
         <AppSidebar
           exportYoloAnnotations={exportYoloAnnotations}
           reextractVideo={reextractVideo}
-          batchPrepare={batchPrepare}
+          openProjectSettings={openProjectSettings}
           videos={videos}
           addVideo={addVideo}
           canDeleteImage={canDeleteImage}
@@ -782,7 +782,6 @@ export function AppLayout({
         {isShortcutSettingsOpen && (
           <Suspense fallback={null}>
             <ShortcutSettings
-              projectSettings={projectSettings}
               helpDisplaySettings={helpDisplaySettings}
               labelDisplaySettings={labelDisplaySettings}
               labelShortcuts={labelShortcuts}
@@ -894,6 +893,7 @@ export function AppLayout({
           />
         )}
       </div>
+      {projectSettings}
     </main>
   );
 }

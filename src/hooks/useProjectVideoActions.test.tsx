@@ -53,7 +53,8 @@ it("merges all batch results without losing earlier frames, photos or annotation
     video: {
       schemaVersion: 1,
       sourcePath,
-      frameInterval,
+      frameInterval:
+        typeof frameInterval === "number" ? frameInterval : frameInterval.frameInterval,
       width: 100,
       height: 100,
       totalFrames: 1,
@@ -90,14 +91,12 @@ it("keeps the old frames and annotations after replacement failure or cancellati
   await act(async () => root.render(<Harness />));
   await act(async () => actions.start(30, "C:/project", video.sourcePath));
   await act(async () =>
-    useAnnotationStore
-      .getState()
-      .addAnnotation("C:/project/old/frame-000000.png", {
-        id: "old",
-        type: "point",
-        labelId: "label",
-        points: [1, 2],
-      }),
+    useAnnotationStore.getState().addAnnotation("C:/project/old/frame-000000.png", {
+      id: "old",
+      type: "point",
+      labelId: "label",
+      points: [1, 2],
+    }),
   );
   const oldImages = actualImages;
   const annotations = useAnnotationStore.getState().annotationsByImage;

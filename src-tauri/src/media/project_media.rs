@@ -99,6 +99,7 @@ mod tests {
                 schema_version: 1,
                 source_path: source,
                 frame_interval: 1,
+                target_fps: None,
                 total_frames: 1,
                 width: 2,
                 height: 3,

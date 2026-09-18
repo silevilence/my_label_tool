@@ -1,3 +1,4 @@
+import type { VideoExtractionSettings } from "../types/project-settings";
 import { importVideo } from "./tauri-api";
 import type { VideoImportResult } from "../types/video";
 
@@ -14,7 +15,7 @@ export interface VideoBatchProgress {
 export async function runVideoImportQueue(
   sources: string[],
   folder: string,
-  interval: number,
+  interval: number | VideoExtractionSettings,
   onImported: (result: VideoImportResult) => Promise<void>,
   cancelled: () => boolean,
   onProgress: (progress: VideoBatchProgress) => void,

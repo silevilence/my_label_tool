@@ -12,6 +12,7 @@ pub async fn import_video(
     source_path: PathBuf,
     output_folder: PathBuf,
     frame_interval: usize,
+    target_fps: Option<f64>,
 ) -> Result<VideoImportResult, String> {
     let guard = video::ImportGuard::acquire()?;
     let resources = app.path().resource_dir().map_err(text::video_failed)?;
@@ -19,10 +20,11 @@ pub async fn import_video(
     let ffprobe = video::executable(&resources, "ffprobe")?;
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = guard;
-        video::extract(
+        video::extract_with_sampling(
             &source_path,
             &output_folder,
             frame_interval,
+            target_fps,
             &ffmpeg,
             &ffprobe,
         )
@@ -44,6 +46,7 @@ pub async fn reextract_video(
     project_folder: PathBuf,
     frame_folder: PathBuf,
     frame_interval: usize,
+    target_fps: Option<f64>,
 ) -> Result<VideoImportResult, String> {
     let guard = video::ImportGuard::acquire()?;
     let resources = app.path().resource_dir().map_err(text::video_failed)?;
@@ -56,6 +59,7 @@ pub async fn reextract_video(
             &project_folder,
             &frame_folder,
             frame_interval,
+            target_fps,
             &ffmpeg,
             &ffprobe,
         )

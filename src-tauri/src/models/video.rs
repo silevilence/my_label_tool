@@ -15,6 +15,8 @@ pub struct VideoProject {
     pub schema_version: u32,
     pub source_path: PathBuf,
     pub frame_interval: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_fps: Option<f64>,
     pub total_frames: usize,
     pub width: u32,
     pub height: u32,

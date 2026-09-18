@@ -1,7 +1,30 @@
 use super::*;
 
 #[test]
+fn fps_sampling_uses_time_buckets_without_duplicate_source_frames() {
+    let times: Vec<_> = (0..24).map(|frame| frame as f64 / 24.0).collect();
+    assert_eq!(
+        sampling_indices(&times, 1, Some(5.0)),
+        vec![0, 5, 10, 15, 20]
+    );
+    assert_eq!(sampling_indices(&times, 6, None), vec![0, 6, 12, 18]);
+    assert_eq!(
+        sampling_indices(&[0.0, 0.0, 0.04, 0.22, 0.23, 1.1], 1, Some(5.0)),
+        vec![0, 3, 5]
+    );
+    assert_eq!(
+        sampling_indices(&[0.0, 0.5, 1.0], 1, Some(5.0)),
+        vec![0, 1, 2]
+    );
+    assert_eq!(sampling_indices(&times, 1, Some(0.5)), vec![0]);
+    for fps in [0.0, -1.0, f64::NAN, f64::INFINITY, 1000.1] {
+        assert!(!valid_fps(Some(fps)));
+    }
+}
+
+#[test]
 fn timestamps_use_decoded_order_and_actual_presentation_time() {
+    assert_eq!(parse_timestamps(br#"{"streams":[{"time_base":"1/30000"}],"frames":[{"best_effort_timestamp":30000},{"best_effort_timestamp":31001}]}"#).unwrap(), vec![0.0, 31001.0 / 30000.0 - 1.0]);
     assert_eq!(parse_timestamps(br#"{"frames":[{"best_effort_timestamp_time":"2"},{"best_effort_timestamp_time":"2.04"},{"best_effort_timestamp_time":"2.2"}]}"#).unwrap(), vec![0.0, 0.040000000000000036, 0.20000000000000018]);
     for input in [
         r#"{"frames":[]}"#,
@@ -65,6 +88,55 @@ fn real_video_extract_reload_cancel_and_failure_cleanup() {
     assert_eq!((result.video.width, result.video.height), (64, 48));
     assert_eq!(result.video.frames[3].timestamp_seconds, 0.9);
     assert_eq!(load(&result.folder_path).unwrap().unwrap().frames.len(), 4);
+    let fps_result =
+        extract_with_sampling(&source, &root, 1, Some(5.0), &ffmpeg, &ffprobe).unwrap();
+    assert_eq!(
+        fps_result
+            .video
+            .frames
+            .iter()
+            .map(|frame| frame.frame_index)
+            .collect::<Vec<_>>(),
+        vec![0, 2, 4, 6, 8]
+    );
+    assert_eq!(
+        load(&fps_result.folder_path).unwrap().unwrap().target_fps,
+        Some(5.0)
+    );
+    let dense = extract_with_sampling(&source, &root, 1, Some(20.0), &ffmpeg, &ffprobe).unwrap();
+    assert_eq!(dense.video.frames.len(), 10);
+    let source24 = root.join("24fps.mkv");
+    run(
+        Command::new(&ffmpeg)
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=64x48:rate=24:duration=2",
+                "-c:v",
+                "ffv1",
+                "-y",
+            ])
+            .arg(&source24),
+        &root,
+    )
+    .unwrap();
+    let sampled24 =
+        extract_with_sampling(&source24, &root, 1, Some(5.0), &ffmpeg, &ffprobe).unwrap();
+    assert_eq!(
+        sampled24
+            .video
+            .frames
+            .iter()
+            .map(|frame| frame.frame_index)
+            .collect::<Vec<_>>(),
+        vec![0, 5, 10, 15, 20, 24, 29, 34, 39, 44]
+    );
+    for frame in &fps_result.video.frames {
+        assert!((frame.timestamp_seconds - frame.frame_index as f64 / 10.0).abs() < 0.00001);
+    }
     for interval in [0, 1_000_001] {
         let mut invalid = result.video.clone();
         invalid.frame_interval = interval;
@@ -98,6 +170,31 @@ fn real_video_extract_reload_cancel_and_failure_cleanup() {
     assert_eq!(variable_result.video.total_frames, 10);
     assert!((variable_result.video.frames[2].timestamp_seconds - 1.1).abs() < 0.001);
     assert!((variable_result.video.frames[3].timestamp_seconds - 1.4).abs() < 0.001);
+    let variable_fps =
+        extract_with_sampling(&variable, &root, 1, Some(5.0), &ffmpeg, &ffprobe).unwrap();
+    assert_eq!(
+        variable_fps
+            .video
+            .frames
+            .iter()
+            .map(|frame| frame.frame_index)
+            .collect::<Vec<_>>(),
+        vec![0, 2, 4, 5, 7, 9]
+    );
+    let all_frames = extract(&variable, &root, 1, &ffmpeg, &ffprobe).unwrap();
+    for frame in &variable_fps.video.frames {
+        let selected = image::open(variable_fps.folder_path.join(&frame.name))
+            .unwrap()
+            .to_rgb8();
+        let original = image::open(
+            all_frames
+                .folder_path
+                .join(format!("frame-{:06}.png", frame.frame_index)),
+        )
+        .unwrap()
+        .to_rgb8();
+        assert_eq!(selected, original);
+    }
     let base = root.join("base.mp4");
     run(
         Command::new(&ffmpeg)

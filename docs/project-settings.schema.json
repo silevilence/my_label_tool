@@ -4,11 +4,27 @@
   "type": "object",
   "required": ["schemaVersion"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": {
+      "const": 1
+    },
     "videoExtraction": {
       "type": "object",
       "required": ["frameInterval"],
-      "properties": { "frameInterval": { "type": "integer", "minimum": 1, "maximum": 1000000 } }
+      "properties": {
+        "frameInterval": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "mode": {
+          "enum": ["fps", "interval"]
+        },
+        "fps": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        }
+      }
     }
   }
 }

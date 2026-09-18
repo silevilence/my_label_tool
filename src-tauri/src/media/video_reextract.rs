@@ -13,6 +13,7 @@ pub fn reextract(
     project: &Path,
     old: &Path,
     interval: usize,
+    target_fps: Option<f64>,
     ffmpeg: &Path,
     ffprobe: &Path,
 ) -> Result<VideoImportResult, String> {
@@ -20,7 +21,7 @@ pub fn reextract(
         source,
         project,
         old,
-        || video::extract(source, project, interval, ffmpeg, ffprobe),
+        || video::extract_with_sampling(source, project, interval, target_fps, ffmpeg, ffprobe),
         |path| image_deletion::recycle_owned_path(path.to_path_buf()),
     )
 }

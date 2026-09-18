@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import type { useProjectSettings } from "../../hooks/useProjectSettings";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
-import { MAX_FRAME_INTERVAL } from "../../lib/defaults/video";
-import { validFrameInterval } from "../../lib/project-settings";
+import { VideoExtractionFields } from "../video/VideoExtractionFields";
+import type { VideoExtractionSettings } from "../../types/project-settings";
+import { validExtraction } from "../../lib/project-settings";
 
 export function ProjectVideoSettings({
   folder,
@@ -11,36 +12,31 @@ export function ProjectVideoSettings({
   folder: string;
   model: ReturnType<typeof useProjectSettings>;
 }) {
-  const savedInterval = model.settings.videoExtraction.frameInterval;
+  const savedInterval = model.settings.videoExtraction;
   const [interval, setInterval] = useState(savedInterval);
-  const [saved, setSaved] = useState<{ folder: string; interval: number } | null>(null);
+  const [saved, setSaved] = useState<{ folder: string; interval: VideoExtractionSettings } | null>(
+    null,
+  );
   useEffect(() => {
     setInterval(savedInterval);
   }, [folder, savedInterval]);
   useEffect(() => setSaved(null), [folder]);
   return (
     <section className="mt-4 rounded border border-slate-800 p-3">
-      <h3 className="text-sm font-medium text-slate-100">{text.projectSettings}</h3>
+      <h3 className="text-sm font-medium text-slate-100">{text.extractionDefaults}</h3>
       <p className="mt-2 text-xs text-slate-400">
         {folder ? text.defaultExtractionHint : text.settingsNeedProject}
       </p>
-      <label className="mt-3 block text-sm text-slate-200">
-        {text.defaultInterval}
-        <input
-          aria-label={text.defaultInterval}
-          type="number"
-          min={1}
-          max={MAX_FRAME_INTERVAL}
-          step={1}
+      <div className="mt-4">
+        <VideoExtractionFields
           value={interval}
           disabled={!folder || model.loading || model.saving}
-          onChange={(event) => {
-            setInterval(Number(event.target.value));
+          onChange={(value) => {
+            setInterval(value);
             setSaved(null);
           }}
-          className="ml-3 w-28 rounded border border-slate-700 bg-slate-950 px-2 py-1"
         />
-      </label>
+      </div>
       {model.error && (
         <p role="alert" className="mt-2 text-xs text-red-300">
           {model.error}
@@ -48,7 +44,7 @@ export function ProjectVideoSettings({
       )}
       <button
         type="button"
-        disabled={!folder || model.loading || model.saving || !validFrameInterval(interval)}
+        disabled={!folder || model.loading || model.saving || !validExtraction(interval)}
         onClick={() => {
           setSaved(null);
           void model.save(interval).then((success) => {

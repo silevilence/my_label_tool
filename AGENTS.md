@@ -194,7 +194,7 @@ interface LabelTemplate {
 
 **视频标注扩展预留**：`AnnotationShape.frameIndex` 字段现在就加上，即使图片阶段用不到，避免后期做视频标注时重构数据结构。
 
-**项目配置（ProjectConfig）**：导入与项目复用的核心契约，定义在 `lib/importers.ts`。包含 `schemaVersion`（当前恒为 1）、`format`（导入来源格式）、`annotationPath`、`imageFolder`、`exportedAt`、标签快照 `labels`、项目专用模板 `template`（id 固定为 `project-config`，名称「项目临时配置」）、`exportOptions` 与预打标类名映射 `prelabelMappings`。项目配置文件名固定为 `my-label-tool.project.json`，保存在图片目录下；打开图片目录时若存在该文件则提示自动加载。新增导入来源或修改导入流程时，必须同步更新 `ProjectConfig` 与 `parseProjectConfig` 校验逻辑，不得破坏已有配置的兼容性。
+**项目配置（ProjectConfig）**：导入与项目复用的核心契约，定义在 `lib/importers.ts`。包含 `schemaVersion`（当前恒为 1）、`format`（导入来源格式）、`annotationPath`、`imageFolder`、`exportedAt`、标签快照 `labels`、项目专用模板 `template`（id 固定为 `project-config`，名称「项目临时配置」）、`exportOptions` 与预打标类名映射 `prelabelMappings`、可选项目设置 `settings`（默认抽帧 FPS/固定帧间隔，见 `src/types/project-settings.ts`）。项目配置文件名固定为 `my-label-tool.project.json`，保存在图片目录下；打开图片目录时若存在该文件则提示自动加载。新增导入来源或修改导入流程时，必须同步更新 `ProjectConfig` 与 `parseProjectConfig` 校验逻辑，不得破坏已有配置的兼容性。
 
 **预打标模型库（PrelabelModelLibrary）**：定义在 `src/types/prelabel.ts`（Rust 端 `models/prelabel.rs` 字段一一对应）。`PrelabelModelConfig` 保存模型路径、YOLO 格式（yolov5 / yolov8 / yolo11）、类别数、输入尺寸、置信度/IoU 阈值；模型库配置持久化在 app data 目录。模型类别与项目标签的映射 `prelabelMappings` 按模型 id 保存在项目配置（ProjectConfig）中，解析与校验逻辑集中在 `parsePrelabelMappings`，改动时必须同步前后端结构与校验。
 

@@ -1,4 +1,6 @@
 import { DEFAULT_LABEL_COLORS } from "./defaults/labels";
+import type { ProjectSettings } from "../types/project-settings";
+import { parseProjectSettings } from "./project-settings";
 import type { TextFileEntry } from "./tauri-api";
 import type {
   AnnotationShape,
@@ -8,11 +10,7 @@ import type {
 } from "../types/annotation";
 import type { BuiltInExportFormatId } from "../types/export";
 import type { PrelabelClassMapping, PrelabelMappingsByModel } from "../types/prelabel";
-import {
-  MAX_PLUGIN_CONTRACT_VERSION,
-  isValidPluginId,
-  type PluginConfig,
-} from "../types/plugin";
+import { MAX_PLUGIN_CONTRACT_VERSION, isValidPluginId, type PluginConfig } from "../types/plugin";
 import { PRELABEL_ZH_CN as prelabelText } from "../i18n/prelabel.zh-CN";
 import { PLUGIN_ZH_CN as pluginText } from "../i18n/plugin.zh-CN";
 
@@ -23,6 +21,7 @@ export const PROJECT_TEMPLATE_NAME = "项目临时配置";
 export type ImportFormatId = Exclude<BuiltInExportFormatId, "custom">;
 
 export interface ProjectConfig {
+  settings?: ProjectSettings;
   schemaVersion: 1;
   format: ImportFormatId;
   annotationPath: string;
@@ -112,6 +111,9 @@ export function parseProjectConfig(text: string): ProjectConfig {
     exportOptions: parseExportOptions(value.exportOptions),
     ...(prelabelMappings ? { prelabelMappings } : {}),
     ...(pluginConfigs ? { pluginConfigs } : {}),
+    ...(value.settings !== undefined
+      ? { settings: parseProjectSettings(JSON.stringify(value.settings)) }
+      : {}),
   };
 }
 

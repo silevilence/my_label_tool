@@ -1,3 +1,4 @@
+import { DEFAULT_PROJECT_SETTINGS } from "../lib/defaults/video";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +44,7 @@ vi.mock("../lib/tauri-api", async (importOriginal) => ({
   reextractVideo: vi.fn(),
   cancelVideoImport: vi.fn().mockResolvedValue(undefined),
   listTextFiles: vi.fn().mockResolvedValue([]),
+  readTextFile: vi.fn(),
   selectImageFolder: vi.fn().mockResolvedValue("C:/fixture"),
   recycleImageFile: vi.fn().mockResolvedValue(undefined),
   imageFileSrc: (path: string) => path,
@@ -55,6 +57,7 @@ describe("image deletion entry wiring", () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.useFakeTimers();
     vi.clearAllMocks();
+    vi.mocked(api.listTextFiles).mockResolvedValue([]);
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -99,6 +102,13 @@ describe("image deletion entry wiring", () => {
     await act(async () => root.render(<App />));
     await click("打开项目文件夹");
   }
+  it("disables project settings without a project file and keeps app settings separate", async () => {
+    await openFixture();
+    expect(button("项目设置").disabled).toBe(true);
+    expect(container.textContent).not.toContain("批量抽取未准备视频");
+    await click("设置");
+    expect(container.textContent).not.toContain("抽帧方式");
+  });
   it("list context menu targets the clicked file without changing the selected image; F8 targets current", async () => {
     await openFixture();
     expect(button("a.png").className).toContain("bg-sky-500");
@@ -221,13 +231,17 @@ describe("image deletion entry wiring", () => {
     expect(button("a.png").className).toContain("bg-sky-500");
     expect(container.querySelector('[aria-label="视频时间轴"]')).toBeNull();
     await click("添加视频到项目");
-    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("抽帧间隔");
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("按 FPS 抽帧");
     vi.mocked(api.importVideo).mockResolvedValueOnce({
       folderPath: "C:/fixture/added",
       video: video("added"),
     });
     await click("准备视频帧");
-    expect(api.importVideo).toHaveBeenCalledWith("C:/fixture/added.mp4", "C:/fixture", 30);
+    expect(api.importVideo).toHaveBeenCalledWith(
+      "C:/fixture/added.mp4",
+      "C:/fixture",
+      DEFAULT_PROJECT_SETTINGS.videoExtraction,
+    );
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     expect(container.textContent).toContain("2 张图片 · 3 个视频");
     expect(
@@ -235,7 +249,7 @@ describe("image deletion entry wiring", () => {
     ).toMatchObject({ id: "kept", frameIndex: 3 });
   });
 
-  it("prepares all pending videos from the project menu and preserves ordinary images", async () => {
+  it("prepares all pending videos from project settings and preserves ordinary images", async () => {
     vi.mocked(api.listProjectVideos).mockResolvedValueOnce(
       ["one", "two"].map((name) => ({
         sourcePath: `C:/fixture/${name}.mp4`,
@@ -250,18 +264,59 @@ describe("image deletion entry wiring", () => {
         sourcePath,
         width: 64,
         height: 48,
-        frameInterval,
+        frameInterval:
+          typeof frameInterval === "number" ? frameInterval : frameInterval.frameInterval,
         totalFrames: 1,
         frames: [{ name: "frame-000000.png", frameIndex: 0, timestampSeconds: 0 }],
       },
     }));
+    const labels = [{ id: "person", name: "人", color: "#38bdf8", shapeType: "any" }];
+    vi.mocked(api.listTextFiles).mockImplementation(async (_folder, extension) =>
+      extension === "json"
+        ? [{ name: "my-label-tool.project.json", path: "C:/fixture/my-label-tool.project.json" }]
+        : [],
+    );
+    vi.mocked(api.readTextFile).mockImplementation(async (path) =>
+      JSON.stringify(
+        path.endsWith("project.json")
+          ? {
+              schemaVersion: 1,
+              format: "json",
+              annotationPath: "C:/fixture/annotations.json",
+              imageFolder: "C:/fixture",
+              exportedAt: "",
+              labels,
+            }
+          : { labels, images: [] },
+      ),
+    );
     await openFixture();
+    await click("项目设置");
+    expect(
+      container.querySelector('[aria-label="项目设置"]')?.closest(".pointer-events-none"),
+    ).toBeNull();
+    const fpsInput = container.querySelector<HTMLInputElement>(
+      'input[aria-label="抽帧帧率（FPS）"]',
+    )!;
+    expect(fpsInput.value).toBe("5");
+    fpsInput.focus();
+    expect(fpsInput.disabled).toBe(false);
+    expect(document.activeElement).toBe(fpsInput);
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    await act(async () => fpsInput.dispatchEvent(tab));
+    expect(document.activeElement?.textContent).toBe("保存项目设置");
     await click("批量抽取未准备视频");
     expect(api.importVideo).toHaveBeenCalledTimes(2);
-    expect(api.importVideo).toHaveBeenNthCalledWith(2, "C:/fixture/two.mp4", "C:/fixture", 30);
+    expect(api.importVideo).toHaveBeenNthCalledWith(
+      2,
+      "C:/fixture/two.mp4",
+      "C:/fixture",
+      DEFAULT_PROJECT_SETTINGS.videoExtraction,
+    );
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain("完成 2 / 2");
     await click("关闭");
     expect(container.textContent).toContain("2 张图片 · 2 个视频");
+    await click("项目设置");
     expect(button("批量抽取未准备视频").disabled).toBe(true);
   });
 
@@ -284,14 +339,12 @@ describe("image deletion entry wiring", () => {
     });
     await openFixture();
     await act(async () => {
-      useAnnotationStore
-        .getState()
-        .addAnnotation("C:/fixture/old/frame-000000.png", {
-          id: "old",
-          labelId: "person",
-          type: "point",
-          points: [1, 2],
-        });
+      useAnnotationStore.getState().addAnnotation("C:/fixture/old/frame-000000.png", {
+        id: "old",
+        labelId: "person",
+        type: "point",
+        points: [1, 2],
+      });
       container
         .querySelector<HTMLButtonElement>('button[title="C:/fixture/one.mp4"]')!
         .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
@@ -314,7 +367,7 @@ describe("image deletion entry wiring", () => {
       "C:/fixture/one.mp4",
       "C:/fixture",
       "C:/fixture/old",
-      30,
+      DEFAULT_PROJECT_SETTINGS.videoExtraction,
     );
     expect(container.querySelector('[role="alertdialog"]')).toBeNull();
     expect(container.textContent).toContain("2 张图片 · 1 个视频");

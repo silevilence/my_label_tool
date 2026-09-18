@@ -34,6 +34,15 @@ const rect: AnnotationShape = {
   frameIndex: 0,
   attributes: { videoTrackId: "car-1", videoKeyframe: true, videoInterpolated: false },
 };
+it("exports FPS sampling metadata without changing source frame numbers", () => {
+  const result = exportVideo({ ...video, frameInterval: 1, targetFps: 5 }, images, labels, {
+    [images[1].path]: [rect],
+  });
+  expect(validate(result), JSON.stringify(validate.errors)).toBe(true);
+  expect(result.video.targetFps).toBe(5);
+  expect(result.images[1].annotations[0].frameIndex).toBe(30);
+  expect(validate({ ...result, video: { ...result.video, targetFps: 0 } })).toBe(false);
+});
 it("exports complete metadata, empty frames, original pixel coordinates and track attributes", () => {
   const result = exportVideo(video, images, labels, { [images[1].path]: [rect] });
   expect(validate(result), JSON.stringify(validate.errors)).toBe(true);

@@ -26,7 +26,7 @@ import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 interface AppSidebarProps {
   exportYoloAnnotations?: () => void;
   reextractVideo?: (source: string) => void;
-  batchPrepare?: () => void;
+  openProjectSettings?: () => void;
   videos?: LoadedProjectVideo[];
   addVideo?: (source?: string) => void;
   canDeleteImage: boolean;
@@ -90,7 +90,7 @@ interface AppSidebarProps {
 export function AppSidebar({
   exportYoloAnnotations,
   reextractVideo,
-  batchPrepare,
+  openProjectSettings,
   videos = [],
   addVideo,
   canDeleteImage,
@@ -207,17 +207,6 @@ export function AppSidebar({
                   {videoText.add}
                 </button>
               )}
-              <button
-                type="button"
-                disabled={!batchPrepare}
-                className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:opacity-40"
-                onClick={() => {
-                  closeMenu();
-                  batchPrepare?.();
-                }}
-              >
-                {videoText.batchPrepare}
-              </button>
               <div className="border-t border-slate-800 pt-1">
                 <div className="px-2 py-1 text-xs text-slate-500">导入标注</div>
                 <button
@@ -303,10 +292,10 @@ export function AppSidebar({
         <p className="mt-3 truncate text-xs text-slate-400" title={folderPath || "请选择目录"}>
           {folderPath || "请选择目录"}
         </p>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="mt-2 flex items-center gap-2">
           <button
             aria-label="撤销"
-            className="rounded border border-slate-700 px-3 py-2 text-lg font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-9 w-10 shrink-0 rounded border border-slate-700 text-lg font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!canUndo}
             title="撤销（Ctrl+Z）"
             type="button"
@@ -316,13 +305,22 @@ export function AppSidebar({
           </button>
           <button
             aria-label="重做"
-            className="rounded border border-slate-700 px-3 py-2 text-lg font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-9 w-10 shrink-0 rounded border border-slate-700 text-lg font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!canRedo}
             title="重做（Ctrl+Y）"
             type="button"
             onClick={redo}
           >
             ↷
+          </button>
+          <button
+            type="button"
+            onClick={openProjectSettings}
+            disabled={!activeProjectConfig || !openProjectSettings}
+            title={activeProjectConfig ? videoText.projectSettings : videoText.settingsNeedProject}
+            className="ml-auto h-9 rounded border border-slate-700 px-3 text-sm text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {videoText.projectSettings}
           </button>
         </div>
       </div>

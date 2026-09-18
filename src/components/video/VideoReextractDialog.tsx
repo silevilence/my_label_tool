@@ -1,3 +1,4 @@
+import { extractionSettings } from "../../lib/project-settings";
 import { DeleteImageDialog } from "../DeleteImageDialog";
 import type { VideoReextractTarget } from "../../hooks/useProjectVideoActions";
 import { useAnnotationStore } from "../../store/useAnnotationStore";
@@ -16,6 +17,7 @@ export function VideoReextractDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const settings = extractionSettings(target.interval);
   const annotations = useAnnotationStore((state) => state.annotationsByImage);
   return (
     <DeleteImageDialog
@@ -38,7 +40,13 @@ export function VideoReextractDialog({
       allowCancelWhileBusy
       messages={{
         title: text.reextract,
-        consequence: text.reextractConsequence(target.asset.images.length, target.interval),
+        consequence: text.reextractConsequence(
+          target.asset.images.length,
+          text.extractionSummary(
+            settings.mode,
+            settings.mode === "fps" ? settings.fps : settings.frameInterval,
+          ),
+        ),
         confirm: text.reextractConfirm,
         deleting: text.importing,
       }}

@@ -3,27 +3,50 @@
   "$id": "https://my-label-tool.local/schema/project-config-v1.json",
   "title": "my_label_tool Project Config v1",
   "type": "object",
-  "required": [
-    "schemaVersion",
-    "format",
-    "annotationPath",
-    "exportedAt",
-    "imageFolder",
-    "labels"
-  ],
+  "required": ["schemaVersion", "format", "annotationPath", "exportedAt", "imageFolder", "labels"],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "format": { "enum": ["json", "coco", "voc", "yolo"] },
-    "annotationPath": { "type": "string", "minLength": 1 },
-    "exportedAt": { "type": "string" },
-    "imageFolder": { "type": "string" },
-    "labels": { "type": "array", "items": { "$ref": "#/$defs/label" } },
-    "template": { "$ref": "#/$defs/template" },
-    "exportOptions": { "$ref": "#/$defs/exportOptions" },
-    "prelabelMappings": { "type": "object", "additionalProperties": { "type": "array" } },
+    "schemaVersion": {
+      "const": 1
+    },
+    "format": {
+      "enum": ["json", "coco", "voc", "yolo"]
+    },
+    "annotationPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exportedAt": {
+      "type": "string"
+    },
+    "imageFolder": {
+      "type": "string"
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/label"
+      }
+    },
+    "template": {
+      "$ref": "#/$defs/template"
+    },
+    "exportOptions": {
+      "$ref": "#/$defs/exportOptions"
+    },
+    "prelabelMappings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array"
+      }
+    },
     "pluginConfigs": {
       "type": "array",
-      "items": { "$ref": "#/$defs/pluginConfig" }
+      "items": {
+        "$ref": "#/$defs/pluginConfig"
+      }
+    },
+    "settings": {
+      "$ref": "#/$defs/settings"
     }
   },
   "additionalProperties": true,
@@ -31,26 +54,47 @@
     "label": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "name": { "type": "string", "minLength": 1 },
-        "color": { "type": "string", "minLength": 1 },
-        "shortcut": { "type": "string" },
-        "shapeType": { "enum": ["any", "rect", "polygon", "point"] }
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "color": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shortcut": {
+          "type": "string"
+        },
+        "shapeType": {
+          "enum": ["any", "rect", "polygon", "point"]
+        }
       },
       "additionalProperties": true
     },
     "template": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "name": { "type": "string", "minLength": 1 }
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "additionalProperties": true
     },
     "exportOptions": {
       "type": "object",
       "properties": {
-        "format": { "enum": ["json", "coco", "voc", "yolo", "custom"] }
+        "format": {
+          "enum": ["json", "coco", "voc", "yolo", "custom"]
+        }
       },
       "additionalProperties": true
     },
@@ -70,6 +114,34 @@
         "config": {}
       },
       "additionalProperties": true
+    },
+    "settings": {
+      "type": "object",
+      "required": ["schemaVersion"],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "videoExtraction": {
+          "type": "object",
+          "required": ["frameInterval"],
+          "properties": {
+            "frameInterval": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "mode": {
+              "enum": ["fps", "interval"]
+            },
+            "fps": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000
+            }
+          }
+        }
+      }
     }
   }
 }
