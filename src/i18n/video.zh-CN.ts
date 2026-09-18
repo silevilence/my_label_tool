@@ -1,5 +1,8 @@
 export const VIDEO_ZH_CN = {
   open: "导入视频",
+  timeline: "视频时间轴",
+  position: (frame: number, total: number) => `源帧 ${frame} / ${total}`,
+  time: (seconds: number) => `${seconds.toFixed(3)} 秒`,
   interval: "抽帧间隔（源帧）",
   importing: "正在解析视频并抽帧…",
   cancel: "取消抽帧",

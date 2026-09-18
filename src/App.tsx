@@ -5,6 +5,7 @@ import { AppLayout } from "./components/AppLayout";
 import type { VideoProject } from "./types/video";
 import { videoImages } from "./lib/video-images";
 import { VideoImportBar } from "./components/video/VideoImportBar";
+import { VideoTimeline } from "./components/video/VideoTimeline";
 import { useVideoImport } from "./hooks/useVideoImport";
 import { listImageFiles } from "./lib/tauri-api";
 import { VIDEO_ZH_CN as videoText } from "./i18n/video.zh-CN";
@@ -705,12 +706,25 @@ function App() {
       <AppLayout
         workspaceDisabled={videoImport.busy}
         videoToolbar={
-          <VideoImportBar
-            busy={videoImport.busy}
-            disabled={imageDeletionBusy || Boolean(imageDeletion.target)}
-            onImport={(interval) => void videoImport.start(interval)}
-            onCancel={() => void videoImport.cancel()}
-          />
+          <>
+            <VideoImportBar
+              busy={videoImport.busy}
+              disabled={imageDeletionBusy || Boolean(imageDeletion.target)}
+              onImport={(interval) => void videoImport.start(interval)}
+              onCancel={() => void videoImport.cancel()}
+            />
+            {video && (
+              <VideoTimeline
+                video={video}
+                selectedName={selectedImage?.name ?? ""}
+                disabled={videoImport.busy}
+                onSelect={(name) => {
+                  const frame = images.find((image) => image.name === name);
+                  if (frame) setSelectedPath(frame.path);
+                }}
+              />
+            )}
+          </>
         }
         canDeleteImage={!video && !imageDeletionBusy && !imageDeletion.target}
         requestDeleteImage={requestDeleteImage}
