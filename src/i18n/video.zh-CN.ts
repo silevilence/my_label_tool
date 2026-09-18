@@ -1,4 +1,15 @@
 export const VIDEO_ZH_CN = {
+  yoloExport: "导出 YOLO txt",
+  yoloDescription:
+    "每张图片和已抽取视频帧各生成同名 txt，按视频子目录区分；空帧生成空文件，另附 classes.txt。不复制图片。",
+  yoloFrameCount: (frames: number, pending: number) =>
+    `含 ${frames} 张已抽取视频帧${pending ? `；${pending} 个未抽帧视频不导出，可先批量抽帧` : ""}。`,
+  yoloUnsupported: (count: number) =>
+    `YOLO 只支持矩形标注，当前有 ${count} 个非矩形标注。请改用 JSON/COCO/Custom，或先删除这些标注。`,
+  invalidYoloBox: (name: string) =>
+    `无法导出 ${name}：YOLO 矩形必须位于图片范围内、尺寸有效并使用已知标签。`,
+  invalidYoloSize: (name: string) => `无法导出 ${name}：图片尺寸无效。`,
+  duplicateYoloPath: (name: string) => `YOLO 输出文件名冲突：${name}。请先重命名同名素材。`,
   reextract: "重新抽帧",
   reextractConfirm: "删除旧帧与标注并重新抽帧",
   reextractConsequence: (frames: number, interval: number) =>

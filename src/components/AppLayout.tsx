@@ -65,6 +65,7 @@ const ImageSearchDialog = lazy(async () => {
 });
 
 interface AppLayoutProps {
+  exportYoloAnnotations?: () => void;
   reextractVideo?: (source: string) => void;
   batchPrepare?: () => void;
   projectSettings?: ReactNode;
@@ -204,6 +205,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({
+  exportYoloAnnotations,
   reextractVideo,
   batchPrepare,
   projectSettings,
@@ -427,6 +429,7 @@ export function AppLayout({
         }}
       >
         <AppSidebar
+          exportYoloAnnotations={exportYoloAnnotations}
           reextractVideo={reextractVideo}
           batchPrepare={batchPrepare}
           videos={videos}

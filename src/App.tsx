@@ -316,6 +316,7 @@ function App() {
     cancelActivePluginExport,
     createProjectFromExternalYolo,
     exportSelectedFormat,
+    exportYoloAnnotations,
     importAnnotations,
     maybeLoadProjectConfig,
     pluginExportProgress,
@@ -741,6 +742,7 @@ function App() {
   return (
     <>
       <AppLayout
+        exportYoloAnnotations={() => void exportYoloAnnotations()}
         reextractVideo={
           !projectSettings.loading
             ? (source) =>

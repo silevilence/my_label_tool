@@ -52,6 +52,7 @@ import { PROJECT_ZH_CN as projectText } from "../i18n/project.zh-CN";
 import { mergeImportedLabels, remapImportedAnnotationLabels } from "../lib/yolo-label-merge";
 import type { VideoProject } from "../types/video";
 import { withProjectMedia, type LoadedProjectVideo } from "../lib/project-media";
+import { VIDEO_ZH_CN as videoText } from "../i18n/video.zh-CN";
 
 export interface PluginExportProgressState {
   exportId: string;
@@ -162,13 +163,7 @@ export function useProjectActions({
     }
 
     if (selectedExportFormatId === "yolo") {
-      ensureYoloCompatible(exportData);
-      const outputDir = await selectExportFolder();
-      if (!outputDir) {
-        return null;
-      }
-      await exportTextFiles(outputDir, exportYolo(exportData));
-      return outputDir;
+      return writeYoloAnnotations(exportData);
     }
 
     const pluginFormat = pluginExportFormats.find(
@@ -235,6 +230,24 @@ export function useProjectActions({
     }
     await exportAnnotationsJson(outputPath, exportCustom(exportData, mapping));
     return outputPath;
+  }
+
+  async function writeYoloAnnotations(data: ExportData): Promise<string | null> {
+    ensureYoloCompatible(data);
+    const files = exportYolo(data);
+    const outputDir = await selectExportFolder();
+    if (!outputDir) return null;
+    await exportTextFiles(outputDir, files);
+    return outputDir;
+  }
+
+  async function exportYoloAnnotations() {
+    setError("");
+    try {
+      await writeYoloAnnotations(await buildExportData());
+    } catch (error) {
+      reportError(error);
+    }
   }
 
   async function saveProjectExport() {
@@ -656,9 +669,7 @@ export function useProjectActions({
       0,
     );
     if (unsupportedCount > 0) {
-      throw new Error(
-        `YOLO 只支持矩形标注，当前有 ${unsupportedCount} 个非矩形标注。请改用 JSON/COCO/Custom，或先删除这些标注。`,
-      );
+      throw new Error(videoText.yoloUnsupported(unsupportedCount));
     }
   }
 
@@ -687,6 +698,7 @@ export function useProjectActions({
     cancelActivePluginExport,
     createProjectFromExternalYolo,
     exportSelectedFormat,
+    exportYoloAnnotations,
     importAnnotations,
     maybeLoadProjectConfig,
     pluginExportProgress,

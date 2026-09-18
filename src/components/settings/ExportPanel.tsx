@@ -7,6 +7,9 @@ import type { PluginExportProgressState } from "../../hooks/useProjectActions";
 import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface ExportPanelProps {
+  onExportYolo?: () => void;
+  videoFrameCount?: number;
+  pendingVideoCount?: number;
   hasVideos?: boolean;
   customMappingText: string;
   disabled: boolean;
@@ -23,6 +26,9 @@ interface ExportPanelProps {
 }
 
 export function ExportPanel({
+  onExportYolo,
+  videoFrameCount = 0,
+  pendingVideoCount = 0,
   hasVideos = false,
   customMappingText,
   disabled,
@@ -82,7 +88,9 @@ export function ExportPanel({
           ? (selectedPluginFormat.disabledReason ?? pluginText.exportFormatDescription)
           : hasVideos && selectedFormatId === "json"
             ? videoText.jsonDescription
-            : selectedTemplate.description}
+            : hasVideos && selectedFormatId === "yolo"
+              ? videoText.yoloDescription
+              : selectedTemplate.description}
       </p>
       {selectedFormatId === "custom" && (
         <textarea
@@ -146,6 +154,21 @@ export function ExportPanel({
           另存为
         </button>
       </div>
+      {hasVideos && onExportYolo && (
+        <div className="mt-3 border-t border-slate-800 pt-3">
+          <button
+            type="button"
+            disabled={disabled || isSaving || isPluginExporting}
+            onClick={onExportYolo}
+            className="w-full rounded border border-sky-700 px-3 py-2 text-sm text-sky-200 hover:bg-sky-950 disabled:opacity-40"
+          >
+            {videoText.yoloExport}
+          </button>
+          <p className="mt-2 text-xs text-slate-400">
+            {videoText.yoloFrameCount(videoFrameCount, pendingVideoCount)}
+          </p>
+        </div>
+      )}
     </section>
   );
 }

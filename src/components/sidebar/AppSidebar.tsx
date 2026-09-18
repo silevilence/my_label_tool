@@ -24,6 +24,7 @@ import { ProjectMediaList } from "./ProjectMediaList";
 import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface AppSidebarProps {
+  exportYoloAnnotations?: () => void;
   reextractVideo?: (source: string) => void;
   batchPrepare?: () => void;
   videos?: LoadedProjectVideo[];
@@ -87,6 +88,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
+  exportYoloAnnotations,
   reextractVideo,
   batchPrepare,
   videos = [],
@@ -326,6 +328,9 @@ export function AppSidebar({
       </div>
 
       <ExportPanel
+        onExportYolo={exportYoloAnnotations}
+        videoFrameCount={videos.reduce((sum, video) => sum + video.images.length, 0)}
+        pendingVideoCount={videos.filter((video) => !video.video).length}
         hasVideos={videos.length > 0}
         canSaveProject={
           (activeProjectConfig !== null && selectedExportFormatId === activeProjectConfig.format) ||

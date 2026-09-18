@@ -1,7 +1,36 @@
 import type { ExportData, TextExportFile } from "../../types/export";
+import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
 
 export function exportYolo(data: ExportData): TextExportFile[] {
   const classIndexByLabel = new Map(data.labels.map((label, index) => [label.id, index]));
+  const paths = new Set(["classes.txt"]);
+  for (const image of data.images) {
+    const path = `${baseName(image.name)}.txt`.replace(/\\/g, "/").toLowerCase();
+    if (paths.has(path)) throw new Error(text.duplicateYoloPath(path));
+    paths.add(path);
+    if (
+      !Number.isFinite(image.width) ||
+      !Number.isFinite(image.height) ||
+      image.width <= 0 ||
+      image.height <= 0
+    )
+      throw new Error(text.invalidYoloSize(image.name));
+    for (const annotation of image.annotations.filter((shape) => shape.type === "rect")) {
+      const [x, y, width, height] = annotation.points;
+      if (
+        annotation.points.length !== 4 ||
+        !annotation.points.every(Number.isFinite) ||
+        width <= 0 ||
+        height <= 0 ||
+        x < 0 ||
+        y < 0 ||
+        x + width > image.width ||
+        y + height > image.height ||
+        !classIndexByLabel.has(annotation.labelId)
+      )
+        throw new Error(text.invalidYoloBox(image.name));
+    }
+  }
   const files = data.images.map((image) => ({
     path: `${baseName(image.name)}.txt`,
     content:
