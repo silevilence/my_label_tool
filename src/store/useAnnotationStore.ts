@@ -74,9 +74,21 @@ export const useAnnotationStore = create<AnnotationState>((set) => ({
   updateAnnotation: (imagePath, annotationId, patch) =>
     set((state) => {
       const before = state.annotationsByImage[imagePath] ?? [];
-      const after = before.map((annotation) =>
-        annotation.id === annotationId ? { ...annotation, ...patch } : annotation,
-      );
+      const after = before.map((annotation) => {
+        if (annotation.id !== annotationId) return annotation;
+        const updated = { ...annotation, ...patch };
+        if (
+          annotation.attributes?.videoInterpolated === true &&
+          (patch.points !== undefined || patch.labelId !== undefined)
+        ) {
+          updated.attributes = {
+            ...updated.attributes,
+            videoKeyframe: true,
+            videoInterpolated: false,
+          };
+        }
+        return updated;
+      });
       return applyImageHistory(state, imagePath, after, state.selectedShapeId);
     }),
   deleteAnnotation: (imagePath, annotationId) =>
