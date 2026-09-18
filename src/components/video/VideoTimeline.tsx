@@ -1,4 +1,5 @@
 import type { VideoProject } from "../../types/video";
+import type { ReactNode } from "react";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
 
 export function VideoTimeline({
@@ -6,11 +7,13 @@ export function VideoTimeline({
   selectedName,
   disabled = false,
   onSelect,
+  children,
 }: {
   video: VideoProject;
   selectedName: string;
   disabled?: boolean;
   onSelect: (name: string) => void;
+  children?: ReactNode;
 }) {
   const index = video.frames.findIndex((frame) => frame.name === selectedName);
   const current = video.frames[index];
@@ -40,6 +43,7 @@ export function VideoTimeline({
       />
       <span className="shrink-0 tabular-nums">{text.time(current.timestampSeconds)}</span>
       <span className="shrink-0 text-slate-400">{text.frames(video.frames.length)}</span>
+      {children}
     </section>
   );
 }

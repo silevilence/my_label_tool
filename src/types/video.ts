@@ -19,3 +19,12 @@ export interface VideoImportResult {
   folderPath: string;
   video: VideoProject;
 }
+
+/** Host-only portable envelope; never sent as plugin exporter.export params. */
+export interface VideoAnnotationExport {
+  schemaVersion: 1;
+  kind: "my-label-tool.video";
+  video: VideoProject;
+  labels: import("./annotation").LabelConfig[];
+  images: import("./export").ExportImage[];
+}

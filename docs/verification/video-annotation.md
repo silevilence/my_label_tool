@@ -1,5 +1,13 @@
 # 视频标注开发与验收记录
 
+## 任务 5：视频导出
+
+快速审核：通过，无阻塞项。版本化视频 JSON 包含元数据、空帧、原图坐标与轨迹，图片路径
+采用帧文件名。Schema 复用现有标签/图形定义，未改变插件请求与 ProjectConfig。
+格式取舍与来源见 docs/video-annotation.md。259 项前端测试通过，行覆盖率 94.41%；
+video exporter 行覆盖率 100%。样例同时检查 COCO bbox、VOC XML 解析与 YOLO 归一化数值；
+DOM 测试覆盖实际导出入口、取消和写盘失败。typecheck、lint、cargo clippy 通过。
+
 ## 任务 4：跨帧插值
 
 快速审核：通过，无阻塞项。计算阶段不写 store，应用前检查快照未过期；保留其它目标，

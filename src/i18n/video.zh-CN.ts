@@ -1,6 +1,10 @@
 export const VIDEO_ZH_CN = {
   open: "导入视频",
   timeline: "视频时间轴",
+  exportVideo: "导出视频 JSON",
+  exporting: "正在导出…",
+  exported: "视频 JSON 已导出，包含源帧号、时间戳和轨迹属性。",
+  invalidExport: "视频标注包含未知标签或无效坐标，无法导出。",
   interpolation: "跨帧插值",
   track: "目标轨迹",
   newTrack: "新建轨迹",

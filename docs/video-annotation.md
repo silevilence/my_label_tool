@@ -37,6 +37,34 @@
 这三个宿主保留属性随原生 JSON 保存，未增加插件字段或协议能力；插件处理 attributes
 时继续遵守既有字典契约。多边形顶点对应关系需由标注者保证，算法不猜测目标关联。
 
+## 导出及格式选择
+
+「导出视频 JSON」生成 `kind: "my-label-tool.video"`、`schemaVersion: 1` 的宿主文件，
+包含 `video: VideoProject`、`labels` 和 `images`。图片 `path` 使用帧文件名而不是绝对路径；
+视频 `sourcePath` 是原文件定位提示，不嵌入视频字节。交付数据集时同时交付帧目录或原视频。
+完整字段见 [视频导出 Schema](video-annotation.schema.json)，标签和图形定义引用既有
+plugin-exporter Schema，验证器应同时注册两个本地 Schema，不需要网络。
+跨字段规则由导出逻辑与后端帧目录校验保证：帧文件顺序一致、图形关联源帧、标签引用存在。
+
+原生图片 JSON 解析器也可读取其中的 labels/images。项目日常保存/恢复仍使用侧栏的
+原始 JSON 与项目配置文件；视频元数据保存在同目录的 `my-label-tool.video.json`。
+
+格式评估（2026-09-18）：
+
+| 格式 | 本项目选择 | 信息保留 |
+| --- | --- | --- |
+| COCO | 继续导出逐帧 images/annotations/categories | 保留当前支持的图形表示，不承诺时间与轨迹 |
+| VOC | 继续每帧一个 XML | 适合矩形检测数据集，不承诺时间与轨迹 |
+| YOLO | 继续每帧一个 TXT | 适合矩形检测数据集，沿用归一化转换，不承诺时间与轨迹 |
+| 视频 JSON | 独立版本化宿主结构 | 保留三种图形、空帧、时间戳、源帧号、关键帧与插值属性 |
+
+依据：[COCO 格式入口](https://cocodataset.org/#format-data)、
+[基于 COCO API 的 YouTubeVIS 扩展](https://github.com/youtubevos/cocoapi)、
+[VOC 开发包](https://www.robots.ox.ac.uk/~vgg/projects/pascal/VOC/voc2008/htmldoc/index.html)、
+[Ultralytics 检测数据格式](https://docs.ultralytics.com/datasets/detect)。
+YouTubeVIS 有自己的视频实例分割接口，因此本次选择自定义结构来完整保存本工具的矩形、
+点、多边形与编辑元数据，未把宿主扩展字段混入现有 COCO 插件或标准格式承诺。
+
 开发机提供 FFmpeg/FFprobe；安装包将两个静态可执行文件、发行版 LICENSE、
 版本和校验记录放入 `video-tools` 资源目录，运行时不下载工具。
 打包前自动执行 `scripts/prepare-video-tools.ps1`，工具缺失则构建失败。

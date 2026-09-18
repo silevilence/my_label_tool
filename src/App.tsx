@@ -6,6 +6,7 @@ import type { VideoProject } from "./types/video";
 import { videoFrameIndices, videoImages } from "./lib/video-images";
 import { VideoImportBar } from "./components/video/VideoImportBar";
 import { VideoTimeline } from "./components/video/VideoTimeline";
+import { VideoExportButton } from "./components/video/VideoExportButton";
 import { VideoInterpolationPanel } from "./components/video/VideoInterpolationPanel";
 import { useVideoImport } from "./hooks/useVideoImport";
 import { listImageFiles } from "./lib/tauri-api";
@@ -724,7 +725,16 @@ function App() {
                   const frame = images.find((image) => image.name === name);
                   if (frame) setSelectedPath(frame.path);
                 }}
-              />
+              >
+                <VideoExportButton
+                  video={video}
+                  images={images}
+                  labels={labels}
+                  annotations={annotationsByImage}
+                  disabled={videoImport.busy || imageDeletionBusy}
+                  onMessage={setError}
+                />
+              </VideoTimeline>
             )}
             {video && (
               <VideoInterpolationPanel
