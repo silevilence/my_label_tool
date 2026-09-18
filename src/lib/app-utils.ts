@@ -14,15 +14,16 @@ export function mergeShortcuts(savedShortcuts: Record<string, string>): Shortcut
       nextShortcuts[action] = savedShortcuts[action];
     }
   }
-  // Existing users may already use F8 for another action. Do not turn that key
-  // into a destructive action when their saved configuration predates deletion.
-  if (
-    savedShortcuts.deleteImage === undefined &&
-    Object.entries(nextShortcuts).some(
-      ([action, key]) => action !== "deleteImage" && key === nextShortcuts.deleteImage,
-    )
-  ) {
-    nextShortcuts.deleteImage = "";
+  // New defaults must not take over keys already assigned by existing users.
+  for (const addedAction of ["deleteImage", "previousFrame", "nextFrame"] as const) {
+    if (
+      savedShortcuts[addedAction] === undefined &&
+      Object.entries(nextShortcuts).some(
+        ([action, key]) => action !== addedAction && key === nextShortcuts[addedAction],
+      )
+    ) {
+      nextShortcuts[addedAction] = "";
+    }
   }
   return nextShortcuts;
 }

@@ -702,6 +702,13 @@ function App() {
   ]);
 
   useKeyboardShortcuts({
+    selectAdjacentFrame: selectedVideo
+      ? (delta) => {
+          const index = selectedVideo.images.findIndex((image) => image.path === selectedPath);
+          const next = selectedVideo.images[index + delta];
+          if (index >= 0 && next) setSelectedPath(next.path);
+        }
+      : undefined,
     enabled:
       !videoImport.busy &&
       videoImportSource === null &&

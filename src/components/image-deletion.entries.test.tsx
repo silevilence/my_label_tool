@@ -157,7 +157,12 @@ describe("image deletion entry wiring", () => {
       );
     };
     await clickVideo("one");
-    await click("帧 40.300 秒");
+    await key("PageUp");
+    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+      "源帧 1 / 4",
+    );
+    await key("PageDown");
+    await key("PageDown");
     expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
       "源帧 4 / 4",
     );
@@ -180,7 +185,39 @@ describe("image deletion entry wiring", () => {
     expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
       "源帧 4 / 4",
     );
+    await click("设置");
+    await act(async () => {
+      await import("./settings/ShortcutSettings");
+    });
+    const previousFrameRow = [...container.querySelectorAll("p")]
+      .find((element) => element.textContent === "上一帧")!
+      .closest("div.grid")!;
+    await act(async () => previousFrameRow.querySelector<HTMLButtonElement>("button")!.click());
+    await key("[");
+    expect(api.saveShortcuts).toHaveBeenCalledWith(
+      expect.objectContaining({ previousFrame: "[", nextFrame: "PageDown" }),
+    );
+    await click("关闭");
+    await key("PageUp");
+    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+      "源帧 4 / 4",
+    );
+    await key("[");
+    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+      "源帧 1 / 4",
+    );
+    const input = document.createElement("input");
+    container.append(input);
+    await act(async () =>
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown", bubbles: true })),
+    );
+    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+      "源帧 1 / 4",
+    );
+    input.remove();
     await click("a.png");
+    await key("PageDown");
+    expect(button("a.png").className).toContain("bg-sky-500");
     expect(container.querySelector('[aria-label="视频时间轴"]')).toBeNull();
     await click("添加视频到项目");
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain("抽帧间隔");

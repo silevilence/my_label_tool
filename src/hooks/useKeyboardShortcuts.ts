@@ -16,6 +16,7 @@ interface UseKeyboardShortcutsParams {
   redo: () => void;
   save: () => void;
   selectAdjacentImage: (delta: number) => void;
+  selectAdjacentFrame?: (delta: -1 | 1) => void;
   selectShapeType: (shapeType: AnnotationShapeType) => void;
   undoPolygonPoint: () => boolean;
   undo: () => void;
@@ -35,6 +36,7 @@ export function useKeyboardShortcuts({
   redo,
   save,
   selectAdjacentImage,
+  selectAdjacentFrame,
   selectShapeType,
   undoPolygonPoint,
   undo,
@@ -94,6 +96,11 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      if (selectAdjacentFrame && (key === shortcuts.previousFrame || key === shortcuts.nextFrame)) {
+        event.preventDefault();
+        selectAdjacentFrame(key === shortcuts.previousFrame ? -1 : 1);
+        return;
+      }
       if (key === shortcuts.previousImage) {
         event.preventDefault();
         selectAdjacentImage(-1);
@@ -156,6 +163,7 @@ export function useKeyboardShortcuts({
     redo,
     save,
     selectAdjacentImage,
+    selectAdjacentFrame,
     selectShapeType,
     selectedPath,
     selectedShapeId,

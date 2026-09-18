@@ -8,6 +8,7 @@ import type { InteractionMode } from "../canvas/types";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../../lib/defaults/display";
 import { formatShortcut, normalizeShortcutKey } from "../../lib/shortcut-utils";
 import { IMAGE_DELETION_ZH_CN as imageDeletionText } from "../../i18n/image-deletion.zh-CN";
+import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface ShortcutSettingsProps {
   helpDisplaySettings: HelpDisplaySettings;
@@ -54,6 +55,13 @@ export function ShortcutSettings({
       }
 
       const shortcut = normalizeShortcutKey(event.key);
+      if (
+        (actionId === "previousFrame" || actionId === "nextFrame") &&
+        (labelShortcutSet.has(shortcut) || ["Delete", "Enter", " ", "Tab"].includes(shortcut))
+      ) {
+        window.alert(videoText.frameShortcutConflict);
+        return;
+      }
       if (
         actionId === "deleteImage" &&
         (labelShortcutSet.has(shortcut) || ["Delete", "Enter", " ", "Tab"].includes(shortcut))

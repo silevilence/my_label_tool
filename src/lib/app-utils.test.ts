@@ -57,6 +57,20 @@ describe("app utils", () => {
     expect(mergeShortcuts({ deleteImage: "F9" }).deleteImage).toBe("F9");
   });
 
+  it("adds frame shortcuts without taking over existing bindings and preserves explicit rebindings", () => {
+    expect(mergeShortcuts({})).toMatchObject({ previousFrame: "PageUp", nextFrame: "PageDown" });
+    expect(mergeShortcuts({ zoomIn: "PageUp", nextImage: "PageDown" })).toMatchObject({
+      previousFrame: "",
+      nextFrame: "",
+      zoomIn: "PageUp",
+      nextImage: "PageDown",
+    });
+    expect(mergeShortcuts({ previousFrame: "[", nextFrame: "]" })).toMatchObject({
+      previousFrame: "[",
+      nextFrame: "]",
+    });
+  });
+
   it("matches imported images by normalized path first and file name as fallback", () => {
     const currentImages: ImageFile[] = [
       { path: "C:\\Images\\A.JPG", name: "A.JPG" },
@@ -66,8 +80,15 @@ describe("app utils", () => {
       {
         labels: [],
         images: [
-          { path: "c:/images/a.jpg", name: "wrong.jpg", annotations: [{ id: "a", type: "rect", labelId: "x", points: [1, 2, 3, 4] }] },
-          { name: "B.JPG", annotations: [{ id: "b", type: "point", labelId: "x", points: [1, 2] }] },
+          {
+            path: "c:/images/a.jpg",
+            name: "wrong.jpg",
+            annotations: [{ id: "a", type: "rect", labelId: "x", points: [1, 2, 3, 4] }],
+          },
+          {
+            name: "B.JPG",
+            annotations: [{ id: "b", type: "point", labelId: "x", points: [1, 2] }],
+          },
           { name: "missing.jpg", annotations: [] },
         ],
       },
@@ -75,7 +96,10 @@ describe("app utils", () => {
     );
 
     expect(result.missingCount).toBe(1);
-    expect(Object.keys(result.annotationsByImage)).toEqual(["C:\\Images\\A.JPG", "C:/Images/b.jpg"]);
+    expect(Object.keys(result.annotationsByImage)).toEqual([
+      "C:\\Images\\A.JPG",
+      "C:/Images/b.jpg",
+    ]);
   });
 
   it("builds stable paths and base names across separators", () => {
@@ -87,7 +111,18 @@ describe("app utils", () => {
   });
 
   it("parses custom mapping and rejects bad mapping JSON", () => {
-    expect(parseCustomMapping(JSON.stringify({ imagePath: "path", imageName: "name", labelId: "id", labelName: "label", bbox: "box", attributes: "attrs" }))).toEqual({
+    expect(
+      parseCustomMapping(
+        JSON.stringify({
+          imagePath: "path",
+          imageName: "name",
+          labelId: "id",
+          labelName: "label",
+          bbox: "box",
+          attributes: "attrs",
+        }),
+      ),
+    ).toEqual({
       imagePath: "path",
       imageName: "name",
       labelId: "id",
@@ -102,7 +137,9 @@ describe("app utils", () => {
   it("detects records and creates unique user template ids", () => {
     expect(isRecord({ ok: true })).toBe(true);
     expect(isRecord(null)).toBe(false);
-    expect(newTemplateId([{ id: "user-demo", name: "Demo", labels: [] }], "Demo")).toBe("user-demo-2");
+    expect(newTemplateId([{ id: "user-demo", name: "Demo", labels: [] }], "Demo")).toBe(
+      "user-demo-2",
+    );
     expect(newTemplateId([], "中文 模板!")).toBe("user-中文-模板");
     expect(newTemplateId([], "   ")).toBe("user-template");
   });
@@ -144,7 +181,9 @@ describe("app utils", () => {
   });
 
   it("skips overwrite confirmation when current images have no annotations", async () => {
-    await expect(confirmReplaceCurrentAnnotations([{ path: "a.jpg", name: "a.jpg" }])).resolves.toBe(true);
+    await expect(
+      confirmReplaceCurrentAnnotations([{ path: "a.jpg", name: "a.jpg" }]),
+    ).resolves.toBe(true);
   });
 
   it("delegates project config saves and creates annotation ids", async () => {
@@ -159,9 +198,7 @@ describe("app utils", () => {
       labels: [],
       template: { id: "project-config", name: "项目临时配置" },
       exportOptions: { format: "json" },
-      pluginConfigs: [
-        { pluginId: "dev.acme.exporter", configVersion: 2, config: { saved: true } },
-      ],
+      pluginConfigs: [{ pluginId: "dev.acme.exporter", configVersion: 2, config: { saved: true } }],
     });
 
     expect(invoke).toHaveBeenCalledWith("export_annotations_json", {
