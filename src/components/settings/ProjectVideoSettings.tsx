@@ -13,11 +13,11 @@ export function ProjectVideoSettings({
 }) {
   const savedInterval = model.settings.videoExtraction.frameInterval;
   const [interval, setInterval] = useState(savedInterval);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<{ folder: string; interval: number } | null>(null);
   useEffect(() => {
     setInterval(savedInterval);
-    setSaved(false);
   }, [folder, savedInterval]);
+  useEffect(() => setSaved(null), [folder]);
   return (
     <section className="mt-4 rounded border border-slate-800 p-3">
       <h3 className="text-sm font-medium text-slate-100">{text.projectSettings}</h3>
@@ -36,7 +36,7 @@ export function ProjectVideoSettings({
           disabled={!folder || model.loading || model.saving}
           onChange={(event) => {
             setInterval(Number(event.target.value));
-            setSaved(false);
+            setSaved(null);
           }}
           className="ml-3 w-28 rounded border border-slate-700 bg-slate-950 px-2 py-1"
         />
@@ -49,12 +49,17 @@ export function ProjectVideoSettings({
       <button
         type="button"
         disabled={!folder || model.loading || model.saving || !validFrameInterval(interval)}
-        onClick={() => void model.save(interval).then(setSaved)}
+        onClick={() => {
+          setSaved(null);
+          void model.save(interval).then((success) => {
+            if (success) setSaved({ folder, interval });
+          });
+        }}
         className="mt-3 rounded bg-sky-600 px-3 py-1.5 text-sm text-white disabled:opacity-40"
       >
         {model.saving ? text.savingSettings : text.saveSettings}
       </button>
-      {saved && (
+      {saved?.folder === folder && saved.interval === interval && !model.saving && !model.error && (
         <span role="status" className="ml-3 text-xs text-emerald-300">
           {text.settingsSaved}
         </span>

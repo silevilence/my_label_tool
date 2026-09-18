@@ -76,3 +76,25 @@ it("does not apply a late load from the previous project", async () => {
   await act(async () => resolve([]));
   expect(model.settings.videoExtraction.frameInterval).toBe(7);
 });
+it("keeps save feedback visible after the stored interval updates", async () => {
+  await act(async () => root.render(<Harness folder="C:/one" />));
+  await act(async () => {
+    const input = container.querySelector("input")!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "8");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => container.querySelector("button")!.click());
+  expect(model.settings.videoExtraction.frameInterval).toBe(8);
+  expect(container.querySelector('[role="status"]')).not.toBeNull();
+  await act(async () => root.render(<Harness folder="C:/two" />));
+  expect(container.querySelector('[role="status"]')).toBeNull();
+});
+it("does not show a previous project's late save feedback in the current project", async () => {
+  let finish!: () => void;
+  vi.mocked(exportAnnotationsJson).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  await act(async () => root.render(<Harness folder="C:/one" />));
+  await act(async () => container.querySelector("button")!.click());
+  await act(async () => root.render(<Harness folder="C:/two" />));
+  await act(async () => finish());
+  expect(container.querySelector('[role="status"]')).toBeNull();
+});
