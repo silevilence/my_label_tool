@@ -10,6 +10,19 @@ import { EMPTY_PRELABEL_MODEL_LIBRARY } from "../types/prelabel";
 import * as api from "../lib/tauri-api";
 import { checkAppUpdate } from "../lib/updater";
 import { useOperations, type OperationHandle } from "../store/useOperations";
+const draftHarness = vi.hoisted(() => ({
+  current: null as ReturnType<typeof import("../hooks/useDraftGesture").useDraftGesture> | null,
+}));
+vi.mock("../hooks/useDraftGesture", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../hooks/useDraftGesture")>();
+  return {
+    useDraftGesture: function useDraftGesture() {
+      const gesture = original.useDraftGesture();
+      draftHarness.current = gesture;
+      return gesture;
+    },
+  };
+});
 
 vi.mock("react-konva", () =>
   Object.fromEntries(
@@ -128,6 +141,30 @@ describe("image deletion entry wiring", () => {
     expect(document.body.textContent).not.toContain("批量抽取未准备视频");
     await click("设置");
     expect(document.body.textContent).not.toContain("抽帧方式");
+  });
+  it("registers Backspace only while a real polygon draft exists", async () => {
+    await openFixture();
+    const press = async () => {
+      const event = new KeyboardEvent("keydown", {
+        key: "Backspace",
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => {
+        window.dispatchEvent(event);
+      });
+      return event.defaultPrevented;
+    };
+    expect(await press()).toBe(false);
+    await act(async () => {
+      draftHarness.current!.start("draw-polygon", { x: 1, y: 1 });
+      draftHarness.current!.start("draw-polygon", { x: 10, y: 10 });
+    });
+    expect(await press()).toBe(true);
+    expect(draftHarness.current!.draft).toMatchObject({ kind: "polygon", points: [1, 1] });
+    expect(await press()).toBe(true);
+    expect(draftHarness.current!.state).toBe("idle");
+    expect(await press()).toBe(false);
   });
   it("keeps error dismissal and update controls outside annotation resource gating", async () => {
     await openFixture();

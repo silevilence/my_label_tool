@@ -129,6 +129,12 @@ it("allows modifier release through pointer-only overlays and suppresses backdro
   expect(panel.getAttribute("aria-describedby")).toBe("consequence");
   act(() => panel.dispatchEvent(new KeyboardEvent("keyup", { key: "Control", bubbles: true })));
   expect(release).toHaveBeenCalledOnce();
+  for (const type of ["keydown", "keyup"]) {
+    const ordinary = new KeyboardEvent(type, { key: "Enter", bubbles: true, cancelable: true });
+    act(() => panel.dispatchEvent(ordinary));
+    expect(ordinary.defaultPrevented).toBe(true);
+  }
+  expect(release).toHaveBeenCalledOnce();
   const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
   panel.parentElement!.dispatchEvent(event);
   expect(event.defaultPrevented).toBe(true);
@@ -160,6 +166,11 @@ it("keeps anchored menus near the pointer and clamps against measured bounds", (
   expect(parseFloat(panel.style.top)).toBe(window.innerHeight - 150);
   render(window.innerHeight - 10);
   expect(parseFloat(panel.style.top) + 100).toBeLessThanOrEqual(window.innerHeight - 8);
+  const previousWidth = window.innerWidth;
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 180 });
+  act(() => window.dispatchEvent(new Event("resize")));
+  expect(panel.style.maxWidth).toBe("164px");
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: previousWidth });
   rect.mockRestore();
 });
 it("light overlays register independently and closed overlays never gate input", () => {

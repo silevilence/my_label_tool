@@ -1,7 +1,6 @@
 import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
 import { useOperations } from "./store/useOperations";
-import { OperationStatus } from "./components/operations/OperationStatus";
 import { useOverlayStore } from "./store/useOverlayStore";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
@@ -691,7 +690,6 @@ function App() {
 
   return (
     <>
-      <OperationStatus />
       <AppLayout
         reextractVideo={
           !projectSettings.loading

@@ -85,10 +85,11 @@ function MountedOverlay({
     const position = () => {
       const element = panel.current;
       if (!element) return;
+      element.style.maxWidth = `${Math.max(0, window.innerWidth - 16)}px`;
+      element.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
       const { width, height } = element.getBoundingClientRect();
       element.style.left = `${Math.max(8, Math.min(anchorX, window.innerWidth - width - 8))}px`;
       element.style.top = `${Math.max(8, Math.min(anchorY, window.innerHeight - height - 8))}px`;
-      element.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
     };
     position();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(position);

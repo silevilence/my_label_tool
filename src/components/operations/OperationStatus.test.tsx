@@ -42,3 +42,29 @@ it("shows new results first, expires completed cards, and keeps failures and act
   });
   vi.useRealTimers();
 });
+
+it("shares the status area with update content and keeps cancellation operational", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  useOperations.setState({ operations: [] });
+  const host = document.createElement("div"),
+    root = createRoot(host);
+  const cancel = vi.fn();
+  const operation = useOperations
+    .getState()
+    .begin({ label: "update", resource: "app-update", cancel });
+  await act(async () =>
+    root.render(
+      <OperationStatus>
+        <article>Downloading update</article>
+      </OperationStatus>,
+    ),
+  );
+  expect(host.querySelector('[role="region"]')?.contains(host.querySelector("article"))).toBe(true);
+  await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(operation.cancelRequested).toBe(true);
+  await act(async () => {
+    operation.complete();
+    root.unmount();
+  });
+});

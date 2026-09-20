@@ -54,7 +54,15 @@ it("leaves Transformer anchors selected while background picking still selects n
   act(() => controls.handleStageMouseDown(event("top-left _anchor")));
   expect(select).not.toHaveBeenCalled();
   expect(highlight).not.toHaveBeenCalled();
+  act(() => controls.handleStageMouseDown(event("annotation", true)));
+  expect(select).toHaveBeenLastCalledWith("point");
+  expect(highlight).toHaveBeenLastCalledWith("point");
+  select.mockClear();
   act(() => controls.handleStageMouseDown(event("image", true)));
   expect(select).toHaveBeenCalledWith("point");
+  stage.getPointerPosition = () => ({ x: 90, y: 90 });
+  act(() => controls.handleStageMouseDown(event("image", true)));
+  expect(select).toHaveBeenLastCalledWith(null);
+  expect(highlight).toHaveBeenLastCalledWith(null);
   act(() => root.unmount());
 });

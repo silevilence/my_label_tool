@@ -1,4 +1,5 @@
 export const OPERATION_ZH_CN = {
+  statusArea: "操作与更新状态",
   busy: "所需资源正被其他操作占用，请等待完成或取消。",
   cancel: "取消",
   cancelling: "正在取消…",

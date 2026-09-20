@@ -68,3 +68,20 @@ it("commits the candidate and search scope only on confirmation", async () => {
   expect(store.getState().selectedPath).toBe("b");
   expect(store.getState().scopeStack.slice(-1)[0]).toMatchObject({ kind: "search", ids: ["b"] });
 });
+
+it("previews a clicked row without writing selection and commits it on the second click", () => {
+  const row = [...document.querySelectorAll("button")].find(
+    (button) => button.textContent === "c.png",
+  )!;
+  act(() => row.click());
+  expect(document.querySelector("img")?.getAttribute("alt")).toBe("c.png");
+  expect(select).not.toHaveBeenCalled();
+  expect(store.getState().selectedPath).toBe("a");
+  expect(store.getState().scopeStack.slice(-1)[0].kind).toBe("video");
+  act(() => row.click());
+  expect(select).toHaveBeenCalledExactlyOnceWith("c");
+  expect(store.getState().scopeStack.slice(-1)[0]).toMatchObject({
+    kind: "search",
+    ids: ["a", "b", "c"],
+  });
+});

@@ -305,7 +305,7 @@ export function useCanvasInteractions({
     }
     if (intent === "context" || intent === null) return;
     // Annotation handlers own real hits; Transformer anchors must retain their selected node.
-    if (!isBackground && getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey) !== "annotate")
+    if (!isBackground && getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey) === "default")
       return;
 
     if (!imageLayout || !loadedImage || !selectedPath) {

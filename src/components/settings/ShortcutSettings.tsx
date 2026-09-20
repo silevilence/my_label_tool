@@ -45,11 +45,6 @@ export function ShortcutSettings({
     function handleKeyDown(event: KeyboardEvent) {
       event.preventDefault();
 
-      if (event.key === "Escape") {
-        setRecordingActionId(null);
-        return;
-      }
-
       if (event.ctrlKey || event.altKey || event.metaKey || isModifierKey(event.key)) {
         window.alert(shortcutText.singleKey);
         return;

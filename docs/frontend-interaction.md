@@ -36,8 +36,8 @@ useOverlayStore → { hasBlocking(): boolean; hasLight(): boolean; depth(): numb
 
 - 已具备完整行为、作为行为样板：`DeleteImageDialog.tsx`（捕获阶段按键封锁、焦点陷阱与归还、`role=alertdialog`、高度上限）；其适配器 `VideoReextractDialog.tsx` 保留。
 - 转为 `blocking`：`ProjectSettingsDialog`、`VideoImportDialog`、`VideoBatchDialog`、`PtConversionDialog`（嵌套在 `PrelabelSettings` 之上）、`PrelabelExecutionDialog`、`PluginSettings` 与其 `PermissionDialog`、`LabelSettings` 的管理弹窗、`ShortcutSettings`、`PrelabelSettings`、`DeleteAnnotationDialog`。
-- 转为 `light`：`CanvasContextMenu`、`ImageListContextMenu`、侧栏主菜单、`ImageSearchDialog`（今天菜单开着时画布仍会被快捷键改动）。
-- 删除各文件内的 `fixed inset-0` 背板与散落的 `z-*`（现状为 50/60/65/85/90/95/100 七个值）。
+- 转为 `light`：`CanvasContextMenu`、`ImageListContextMenu`、侧栏主菜单、`ImageSearchDialog`（打开时统一阻断 canvas 类快捷键）。
+- 删除各文件内的 `fixed inset-0` 背板与散落的 `z-*`（迁移前分散为 50/60/65/85/90/95/100 七个值）。
 
 **测试面**：渲染 → `Esc` 只在栈顶生效且 `canDismiss=false` 时不生效；`Tab` 不出面板、关闭后焦点回到触发元素；矮视口下（如 320px 高）面板不超过视口且关闭控件可达；打开 blocking 遮罩时全局快捷键不触发画布改动。
 
@@ -69,7 +69,7 @@ resolveShortcut(event, ctx) → actionId | null  // 纯函数：匹配 · 优先
 **实现**
 
 - 优先级由 `scope` 推导：`blocking > light > canvas > global`，同层再比 `priority`；标签快捷键永远最低。
-- 一次按键至多命中一个动作，命中即 `preventDefault`；标签键与固定动作或可改绑动作冲突时，冲突必须被**报告**而不是按书写顺序静默取胜（今天的 `notifyConfigConflict` 只覆盖两种碰撞）。
+- 一次按键至多命中一个动作，命中即 `preventDefault`；标签键与固定动作或可改绑动作冲突时，冲突必须被**报告**而不是按书写顺序静默取胜，由统一冲突判定给出实际执行动作。
 - 冲突判定只有一份 `detectConflicts(shortcuts, labelShortcuts)`，设置面板、标签编辑器与运行时都消费它；重绑时阻止、运行时给解释。
 - 新增动作 = 表里加一项 + 拥有该行为的模块调 `useShortcut`，不再需要修改 `App.tsx` 的交换机与 `AppLayout` 的属性表。
 - 迁移名单（`mergeShortcuts`）改由表推导，新增默认键不再需要手写「别抢已有用户键」的例外。
@@ -97,9 +97,10 @@ useOperations() → {
 
 **实现**
 
-- 允许并发；占用同一资源的操作互斥，裁决只在 `canStart` 一处。今天的 `workspaceDisabled`、键盘门禁、`canDeleteImage` 与写三遍的视频导入锁表达式退化为读它的数据。
+- 允许并发；占用同一资源的操作互斥，裁决只在 `canStart` 一处。工作区禁用、键盘门禁、图片删除与视频导入入口统一读取注册表资源占用。
 - 消息按操作归属并带 `kind`（`success | warning | error`）：成功不再穿错误配色，两条提示通道（5 秒红框 / 2.2 秒琥珀条）按 kind 分流，不再是「后写覆盖前写」。
 - 取消是操作的属性：界面上「哪里能取消」不再由各组件自行判断（更新下载通过操作卡片取消安装）。
+- 更新提示与操作卡片位于同一个正常布局状态区，按内容滚动；状态区在画布区域外占据空间，不覆盖画布角落帮助或彼此的取消入口。
 - 各界面（`ExportPanel`、`PrelabelExecutionDialog`、`VideoBatchDialog`、`DeleteImageDialog`、`AppLayout` 的保存遮罩与更新面板）退化为薄适配器。
 
 **测试面**：注册表的归约（并发登记、资源互斥、终态与消息归属、取消传播）可纯函数化测试；界面只断言「读同一份状态」。
@@ -123,10 +124,10 @@ removeImages(paths: string[]): void        // 删除 + 接续 + 标注清理 + �
 
 **实现**
 
-- 删除与接续在同一次更新内完成：今天 `removeImage`（store）与 `setImages`（hook）分开写，`useImageDeletion.ts` 的 `remaining[Math.min(index, remaining.length - 1)]` 在 `index = -1` 时把选择清成空串（画布变白而不是停在邻图）。
-- 作用域栈顶决定「上一张 / 下一张 / 下一个未标注」：项目序（图片与视频帧按项目序合并）→ 搜索结果 → 单个视频的帧序。今天的 `←/→`（全项目序）、`PageUp/PageDown`（当前视频帧序）与确认后的搜索结果使用同一模型。搜索面板仅保存临时候选序号，确认前不修改编辑对象或作用域。
+- 删除与接续由 store 原子完成：一起更新图片、标注、历史与作用域；失效选择回退到有效邻项，避免画布误清空。
+- 作用域栈顶决定「上一张 / 下一张 / 下一个未标注」：项目序（图片与视频帧按项目序合并）→ 搜索结果 → 单个视频的帧序。`←/→`（全项目序）、`PageUp/PageDown`（当前视频帧序）与确认后的搜索结果使用同一模型。搜索面板仅保存临时候选序号，确认前不修改编辑对象或作用域。
 - 作用域必须**常驻可见、可退出**（侧栏作用域条，如「搜索结果：含 person 的 37 张 ✕」）；`ProjectMediaList` 的 `remembered` 影子游标与 `ImageSearchDialog` 的 `candidatePath` 随之删除。
-- 列表行注册滚入视口（今天由 App 的 `selectedImageButtonRef` + 两个渲染器各自赋值约定，漏赋值即静默失效）——抽成一个列表行模块，行自己持有注册责任。
+- 列表行模块自己持有 ref 并在选中时滚入视口，App 不再向多个渲染器传递共享 selectedImageButtonRef。
 
 **测试面**：索引数学与夹取（越界、首尾、删除末张、删除当前张）、作用域 push/pop 后「下一张」的落点、搜索结果集内相邻、视频帧序内相邻。
 

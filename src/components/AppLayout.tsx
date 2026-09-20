@@ -1,3 +1,4 @@
+import { OperationStatus } from "./operations/OperationStatus";
 import { scopePaths, useAnnotationStore } from "../store/useAnnotationStore";
 import { useOperations } from "../store/useOperations";
 import { useShortcut } from "../hooks/useShortcut";
@@ -688,71 +689,73 @@ export function AppLayout({
         </Suspense>
       )}
 
-      {updateMessage && (
-        <div className="fixed right-5 top-5 z-[75] w-80 rounded-xl border border-slate-700 bg-slate-950/95 p-4 text-sm text-slate-100 shadow-2xl">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="font-medium">
-                {updateStatus === "available"
-                  ? "发现更新"
-                  : updateStatus === "error"
-                    ? "更新失败"
-                    : "自动更新"}
+      <OperationStatus>
+        {updateMessage && (
+          <div className="w-80 max-w-full shrink-0 rounded-xl border border-slate-700 bg-slate-950/95 p-4 text-sm text-slate-100 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-medium">
+                  {updateStatus === "available"
+                    ? "发现更新"
+                    : updateStatus === "error"
+                      ? "更新失败"
+                      : "自动更新"}
+                </div>
+                <p className="mt-1 text-slate-300">{updateMessage}</p>
               </div>
-              <p className="mt-1 text-slate-300">{updateMessage}</p>
+              {updateStatus !== "checking" && updateStatus !== "downloading" && (
+                <button
+                  aria-label="关闭更新提示"
+                  className="rounded px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+                  type="button"
+                  onClick={() => setUpdateMessage("")}
+                >
+                  ×
+                </button>
+              )}
             </div>
-            {updateStatus !== "checking" && updateStatus !== "downloading" && (
-              <button
-                aria-label="关闭更新提示"
-                className="rounded px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-                type="button"
-                onClick={() => setUpdateMessage("")}
-              >
-                ×
-              </button>
+            {updateStatus === "downloading" && (
+              <div className="mt-3">
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                  <div
+                    className={`h-full rounded-full bg-sky-400 ${
+                      updateProgress?.percent == null ? "progress-indeterminate w-1/2" : ""
+                    }`}
+                    style={
+                      updateProgress?.percent == null
+                        ? undefined
+                        : { width: `${updateProgress?.percent ?? 0}%` }
+                    }
+                  />
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {updateProgress?.percent == null
+                    ? "正在下载..."
+                    : `已下载 ${updateProgress?.percent ?? 0}%`}
+                </div>
+              </div>
+            )}
+            {updateStatus === "available" && (
+              <div className="mt-3 flex gap-2">
+                <button
+                  className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400"
+                  type="button"
+                  onClick={installUpdate}
+                >
+                  立即更新
+                </button>
+                <button
+                  className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-100 hover:bg-slate-800"
+                  type="button"
+                  onClick={() => setUpdateMessage("")}
+                >
+                  稍后
+                </button>
+              </div>
             )}
           </div>
-          {updateStatus === "downloading" && (
-            <div className="mt-3">
-              <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
-                <div
-                  className={`h-full rounded-full bg-sky-400 ${
-                    updateProgress?.percent == null ? "progress-indeterminate w-1/2" : ""
-                  }`}
-                  style={
-                    updateProgress?.percent == null
-                      ? undefined
-                      : { width: `${updateProgress?.percent ?? 0}%` }
-                  }
-                />
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {updateProgress?.percent == null
-                  ? "正在下载..."
-                  : `已下载 ${updateProgress?.percent ?? 0}%`}
-              </div>
-            </div>
-          )}
-          {updateStatus === "available" && (
-            <div className="mt-3 flex gap-2">
-              <button
-                className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400"
-                type="button"
-                onClick={installUpdate}
-              >
-                立即更新
-              </button>
-              <button
-                className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-100 hover:bg-slate-800"
-                type="button"
-                onClick={() => setUpdateMessage("")}
-              >
-                稍后
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </OperationStatus>
 
       {isShortcutSettingsOpen && (
         <Suspense fallback={null}>

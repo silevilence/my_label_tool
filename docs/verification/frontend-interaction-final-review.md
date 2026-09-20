@@ -74,17 +74,19 @@
 
 本节处理用户提供的 `remotes/origin/master → master` 审核报告。重复意见合并后共 35 项：完全采纳 31 项，部分采纳 4 项，不采纳 0 项。7 项 Important 均已修复。没有新建平行审核文档，也未修改 ROADMAP 的完成状态。
 
+本节保留首次修复的历史结论；二审发现 Q1 的模式守卫与 Q27 的卡片位置引入回归，以下「二审反馈修复」替代这两项的最终实现与验收结论。
+
 | 编号 | 等级 | 决策 | 核实、改动与验证依据 |
 |---|---|---|---|
 | Q1 | 🟠 Important | 完全采纳 | Stage 将 Transformer anchor 当作形状命中，确实会重新拾取邻近点。[useCanvasInteractions](../../src/hooks/useCanvasInteractions.ts#L308) 恢复非标注模式的背景拾取边界；真实 hook 回归验证 anchor 不选点、Shift+背景仍选点。 |
 | Q2 | 🟠 Important | 完全采纳 | 候选 effect 与行点击写入编辑选择。[ImageSearchDialog](../../src/components/sidebar/ImageSearchDialog.tsx#L40) 改为仅持有面板候选序号，确认后才提交 search scope/选择；测试验证查询、Esc 保持原视频作用域，Enter 才切图。未恢复第二个编辑路径游标。 |
-| Q3 | 🟠 Important | 完全采纳 | 后端以拒绝 Promise 表示抽帧中断，旧 catch 先 fail。[useVideoImport](../../src/hooks/useVideoImport.ts#L122) 对已请求取消的拒绝记 warning；取消接口失败恢复标志供重试。新增拒绝型 fixture，验证无红色错误、资源在抽帧终态后释放。 |
+| Q3 | 🟠 Important | 完全采纳 | 后端以拒绝 Promise 表示抽帧中断，旧 catch 先 fail。[useVideoImport](../../src/hooks/useVideoImport.ts#L124) 对已请求取消的拒绝记 warning；取消接口失败恢复标志供重试。新增拒绝型 fixture，验证无红色错误、资源在抽帧终态后释放。 |
 | Q4 | 🟠 Important | 完全采纳 | Overlay 捕获 Esc 早于录制器。[ShortcutSettings](../../src/components/settings/ShortcutSettings.tsx#L89) 在 canDismiss 中先取消录制并阻止关闭；嵌套遮罩测试及浏览器两次 Esc 实测通过。 |
 | Q5 | 🟠 Important | 完全采纳 | 错误关闭与更新面板位于禁用容器内。[AppLayout](../../src/components/AppLayout.tsx#L635) 将反馈/更新面板移到工作区禁用容器之外；App 集成测试在资源占用时点击两类关闭入口。 |
 | Q6 | 🟠 Important | 完全采纳 | 分段 i/N 与播放头 i/(N-1) 不一致。[VideoTimeline](../../src/components/video/VideoTimeline.tsx#L47) 使用每段中心 (i+0.5)/N；300 帧测试验证首帧、第二帧、中间与末帧中心落在对应段内。 |
 | Q7 | 🟠 Important | 完全采纳 | 保存完成恒 false，最短显示与自动收起缺失。[useSaveFeedback](../../src/hooks/useSaveFeedback.ts#L10) 由注册表时间戳派生 500ms 最短显示与 2200ms 成功提示；不延长资源占用。[OperationStatus](../../src/components/operations/OperationStatus.tsx#L11) 完成卡片 5 秒收起，错误保留，运行优先且结果按新到旧排列；假时钟验证。 |
 | Q8 | 🟡 Minor | 完全采纳 | pointerOnly 拦截修饰键 keyup。[Overlay](../../src/components/overlay/Overlay.tsx) 允许修饰键释放传递，其他键盘激活仍阻止；事件测试通过。 |
-| Q9 | 🟡 Minor | 部分采纳 | 无草稿也消费撤点键成立；[App](../../src/App.tsx) 仅 polygon 草稿注册撤点动作。不采纳“标签绑定 Backspace”的正常路径推断：AGENTS §5 及标签校验仅接受单个 a-z/0-9。 |
+| Q9 | 🟡 Minor | 部分采纳 | 无草稿也消费撤点键成立；[App](../../src/App.tsx) 仅 polygon 草稿注册撤点动作。标签编辑与插件路径仅接受单个 a-z/0-9；工程配置导入目前只校验 shortcut 为字符串，因此不能将该限制泛化为全部入口。 |
 | Q10 | 🟡 Minor | 完全采纳 | [ShortcutContext](../../src/lib/shortcuts.ts) 的 mode 未参与裁决，删除并同步设计文档；修饰键由事件解析，草稿相关动作以注册可用性表达。 |
 | Q11 | 🟡 Minor | 完全采纳 | [selectAdjacent](../../src/store/useAnnotationStore.ts) 失效游标一律落首项。改为向后取末项、向前取首项；补充负向边界断言。 |
 | Q12 | 🟡 Minor | 完全采纳 | TouchEvent 无 button，拖动守卫确会拒绝。[CanvasChrome](../../src/components/canvas/CanvasChrome.tsx#L604) 仅对有 touches 的事件归为主指针；组件事件测试验证触摸允许、中键/修饰键拖动拒绝。 |
@@ -134,3 +136,36 @@
 | 权限与隔离 | 通过 | 未新增系统能力或绕过 tauri-api；进程、权限、超时及自动禁用不变。ADR 0003/0005。 |
 | 目录与工程 | 通过 | UI 内部类型留在原宿主 hook，新文案入 i18n，无 any/组件 invoke。AGENTS §6/§10。 |
 | 测试 | 通过 | 插件契约与 UI 测试包含在 377 项全量回归；无新增协议行为，无需修改 conformance。ADR 0006；AGENTS §7/§10。 |
+
+## 二审反馈修复（基于 5646a32）
+
+将二审的两项 Important、Minor 及测试/文档子项拆为 12 项：完全采纳 11 项，部分采纳 1 项，不采纳 0 项。两项阻塞均已修复，无待用户决策项。ROADMAP 完成状态保持不变。
+
+| 编号 | 等级 | 决策 | 核实、改动与验证依据 |
+|---|---|---|---|
+| R1 | 🟠 Important | 完全采纳 | 非背景守卫同时拦截 Shift 选择模式。[useCanvasInteractions](../../src/hooks/useCanvasInteractions.ts) 将守卫限定为 default；真实 hook 覆盖命中图形、背景拾取与空白清选，浏览器确认 Shift 选中关键点、矩形控点拖动不抢选重叠点。 |
+| R2 | 🟠 Important | 完全采纳 | 固定在右上方的更新面板与操作卡片确实重叠。[AppLayout](../../src/components/AppLayout.tsx) 和 [OperationStatus](../../src/components/operations/OperationStatus.tsx) 改为画布外的共用正常布局状态区，限制高度并允许滚动；更新提示与卡片不叠放，也不覆盖画布帮助，不提高模态之上的层级。组件验证取消回调，浏览器验证真实更新 UI 的取消入口可点击。 |
+| R3 | 🟡 Minor | 完全采纳 | 2px 播放头在密集首末帧会越界。[VideoTimeline](../../src/components/video/VideoTimeline.tsx) 在分段中心基础上夹取至条内，垂直高度与条一致；300 帧窄条首末位置经真实浏览器测量均完整可见。 |
+| R4 | 🟡 Minor | 完全采纳 | annotated/keyframe 同源 fixture 无法发现错误绑定。[VideoTimeline.test](../../src/components/video/VideoTimeline.test.tsx) 加入已标注但非关键帧，独立断言密度颜色、两个数据标志及无关键帧子标记。 |
+| R5 | 🟡 Minor | 完全采纳 | 录制器 Escape 分支已被 Overlay 捕获阻断。[ShortcutSettings](../../src/components/settings/ShortcutSettings.tsx) 删除死分支，保留 canDismiss 先取消录制、再次 Esc 关闭的唯一路径；既有嵌套遮罩回归通过。 |
+| R6 | 🟡 Minor | 完全采纳 | 重抽帧中断仍走 fail。[useProjectVideoActions](../../src/hooks/useProjectVideoActions.ts) 对已请求取消的拒绝记 completed/warning 并关闭确认框；新增拒绝型异步回归，验证保留原图片/标注、终态前锁仍占用、终态后释放且无红色错误。 |
+| R7 | 🟡 Minor | 完全采纳 | anchored 面板 resize 只更新高度。[Overlay](../../src/components/overlay/Overlay.tsx) 每次定位先同步 maxWidth/maxHeight，再测量和夹取；测试缩小到 180px 后 maxWidth 为 164px。 |
+| R8 | 🟡 Minor | 完全采纳 | pointerOnly 缺普通键负向断言。[Overlay.test](../../src/components/overlay/Overlay.test.tsx) 同时验证 Enter keydown/keyup 被阻止且未冒泡，Control keyup 仍放行。 |
+| R9 | 🟡 测试项 | 完全采纳 | Backspace 条件注册缺回归。[image-deletion.entries.test](../../src/components/image-deletion.entries.test.tsx) 在真实 App 与真实草稿 hook 上验证无草稿不消费、多边形草稿撤点、撤空后再次按键不消费；未复制条件注册逻辑到测试替身。 |
+| R10 | 🟡 测试项 | 完全采纳 | 搜索行点击路径缺回归。[ImageSearchDialog.test](../../src/components/sidebar/ImageSearchDialog.test.tsx) 验证首次点击仅预览且保持原选择/视频作用域，再次点击才确认并进入搜索作用域。 |
+| R11 | 🟡 文档项 | 完全采纳 | [设计说明](../frontend-interaction.md) 的旧行为描述与实现不符，已移除 notifyConfigConflict 和相关“今天”描述，同步状态区、快捷键门禁、原子删除及行滚动职责；本报告 Q3 引用改为 useVideoImport.ts:124。 |
+| R12 | 🟡 文档项 | 部分采纳 | 采纳缩小 Q9 表述与评估导入路径：[importers.ts:476](../../src/lib/importers.ts#L476) 的确仅检查字符串，而编辑与插件路径校验单个 a-z/0-9。保留当前导入兼容行为，不在本轮追加硬性拒绝或静默丢弃：这会改变既有 ProjectConfig 接受范围，与 AGENTS §5/§10 的兼容要求冲突。Backspace 问题已由动作可用性修复并有 R9 回归；这不表示全部导入快捷键已符合编辑校验。若以后收紧导入，应明确旧配置迁移规则并同步契约测试。 |
+
+### 二审修复验证
+
+- `npm run typecheck`、`npm run lint`、`cargo clippy --manifest-path src-tauri/Cargo.toml`、`npm run build` 全部通过。
+- `npm run test:coverage -- --maxWorkers=4`：66 文件 / 381 测试全通过（较上轮新增 4 个测试，另增强既有断言）；行覆盖率 95.42% → 95.42%，语句 95.32%、分支 90.72%、函数 99%，未改变统计排除规则。
+- 初次全量验证发现 jsdom 丢弃嵌套 clamp 的 style.left，已将分段中心存为 CSS 自定义属性并让逻辑断言读取它；真实 CSS 夹取另由浏览器测量确认。修正后已重跑全量并通过。
+- 浏览器真实 App/React/Konva、临时宿主 I/O：Shift 点击命中关键点；在与关键点重叠的矩形左上控点拖动后，仍选中 rectangle，矩形由 `[100,100,200,100]` 变为约 `[116.28,113.48,183.83,86.70]`。
+- 1000×320 下载态：状态区 top=192、bottom=320；取消按钮 top=218、bottom=238，中心点命中“取消”；右上帮助 bottom=110，与状态区无交集。点击取消后显示取消安装，模拟下载传输结束后正常释放，未执行安装/重启。
+- 300 帧窄时间轴：首帧条边界 x=16..81.40625、播放头 x=16..18；末帧条边界 x=16..144、播放头 x=142..144；两次播放头与条均 y=61..69，首末均未裁切。布局随时间标签宽度略有变化，两种宽度均已验证。
+- 浏览器临时视口已恢复，测试页面已关闭，临时 fixture 已删除。没有运行 Windows 打包应用、真实网络更新/视频抽帧取消；这类原生端到端行为不冒充浏览器验证结果。
+- 构建主 JS chunk 640.09 kB，保留既有 >500 kB 非阻塞提示。无 Rust 逻辑或依赖改动，未重跑 Rust 全量测试。
+- 此轮变更仅涉及宿主 UI、内部控制流、测试与记录；未改 ProjectConfig/核心数据结构、插件 Schema、Tauri API、Rust、插件 ID 或各层版本号，不引入对外契约变化。
+
+最终复核：两项 Important 已闭环，其余反馈按上述决策处理；无已知遗留阻塞项。

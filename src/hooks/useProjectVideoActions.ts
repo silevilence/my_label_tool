@@ -136,8 +136,13 @@ export function useProjectVideoActions({
       operation.complete();
       setReplacement(null);
     } catch (error) {
-      operation.fail(error);
-      setReplacementError(error instanceof Error ? error.message : String(error));
+      if (operation.cancelRequested) {
+        operation.complete(operationText.cancelled, "warning");
+        setReplacement(null);
+      } else {
+        operation.fail(error);
+        setReplacementError(error instanceof Error ? error.message : String(error));
+      }
     } finally {
       replacingRef.current = false;
       setReplacing(false);

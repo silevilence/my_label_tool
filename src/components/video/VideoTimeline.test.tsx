@@ -118,7 +118,7 @@ it("centres the playhead on its density segment for dense timelines and shows an
     index,
     path: `frame-${index}`,
     frameIndex: index,
-    annotated: index === 1,
+    annotated: index === 1 || index === 2,
     keyframe: index === 1,
   }));
   for (const index of [0, 1, 150, 299]) {
@@ -133,7 +133,7 @@ it("centres the playhead on its density segment for dense timelines and shows an
       ),
     );
     const playhead = container.querySelector<HTMLElement>('[aria-hidden="true"]')!;
-    const percent = Number(playhead.style.left.match(/[\d.]+/)![0]);
+    const percent = parseFloat(playhead.style.getPropertyValue("--playhead-position"));
     const centre = (percent / 100) * 640;
     expect(centre).toBeGreaterThan((index / 300) * 640);
     expect(centre).toBeLessThan(((index + 1) / 300) * 640);
@@ -142,6 +142,11 @@ it("centres the playhead on its density segment for dense timelines and shows an
   expect(marked.getAttribute("data-annotated")).toBe("true");
   expect(marked.getAttribute("data-keyframe")).toBe("true");
   expect(marked.children).toHaveLength(1);
+  const annotatedOnly = container.querySelector('[data-frame-path="frame-2"]')!;
+  expect(annotatedOnly.getAttribute("data-annotated")).toBe("true");
+  expect(annotatedOnly.getAttribute("data-keyframe")).toBe("false");
+  expect(annotatedOnly.children).toHaveLength(0);
+  expect(annotatedOnly.classList.contains("bg-sky-500")).toBe(true);
   expect(container.querySelector('[data-frame-path="frame-0"]')!.children).toHaveLength(0);
   expect(container.textContent).toContain("关键帧");
 });

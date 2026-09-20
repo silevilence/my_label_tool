@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useOperations } from "../../store/useOperations";
 import { OPERATION_ZH_CN as text } from "../../i18n/operations.zh-CN";
 
-export function OperationStatus() {
+export function OperationStatus({ children }: { children?: ReactNode }) {
   const { operations, cancel, dismiss } = useOperations();
   useEffect(() => {
     const timers = operations
@@ -15,8 +15,14 @@ export function OperationStatus() {
       );
     return () => timers.forEach(window.clearTimeout);
   }, [operations, dismiss]);
+  if (!operations.length && !children) return null;
   return (
-    <div className="fixed top-24 right-4 z-50 flex max-h-[40vh] w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto">
+    <div
+      role="region"
+      aria-label={text.statusArea}
+      className="flex max-h-[40vh] shrink-0 items-start gap-3 overflow-auto border-t border-slate-800 bg-slate-900 p-3"
+    >
+      {children}
       {[...operations]
         .reverse()
         .sort((a, b) => Number(b.status === "running") - Number(a.status === "running"))
@@ -24,7 +30,7 @@ export function OperationStatus() {
           <section
             key={op.id}
             role="status"
-            className={`rounded border bg-slate-950 p-3 text-sm shadow-xl ${op.kind === "error" ? "border-red-600 text-red-200" : op.kind === "success" ? "border-emerald-600 text-emerald-200" : "border-amber-600 text-amber-200"}`}
+            className={`w-80 max-w-full shrink-0 rounded border bg-slate-950 p-3 text-sm shadow-xl ${op.kind === "error" ? "border-red-600 text-red-200" : op.kind === "success" ? "border-emerald-600 text-emerald-200" : "border-amber-600 text-amber-200"}`}
           >
             <div className="flex items-center justify-between gap-2">
               <strong>{op.label}</strong>
