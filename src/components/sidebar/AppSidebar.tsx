@@ -1,6 +1,5 @@
 import { Overlay } from "../overlay/Overlay";
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
-import { ImageListRow, ScopeBar } from "./ImageListRow";
 import { useState } from "react";
 import { ExportPanel } from "../settings/ExportPanel";
 import { ImageListContextMenu } from "./ImageListContextMenu";
@@ -491,50 +490,19 @@ export function AppSidebar({
             </span>
           </div>
         </div>
-        <div className="scrollbar-dark min-h-0 flex-1 overflow-auto p-2">
-          <ScopeBar />
-          {images.length === 0 && videos.length === 0 ? (
-            <p className="p-2 text-sm text-slate-400">
-              {folderPath
-                ? "没有找到可加载的 jpg/png/bmp 图片；空文件或损坏图片会被跳过。"
-                : "请选择包含 jpg/png/bmp 的文件夹。"}
-            </p>
-          ) : videos.length > 0 ? (
-            <ProjectMediaList
-              images={images}
-              videos={videos}
-              selectedPath={selectedPath}
-              onSelect={setSelectedPath}
-              onPrepare={(source) => addVideo?.(source)}
-              onVideoMenu={(source, x, y) => {
-                setImageMenu(null);
-                setVideoMenu({ source, x, y });
-              }}
-              onImageMenu={(image, x, y) => setImageMenu({ image, x, y })}
-            />
-          ) : (
-            images.map((image) => (
-              <ImageListRow
-                className={`block w-full truncate rounded px-3 py-2 text-left text-sm ${
-                  image.path === selectedPath
-                    ? "bg-sky-500 text-white"
-                    : "text-slate-300 hover:bg-slate-800"
-                }`}
-                key={image.path}
-                selected={image.path === selectedPath}
-                title={image.path}
-                type="button"
-                onClick={() => setSelectedPath(image.path)}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  setImageMenu({ image, x: event.clientX, y: event.clientY });
-                }}
-              >
-                {image.name}
-              </ImageListRow>
-            ))
-          )}
-        </div>
+        <ProjectMediaList
+          folderPath={folderPath}
+          images={images}
+          videos={videos}
+          selectedPath={selectedPath}
+          onSelect={setSelectedPath}
+          onPrepare={(source) => addVideo?.(source)}
+          onVideoMenu={(source, x, y) => {
+            setImageMenu(null);
+            setVideoMenu({ source, x, y });
+          }}
+          onImageMenu={(image, x, y) => setImageMenu({ image, x, y })}
+        />
       </section>
       {imageMenu && images.includes(imageMenu.image) && (
         <ImageListContextMenu

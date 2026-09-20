@@ -3,6 +3,7 @@ pub mod onnx_metadata;
 pub mod prelabel;
 pub mod project_media;
 pub mod pt_conversion;
+pub mod thumbnail;
 pub mod video;
 pub mod video_reextract;
 

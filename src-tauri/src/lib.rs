@@ -25,6 +25,7 @@ pub fn run() {
             commands::list_project_videos,
             commands::list_image_files,
             commands::recycle_image_file,
+            commands::generate_image_thumbnail,
             commands::export_annotations_json,
             commands::export_text_files,
             commands::read_text_file,

@@ -141,6 +141,11 @@ export function imageFileSrc(path: string): string {
   return convertFileSrc(path);
 }
 
+/** 为图片生成（或复用缓存）≤256px 长边的缩略图；返回缩略图缓存文件路径。 */
+export function generateImageThumbnail(path: string): Promise<string> {
+  return invoke<string>("generate_image_thumbnail", { imagePath: path });
+}
+
 export async function selectExportJsonPath(): Promise<string | null> {
   const path = await save({
     defaultPath: "annotations.json",

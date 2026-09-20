@@ -1,16 +1,21 @@
-import { useEffect, useRef, type ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useAnnotationStore } from "../../store/useAnnotationStore";
 import { SELECTION_ZH_CN as text } from "../../i18n/selection.zh-CN";
 
+// 选中行的滚动定位由列表容器按索引计算 scrollTop 完成（配合窗口化虚拟渲染），
+// 行组件自身不再调用 scrollIntoView。
 export function ImageListRow({
   selected,
+  leading,
+  children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { selected: boolean }) {
-  const ref = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
-  return <button {...props} ref={ref} aria-current={selected ? "true" : undefined} />;
+}: ButtonHTMLAttributes<HTMLButtonElement> & { selected: boolean; leading?: ReactNode }) {
+  return (
+    <button {...props} aria-current={selected ? "true" : undefined}>
+      {leading}
+      {children}
+    </button>
+  );
 }
 
 export function ScopeBar() {

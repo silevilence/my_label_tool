@@ -28,6 +28,8 @@ export function ImageListContextMenu({
     window.addEventListener("mousedown", outside);
     window.addEventListener("blur", onClose);
     window.addEventListener("resize", onClose);
+    // 现状保留：列表滚动（capture 阶段）立即关闭菜单；
+    // 与列表虚拟化联动的滚动关闭策略由「作用域与搜索交互改进」任务处理。
     window.addEventListener("scroll", onClose, true);
     return () => {
       window.removeEventListener("mousedown", outside);

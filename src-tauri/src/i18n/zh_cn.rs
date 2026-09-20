@@ -848,3 +848,23 @@ pub fn video_failed(error: impl std::fmt::Display) -> String {
 pub const VIDEO_REEXTRACT_PATH: &str =
     "只能替换当前项目内、元数据匹配的普通视频帧文件，不能通过链接访问其它目录。";
 pub const VIDEO_REEXTRACT_CHANGED: &str = "视频帧元数据已变化，请重新打开项目后重试。";
+
+pub const THUMBNAIL_SOURCE_INVALID: &str = "图片不存在或不是普通文件，无法生成缩略图";
+pub fn thumbnail_cache_dir_failed(error: impl std::fmt::Display) -> String {
+    format!("无法确定缩略图缓存目录：{error}")
+}
+pub fn thumbnail_stat_failed(error: impl std::fmt::Display) -> String {
+    format!("无法读取图片信息，已跳过缩略图：{error}")
+}
+pub fn thumbnail_decode_failed(error: impl std::fmt::Display) -> String {
+    format!("无法解码图片，已跳过缩略图：{error}")
+}
+pub fn thumbnail_encode_failed(error: impl std::fmt::Display) -> String {
+    format!("无法编码缩略图：{error}")
+}
+pub fn thumbnail_write_failed(error: impl std::fmt::Display) -> String {
+    format!("缩略图缓存写入失败：{error}")
+}
+pub fn thumbnail_task_failed(error: impl std::fmt::Display) -> String {
+    format!("缩略图生成任务失败：{error}")
+}

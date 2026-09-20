@@ -39,6 +39,7 @@ it("shares sidebar/timeline distribution and navigation through the selection st
     return (
       <>
         <ProjectMediaList
+          folderPath="p"
           videos={videos}
           images={videos[0].images}
           selectedPath={selectedPath}
