@@ -128,7 +128,8 @@ export function ClassMappingPanel({
   );
 }
 
-function ClassMappingRow({
+// 导出仅供组件测试直接驱动行级交互（未保存选择标识）。
+export function ClassMappingRow({
   disabled,
   labels,
   mapping,
@@ -144,8 +145,10 @@ function ClassMappingRow({
   onExclude: () => Promise<void>;
 }) {
   const [selectedLabelId, setSelectedLabelId] = useState(mapping.labelId ?? labels[0]?.id ?? "");
+  const [pendingSelection, setPendingSelection] = useState(false);
   useEffect(() => {
     setSelectedLabelId(mapping.labelId ?? labels[0]?.id ?? "");
+    setPendingSelection(false);
   }, [labels, mapping.labelId]);
 
   const status =
@@ -182,7 +185,10 @@ function ClassMappingRow({
           className={inputClass}
           disabled={disabled || labels.length === 0}
           value={selectedLabelId}
-          onChange={(event) => setSelectedLabelId(event.target.value)}
+          onChange={(event) => {
+            setSelectedLabelId(event.target.value);
+            setPendingSelection(true);
+          }}
         >
           {labels.map((label) => (
             <option key={label.id} value={label.id}>
@@ -190,6 +196,9 @@ function ClassMappingRow({
             </option>
           ))}
         </select>
+        {pendingSelection && (
+          <span className="self-center text-xs text-amber-300">未绑定，点击绑定生效</span>
+        )}
         <button
           className="rounded border border-sky-500/50 px-3 py-2 text-xs text-sky-200 disabled:opacity-50"
           disabled={disabled || !selectedLabelId}

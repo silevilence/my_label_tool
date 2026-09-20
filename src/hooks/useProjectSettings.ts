@@ -13,6 +13,8 @@ import type { ProjectConfig } from "../lib/importers";
 import type { ProjectSettings, VideoExtractionSettings } from "../types/project-settings";
 import { VIDEO_ZH_CN as text } from "../i18n/video.zh-CN";
 
+export type ProjectSettingsModel = ReturnType<typeof useProjectSettings>;
+
 export function useProjectSettings(
   folder: string,
   config: ProjectConfig | null,

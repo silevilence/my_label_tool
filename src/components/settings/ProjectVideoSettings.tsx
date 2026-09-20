@@ -8,9 +8,11 @@ import { validExtraction } from "../../lib/project-settings";
 export function ProjectVideoSettings({
   folder,
   model,
+  onUnsavedChange,
 }: {
   folder: string;
   model: ReturnType<typeof useProjectSettings>;
+  onUnsavedChange?: (dirty: boolean) => void;
 }) {
   const savedInterval = model.settings.videoExtraction;
   const [interval, setInterval] = useState(savedInterval);
@@ -21,6 +23,11 @@ export function ProjectVideoSettings({
     setInterval(savedInterval);
   }, [folder, savedInterval]);
   useEffect(() => setSaved(null), [folder]);
+  const unsaved =
+    folder !== "" && !model.loading && JSON.stringify(interval) !== JSON.stringify(savedInterval);
+  useEffect(() => {
+    onUnsavedChange?.(unsaved);
+  }, [onUnsavedChange, unsaved]);
   return (
     <section className="mt-4 rounded border border-slate-800 p-3">
       <h3 className="text-sm font-medium text-slate-100">{text.extractionDefaults}</h3>
@@ -42,6 +49,7 @@ export function ProjectVideoSettings({
           {model.error}
         </p>
       )}
+      {unsaved && <p className="mt-2 text-xs text-amber-300">抽帧设置有未保存的修改。</p>}
       <button
         type="button"
         disabled={!folder || model.loading || model.saving || !validExtraction(interval)}

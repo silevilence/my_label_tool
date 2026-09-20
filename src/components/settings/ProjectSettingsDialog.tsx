@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Overlay } from "../overlay/Overlay";
 import { ProjectVideoSettings } from "./ProjectVideoSettings";
+import { confirmAction } from "../../lib/tauri-api";
 import type { useProjectSettings } from "../../hooks/useProjectSettings";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
 
@@ -16,8 +18,21 @@ export function ProjectSettingsDialog({
   onBatch?: () => void;
   onClose: () => void;
 }) {
+  const [hasUnsaved, setHasUnsaved] = useState(false);
+
+  async function requestClose() {
+    if (
+      hasUnsaved &&
+      !(await confirmAction("项目设置有未保存的修改，关闭将丢弃这些修改。确定关闭？"))
+    ) {
+      return;
+    }
+    setHasUnsaved(false);
+    onClose();
+  }
+
   return (
-    <Overlay onClose={onClose} canDismiss={!model.saving} label={text.projectSettings}>
+    <Overlay onClose={requestClose} canDismiss={!model.saving} label={text.projectSettings}>
       <section
         tabIndex={-1}
         aria-label={text.projectSettings}
@@ -28,14 +43,14 @@ export function ProjectSettingsDialog({
           <button
             type="button"
             disabled={model.saving}
-            onClick={onClose}
+            onClick={requestClose}
             className="rounded border border-slate-700 px-3 py-1.5 text-sm hover:bg-slate-800 disabled:opacity-40"
           >
             {text.close}
           </button>
         </header>
         <p className="mt-2 break-all text-xs text-slate-400">{folder}</p>
-        <ProjectVideoSettings folder={folder} model={model} />
+        <ProjectVideoSettings folder={folder} model={model} onUnsavedChange={setHasUnsaved} />
         <section className="mt-4 rounded border border-slate-800 p-3">
           <p className="text-sm text-slate-200">{text.pendingVideos(pendingCount)}</p>
           <p className="mt-2 text-xs text-slate-400">{text.batchSettingsHint}</p>
