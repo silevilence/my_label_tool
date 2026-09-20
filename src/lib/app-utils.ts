@@ -1,6 +1,6 @@
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./defaults/exports";
 import { DEFAULT_LABEL_TEMPLATES } from "./defaults/labels";
-import { DEFAULT_SHORTCUTS, type ShortcutMap } from "./defaults/shortcuts";
+import { DEFAULT_SHORTCUTS, SHORTCUT_ACTIONS, type ShortcutMap } from "./defaults/shortcuts";
 import { confirmAction, exportAnnotationsJson, imageFileSrc, type ImageFile } from "./tauri-api";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import type { AnnotationShape, LabelTemplate } from "../types/annotation";
@@ -9,21 +9,20 @@ import { PROJECT_CONFIG_NAME, type ImportedAnnotations, type ProjectConfig } fro
 
 export function mergeShortcuts(savedShortcuts: Record<string, string>): ShortcutMap {
   const nextShortcuts = { ...DEFAULT_SHORTCUTS };
-  for (const action of Object.keys(nextShortcuts) as Array<keyof ShortcutMap>) {
-    if (typeof savedShortcuts[action] === "string") {
-      nextShortcuts[action] = savedShortcuts[action];
-    }
+  for (const action of SHORTCUT_ACTIONS) {
+    if (action.rebindable && typeof savedShortcuts[action.id] === "string")
+      nextShortcuts[action.id] = savedShortcuts[action.id];
   }
-  // New defaults must not take over keys already assigned by existing users.
-  for (const addedAction of ["deleteImage", "previousFrame", "nextFrame"] as const) {
+  // Every newly introduced default yields to keys explicitly saved by the user.
+  for (const action of SHORTCUT_ACTIONS) {
     if (
-      savedShortcuts[addedAction] === undefined &&
-      Object.entries(nextShortcuts).some(
-        ([action, key]) => action !== addedAction && key === nextShortcuts[addedAction],
+      action.rebindable &&
+      savedShortcuts[action.id] === undefined &&
+      Object.entries(savedShortcuts).some(
+        ([id, key]) => id !== action.id && key === action.defaultKey,
       )
-    ) {
-      nextShortcuts[addedAction] = "";
-    }
+    )
+      nextShortcuts[action.id] = "";
   }
   return nextShortcuts;
 }

@@ -1,3 +1,5 @@
+import { detectConflicts } from "../../lib/shortcuts";
+import { useShortcutStore } from "../../store/useShortcutStore";
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 import { useState } from "react";
@@ -86,9 +88,12 @@ export function LabelSettings({
       return;
     }
 
-    const conflict = labels.find((label) => label.id !== labelId && label.shortcut === shortcut);
+    const conflict = detectConflicts(
+      useShortcutStore.getState().shortcuts,
+      labels.map((label) => (label.id === labelId ? { ...label, shortcut } : label)),
+    ).find((item) => item.ids.includes(`label:${labelId}`));
     if (conflict) {
-      window.alert(`快捷键 ${shortcut} 已被「${conflict.name}」使用。`);
+      window.alert(conflict.message);
       return;
     }
 

@@ -1,3 +1,7 @@
+import { useShortcutStore } from "../../store/useShortcutStore";
+import { shortcutKey } from "../../lib/shortcuts";
+import { formatShortcut } from "../../lib/shortcut-utils";
+import { SHORTCUT_ZH_CN as shortcutText } from "../../i18n/shortcuts.zh-CN";
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 import type { MutableRefObject, ReactNode } from "react";
@@ -10,7 +14,7 @@ import {
   type AnnotationShape,
   type LabelConfig,
 } from "../../types/annotation";
-import type { ShortcutMap } from "../../lib/defaults/shortcuts";
+import { SHORTCUT_ACTIONS, type ShortcutMap } from "../../lib/defaults/shortcuts";
 import { toCanvasPoints, toCanvasRect } from "./geometry";
 import { INTERACTION_MODE_HELP, type ImageLayout, type InteractionMode } from "./types";
 
@@ -28,7 +32,8 @@ interface ModeHelpOverlayProps {
 
 export function ModeHelpOverlay({ corner, mode, shortcuts }: ModeHelpOverlayProps) {
   const help = INTERACTION_MODE_HELP[mode];
-  const shortcutTips = SHORTCUT_TIPS[mode](shortcuts);
+  const handlers = useShortcutStore((state) => state.handlers);
+  const shortcutTips = SHORTCUT_ACTIONS;
 
   return (
     <div
@@ -41,7 +46,10 @@ export function ModeHelpOverlay({ corner, mode, shortcuts }: ModeHelpOverlayProp
       {shortcutTips.length > 0 && (
         <div className="mt-1 border-t border-slate-700/70 pt-1 text-slate-300">
           {shortcutTips.map((tip) => (
-            <div key={tip}>{tip}</div>
+            <div key={tip.id} className={handlers[tip.id] ? undefined : "text-slate-600"}>
+              {formatShortcut(shortcutKey(tip, shortcuts))}：{tip.label}
+              {handlers[tip.id] ? "" : `（${shortcutText.unavailable}）`}
+            </div>
           ))}
         </div>
       )}
@@ -93,26 +101,6 @@ const OVERLAY_CORNER_CLASS: Record<OverlayCorner, string> = {
   "top-left": "canvas-floating-panel-top left-3",
   "top-right": "canvas-floating-panel-top right-3",
 };
-
-const SHORTCUT_TIPS: Record<InteractionMode, (shortcuts: ShortcutMap) => string[]> = {
-  default: (shortcuts) => [
-    `${formatShortcut(shortcuts.previousImage)} / ${formatShortcut(shortcuts.nextImage)}：切换图片`,
-    `${formatShortcut(shortcuts.zoomIn)} / ${formatShortcut(shortcuts.zoomOut)}：缩放`,
-    "Delete：删除选中框",
-  ],
-  select: () => [],
-  annotate: () => ["Ctrl+S：保存", "Ctrl+Z：撤销", "Ctrl+Y：重做"],
-};
-
-function formatShortcut(shortcut: string): string {
-  if (shortcut === "ArrowLeft") {
-    return "←";
-  }
-  if (shortcut === "ArrowRight") {
-    return "→";
-  }
-  return shortcut.toUpperCase();
-}
 
 export function DeleteAnnotationDialog({
   labelName,

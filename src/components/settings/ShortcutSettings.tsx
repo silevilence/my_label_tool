@@ -1,6 +1,6 @@
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
 import { Overlay } from "../overlay/Overlay";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   SHORTCUT_ACTIONS,
   type ShortcutActionId,
@@ -9,8 +9,8 @@ import {
 import type { InteractionMode } from "../canvas/types";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../../lib/defaults/display";
 import { formatShortcut, normalizeShortcutKey } from "../../lib/shortcut-utils";
-import { IMAGE_DELETION_ZH_CN as imageDeletionText } from "../../i18n/image-deletion.zh-CN";
-import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
+import { detectConflicts, shortcutKey } from "../../lib/shortcuts";
+import { SHORTCUT_ZH_CN as shortcutText } from "../../i18n/shortcuts.zh-CN";
 
 interface ShortcutSettingsProps {
   helpDisplaySettings: HelpDisplaySettings;
@@ -34,7 +34,6 @@ export function ShortcutSettings({
   onClose,
 }: ShortcutSettingsProps) {
   const [recordingActionId, setRecordingActionId] = useState<ShortcutActionId | null>(null);
-  const labelShortcutSet = useMemo(() => new Set(labelShortcuts), [labelShortcuts]);
 
   useEffect(() => {
     if (!recordingActionId) {
@@ -52,30 +51,25 @@ export function ShortcutSettings({
       }
 
       if (event.ctrlKey || event.altKey || event.metaKey || isModifierKey(event.key)) {
-        window.alert("暂不支持组合键，请按单个按键。");
+        window.alert(shortcutText.singleKey);
         return;
       }
 
       const shortcut = normalizeShortcutKey(event.key);
-      if (
-        (actionId === "previousFrame" || actionId === "nextFrame") &&
-        (labelShortcutSet.has(shortcut) || ["Delete", "Enter", " ", "Tab"].includes(shortcut))
-      ) {
-        window.alert(videoText.frameShortcutConflict);
+      if (["Enter", " ", "Tab"].includes(shortcut)) {
+        window.alert(shortcutText.reserved);
         return;
       }
-      if (
-        actionId === "deleteImage" &&
-        (labelShortcutSet.has(shortcut) || ["Delete", "Enter", " ", "Tab"].includes(shortcut))
-      ) {
-        window.alert(imageDeletionText.shortcutConflict);
-        return;
-      }
-      const action = SHORTCUT_ACTIONS.find(
-        (item) => item.id !== actionId && shortcuts[item.id] === shortcut,
-      );
-      if (action) {
-        window.alert(`快捷键 ${formatShortcut(shortcut)} 已被「${action.label}」使用。`);
+      const conflict = detectConflicts(
+        { ...shortcuts, [actionId]: shortcut },
+        labelShortcuts.map((key, index) => ({
+          id: String(index),
+          name: interactionText.labels,
+          shortcut: key,
+        })),
+      ).find((item) => item.ids.includes(actionId));
+      if (conflict) {
+        window.alert(conflict.message);
         return;
       }
 
@@ -85,7 +79,7 @@ export function ShortcutSettings({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [labelShortcutSet, onChangeShortcut, recordingActionId, shortcuts]);
+  }, [labelShortcuts, onChangeShortcut, recordingActionId, shortcuts]);
 
   return (
     <Overlay onClose={onClose} label={interactionText.shortcuts} size="lg">
@@ -198,28 +192,33 @@ export function ShortcutSettings({
               <div>
                 <p className="text-sm font-medium text-slate-100">{action.label}</p>
                 <p className="text-xs text-slate-500">{action.description}</p>
-                {labelShortcutSet.has(shortcuts[action.id]) && (
-                  <p className="mt-1 text-xs text-amber-300">
-                    与当前标签快捷键冲突；实际使用时标签优先。
-                  </p>
-                )}
-                {isFixedShortcut(shortcuts[action.id]) && (
-                  <p className="mt-1 text-xs text-amber-300">
-                    与固定快捷键冲突；实际使用时固定动作优先。
-                  </p>
-                )}
+                {detectConflicts(
+                  shortcuts,
+                  labelShortcuts.map((shortcut, index) => ({
+                    id: String(index),
+                    name: interactionText.labels,
+                    shortcut,
+                  })),
+                )
+                  .filter((item) => item.ids.includes(action.id))
+                  .map((item) => (
+                    <p key={item.key} className="mt-1 text-xs text-amber-300">
+                      {item.message}
+                    </p>
+                  ))}
               </div>
               <kbd className="rounded bg-slate-950 px-2 py-1 text-xs text-slate-200">
                 {recordingActionId === action.id
                   ? "按键中..."
-                  : formatShortcut(shortcuts[action.id])}
+                  : formatShortcut(shortcutKey(action, shortcuts))}
               </kbd>
               <button
                 className="rounded bg-sky-500 px-3 py-1 text-sm font-medium text-white hover:bg-sky-400"
                 type="button"
+                disabled={!action.rebindable}
                 onClick={() => setRecordingActionId(action.id)}
               >
-                录制
+                {action.rebindable ? "录制" : shortcutText.fixed}
               </button>
             </div>
           ))}
@@ -241,8 +240,4 @@ const LABEL_DISPLAY_OPTIONS: Array<{
 
 function isModifierKey(key: string): boolean {
   return ["Alt", "Control", "Meta", "Shift"].includes(key);
-}
-
-function isFixedShortcut(shortcut: string): boolean {
-  return shortcut === "Delete";
 }

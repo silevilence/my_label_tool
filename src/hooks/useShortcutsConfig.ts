@@ -1,7 +1,9 @@
+import { useShortcutStore } from "../store/useShortcutStore";
 import { useEffect, useState } from "react";
 import { mergeShortcuts } from "../lib/app-utils";
 import {
   DEFAULT_SHORTCUTS,
+  SHORTCUT_ACTIONS,
   type ShortcutActionId,
   type ShortcutMap,
 } from "../lib/defaults/shortcuts";
@@ -30,7 +32,10 @@ export function useShortcutsConfig(setError: (message: string) => void) {
     };
   }, [setError]);
 
+  useEffect(() => useShortcutStore.getState().configure(shortcuts), [shortcuts]);
+
   function updateShortcut(actionId: ShortcutActionId, shortcut: string) {
+    if (!SHORTCUT_ACTIONS.find((action) => action.id === actionId)?.rebindable) return;
     const nextShortcuts = { ...shortcuts, [actionId]: shortcut };
     setShortcuts(nextShortcuts);
     saveShortcuts(nextShortcuts).catch((caughtError: unknown) => {

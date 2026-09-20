@@ -50,11 +50,11 @@
   - [x] 新增目录与 store 归属同步更新 `AGENTS.md` §4
   - 验收：320px 高窗口下关闭控件可达；Esc 只关闭栈顶、删除进行中不可关闭；菜单或搜索浮层打开时画布标注不被快捷键改动
 
-- [ ] **前端交互②：快捷键动作表与统一解析**
-  - [ ] 按 `docs/frontend-interaction.md` §2 建立动作元数据表（id / 名称 / 默认键位 / scope / 是否可改绑）与纯函数 `resolveShortcut(event, ctx)`
-  - [ ] 功能模块经 `useShortcut(id, handler)` 注册行为，未注册即「不可用」并在提示浮层置灰
-  - [ ] 固定键（`Ctrl+Z/Y/S`、删除标注框的 `Delete`）进表并标记不可改绑，设置面板作为固定行展示
-  - [ ] 冲突判定收敛为一份 `detectConflicts`，供设置面板、标签编辑器与运行时共用；`mergeShortcuts` 的新默认键例外由表推导
+- [x] **前端交互②：快捷键动作表与统一解析**
+  - [x] 按 `docs/frontend-interaction.md` §2 建立动作元数据表（id / 名称 / 默认键位 / scope / 是否可改绑）与纯函数 `resolveShortcut(event, ctx)`
+  - [x] 功能模块经 `useShortcut(id, handler)` 注册行为，未注册即「不可用」并在提示浮层置灰
+  - [x] 固定键（`Ctrl+Z/Y/S`、删除标注框的 `Delete`）进表并标记不可改绑，设置面板作为固定行展示
+  - [x] 冲突判定收敛为一份 `detectConflicts`，供设置面板、标签编辑器与运行时共用；`mergeShortcuts` 的新默认键例外由表推导
   - 验收：四层优先级（blocking / light / canvas / global）与冲突裁决可纯函数验证；新增动作不再修改 `App.tsx` 与 `AppLayout.tsx`
 
 - [ ] **前端交互③：操作注册表与按资源互斥**

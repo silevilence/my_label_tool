@@ -79,7 +79,7 @@ my_label_tool/
 │   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置、插件管理
 │   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）、图片列表右键菜单（ImageListContextMenu）
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
-│   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态、useOverlayStore 遮罩栈）
+│   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态、useOverlayStore 遮罩栈、useShortcutStore 动作注册与键位）
 │   ├── types/                      # 核心类型（annotation、export、prelabel、plugin）
 │   ├── lib/                        # tauri-api 封装、导入导出、插件契约、工具函数
 │   │   ├── defaults/               # 导出模板、标签、快捷键、显示设置默认值

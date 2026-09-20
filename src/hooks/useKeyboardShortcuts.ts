@@ -1,8 +1,10 @@
-import { useOverlayStore } from "../store/useOverlayStore";
 import { useEffect } from "react";
-import { formatShortcut, normalizeShortcutKey } from "../lib/shortcut-utils";
+import { useShortcut } from "./useShortcut";
+import { useShortcutStore } from "../store/useShortcutStore";
+import { useOverlayStore } from "../store/useOverlayStore";
+import { detectConflicts, eventShortcut, resolveShortcut } from "../lib/shortcuts";
 import { isEditableTarget } from "../lib/app-utils";
-import { SHORTCUT_ACTIONS, type ShortcutMap } from "../lib/defaults/shortcuts";
+import type { ShortcutMap } from "../lib/defaults/shortcuts";
 import type { AnnotationShapeType, LabelConfig } from "../types/annotation";
 
 interface UseKeyboardShortcutsParams {
@@ -44,143 +46,55 @@ export function useKeyboardShortcuts({
   zoomFromKeyboard,
   onShortcutConflict,
 }: UseKeyboardShortcutsParams) {
+  useShortcut("undo", undo);
+  useShortcut("redo", redo);
+  useShortcut("save", save);
+  useShortcut("deleteShape", selectedPath && selectedShapeId ? deleteSelectedShape : undefined);
+  useShortcut(
+    "deleteImage",
+    selectedPath
+      ? (event) => {
+          if (!event.repeat) deleteCurrentImage();
+        }
+      : undefined,
+  );
+  useShortcut("previousImage", selectedPath ? () => selectAdjacentImage(-1) : undefined);
+  useShortcut("nextImage", selectedPath ? () => selectAdjacentImage(1) : undefined);
+  useShortcut("previousFrame", selectAdjacentFrame ? () => selectAdjacentFrame(-1) : undefined);
+  useShortcut("nextFrame", selectAdjacentFrame ? () => selectAdjacentFrame(1) : undefined);
+  useShortcut("zoomIn", () => zoomFromKeyboard(1));
+  useShortcut("zoomOut", () => zoomFromKeyboard(-1));
+  useShortcut("selectRectTool", () => selectShapeType("rect"));
+  useShortcut("selectPolygonTool", () => selectShapeType("polygon"));
+  useShortcut("selectPointTool", () => selectShapeType("point"));
+  useShortcut("undoPolygonPoint", () => {
+    undoPolygonPoint();
+  });
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (
-        !enabled ||
-        event.defaultPrevented ||
-        isEditableTarget(event.target) ||
-        useOverlayStore.getState().hasBlocking()
-      ) {
-        return;
-      }
-
-      const key = normalizeShortcutKey(event.key);
-      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-        if (key === "z") {
-          event.preventDefault();
-          if (useOverlayStore.getState().hasLight()) return;
-          undo();
-          return;
-        }
-        if (key === "y") {
-          event.preventDefault();
-          if (useOverlayStore.getState().hasLight()) return;
-          redo();
-          return;
-        }
-        if (key === "s") {
-          event.preventDefault();
-          save();
-          return;
-        }
-      }
-
-      if (event.ctrlKey || event.altKey || event.metaKey) {
-        return;
-      }
-
-      if (
-        useOverlayStore.getState().hasLight() &&
-        key !== shortcuts.zoomIn &&
-        key !== shortcuts.zoomOut
-      )
-        return;
-
-      if (key === "Delete" && selectedPath && selectedShapeId) {
-        event.preventDefault();
-        deleteSelectedShape();
-        notifyConfigConflict(key);
-        return;
-      }
-      if (key === shortcuts.undoPolygonPoint && undoPolygonPoint()) {
-        event.preventDefault();
-        return;
-      }
-
-      const label = labels.find((item) => item.shortcut === key);
-      if (label) {
-        event.preventDefault();
-        changeCurrentLabel(label.id);
-        notifyConfigConflict(key);
-        return;
-      }
-
-      if (selectAdjacentFrame && (key === shortcuts.previousFrame || key === shortcuts.nextFrame)) {
-        event.preventDefault();
-        selectAdjacentFrame(key === shortcuts.previousFrame ? -1 : 1);
-        return;
-      }
-      if (key === shortcuts.previousImage) {
-        event.preventDefault();
-        selectAdjacentImage(-1);
-        return;
-      }
-      if (key === shortcuts.nextImage) {
-        event.preventDefault();
-        selectAdjacentImage(1);
-        return;
-      }
-      if (key === shortcuts.deleteImage && key !== "Delete" && selectedPath) {
-        event.preventDefault();
-        if (!event.repeat) deleteCurrentImage();
-        return;
-      }
-      if (key === shortcuts.zoomIn) {
-        event.preventDefault();
-        zoomFromKeyboard(1);
-        return;
-      }
-      if (key === shortcuts.zoomOut) {
-        event.preventDefault();
-        zoomFromKeyboard(-1);
-        return;
-      }
-      if (key === shortcuts.selectRectTool) {
-        event.preventDefault();
-        selectShapeType("rect");
-        return;
-      }
-      if (key === shortcuts.selectPolygonTool) {
-        event.preventDefault();
-        selectShapeType("polygon");
-        return;
-      }
-      if (key === shortcuts.selectPointTool) {
-        event.preventDefault();
-        selectShapeType("point");
-        return;
-      }
-
-      function notifyConfigConflict(shortcut: string) {
-        const action = SHORTCUT_ACTIONS.find((item) => shortcuts[item.id] === shortcut);
-        if (action) {
-          onShortcutConflict(
-            `快捷键 ${formatShortcut(shortcut)} 同时绑定了「${action.label}」，已按更高优先级处理。`,
-          );
-        }
-      }
+      if (!enabled || event.defaultPrevented) return;
+      const overlay = useOverlayStore.getState();
+      const handlers = useShortcutStore.getState().handlers;
+      const action = resolveShortcut(event, {
+        hasBlockingOverlay: overlay.hasBlocking(),
+        hasLightOverlay: overlay.hasLight(),
+        isEditableTarget: isEditableTarget(event.target),
+        busy: false,
+        mode: "default",
+        shortcuts,
+        labelShortcuts: labels,
+        available: [...Object.keys(handlers), ...labels.map((label) => `label:${label.id}`)],
+      });
+      if (!action) return;
+      event.preventDefault();
+      const conflict = detectConflicts(shortcuts, labels).find(
+        (item) => item.key === eventShortcut(event),
+      );
+      if (conflict) onShortcutConflict(conflict.message);
+      if (action.startsWith("label:")) changeCurrentLabel(action.slice(6));
+      else handlers[action]?.handler(event);
     }
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    enabled,
-    deleteCurrentImage,
-    changeCurrentLabel,
-    deleteSelectedShape,
-    labels,
-    redo,
-    save,
-    selectAdjacentImage,
-    selectAdjacentFrame,
-    selectShapeType,
-    selectedPath,
-    selectedShapeId,
-    shortcuts,
-    undo,
-    undoPolygonPoint,
-    zoomFromKeyboard,
-    onShortcutConflict,
-  ]);
+  }, [enabled, labels, shortcuts, changeCurrentLabel, onShortcutConflict]);
 }

@@ -1,8 +1,7 @@
-import { useOverlayStore } from "../store/useOverlayStore";
+import { useShortcut } from "../hooks/useShortcut";
 import {
   lazy,
   Suspense,
-  useEffect,
   useState,
   type MouseEvent as ReactMouseEvent,
   type MutableRefObject,
@@ -38,7 +37,6 @@ import type { ImageFile } from "../lib/tauri-api";
 import type { ShortcutActionId, ShortcutMap } from "../lib/defaults/shortcuts";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../lib/defaults/display";
 import type { AppUpdateProgress, AppUpdateStatus } from "../lib/updater";
-import { isEditableTarget } from "../lib/app-utils";
 import type { PrelabelExecutionControls } from "../hooks/usePrelabelExecution";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
 import type { PrelabelClassMapping } from "../types/prelabel";
@@ -345,24 +343,7 @@ export function AppLayout({
     images
       .slice(selectedImageIndex + 1)
       .some((image) => (annotationsByImage[image.path] ?? []).length === 0);
-  useEffect(() => {
-    function openSearch(event: KeyboardEvent) {
-      if (
-        !useOverlayStore.getState().hasBlocking() &&
-        (event.ctrlKey || event.metaKey) &&
-        !event.altKey &&
-        event.key.toLowerCase() === "f" &&
-        images.length > 0 &&
-        !isEditableTarget(event.target)
-      ) {
-        event.preventDefault();
-        setIsSearchOpen(true);
-      }
-    }
-
-    window.addEventListener("keydown", openSearch);
-    return () => window.removeEventListener("keydown", openSearch);
-  }, [images.length]);
+  useShortcut("search", images.length ? () => setIsSearchOpen(true) : undefined);
 
   function updateCanvasPointer(event: ReactMouseEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
