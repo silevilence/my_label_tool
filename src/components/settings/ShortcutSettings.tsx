@@ -64,7 +64,7 @@ export function ShortcutSettings({
         { ...shortcuts, [actionId]: shortcut },
         labelShortcuts.map((key, index) => ({
           id: String(index),
-          name: interactionText.labels,
+          name: shortcutText.labelBinding(key),
           shortcut: key,
         })),
       ).find((item) => item.ids.includes(actionId));
@@ -82,7 +82,18 @@ export function ShortcutSettings({
   }, [labelShortcuts, onChangeShortcut, recordingActionId, shortcuts]);
 
   return (
-    <Overlay onClose={onClose} label={interactionText.shortcuts} size="lg">
+    <Overlay
+      onClose={onClose}
+      label={interactionText.shortcuts}
+      size="lg"
+      canDismiss={() => {
+        if (recordingActionId) {
+          setRecordingActionId(null);
+          return false;
+        }
+        return true;
+      }}
+    >
       <section className="scrollbar-dark max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -196,7 +207,7 @@ export function ShortcutSettings({
                   shortcuts,
                   labelShortcuts.map((shortcut, index) => ({
                     id: String(index),
-                    name: interactionText.labels,
+                    name: shortcutText.labelBinding(shortcut),
                     shortcut,
                   })),
                 )
@@ -218,7 +229,7 @@ export function ShortcutSettings({
                 disabled={!action.rebindable}
                 onClick={() => setRecordingActionId(action.id)}
               >
-                {action.rebindable ? "录制" : shortcutText.fixed}
+                {action.rebindable ? "录制" : shortcutText.fixedShort}
               </button>
             </div>
           ))}

@@ -84,7 +84,8 @@ vi.mock("./components/AppLayout", () => ({
         保存
       </button>
       <output data-testid="active-project">{activeProjectConfig?.format ?? "none"}</output>
-      <output data-testid="message">{error || transientMessage}</output>
+      <output data-testid="error">{error}</output>
+      <output data-testid="message">{transientMessage}</output>
       <select
         aria-label="标签模板"
         data-testid="selected-template"
@@ -398,9 +399,8 @@ describe("App YOLO folder auto load", () => {
     ).toBeNull();
     expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
     expect(document.body.querySelector("[data-testid='active-project']")?.textContent).toBe("none");
-    expect(document.body.querySelector("[data-testid='message']")?.textContent).toBe(
-      "write denied",
-    );
+    expect(document.body.querySelector("[data-testid='error']")?.textContent).toBe("write denied");
+    expect(document.body.querySelector("[data-testid='message']")?.textContent).toBe("");
     expect(useAnnotationStore.getState().annotationsByImage).toEqual({});
   });
 
@@ -443,9 +443,8 @@ describe("App YOLO folder auto load", () => {
     await clickAction("import-yolo");
 
     expect(tauriMocks.selectExportFolder).toHaveBeenCalledTimes(1);
-    expect(document.body.querySelector("[data-testid='message']")?.textContent).toBe(
-      "write denied",
-    );
+    expect(document.body.querySelector("[data-testid='error']")?.textContent).toBe("write denied");
+    expect(document.body.querySelector("[data-testid='message']")?.textContent).toBe("");
     expect(templateValue()).toBe("common-detection");
     expect(useAnnotationStore.getState().annotationsByImage["C:\\project\\cat.jpg"]).toEqual([
       annotation,

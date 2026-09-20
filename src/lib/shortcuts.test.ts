@@ -12,7 +12,6 @@ const ctx: ShortcutContext = {
   hasLightOverlay: false,
   isEditableTarget: false,
   busy: false,
-  mode: "default",
   shortcuts: DEFAULT_SHORTCUTS,
   labelShortcuts: [{ id: "person", name: "人", shortcut: "1" }],
   available: [...SHORTCUT_ACTIONS.map((action) => action.id), "label:person"],

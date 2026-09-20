@@ -58,7 +58,6 @@ import { withProjectMedia, type LoadedProjectVideo } from "../lib/project-media"
 import { VIDEO_ZH_CN as videoText } from "../i18n/video.zh-CN";
 
 export interface PluginExportProgressState {
-  exportId: string;
   percent: number | null;
   message: string;
   canCancel: boolean;
@@ -119,7 +118,6 @@ export function useProjectActions({
   const pluginExportProgress: PluginExportProgressState | null =
     activePluginExportId && exportView?.status === "running"
       ? {
-          exportId: activePluginExportId,
           percent: exportView.percent,
           message: exportView.message,
           canCancel: exportView.canCancel,

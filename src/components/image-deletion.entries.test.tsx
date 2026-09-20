@@ -8,6 +8,8 @@ import { useAnnotationStore } from "../store/useAnnotationStore";
 import { IMAGE_DELETION_ZH_CN as text } from "../i18n/image-deletion.zh-CN";
 import { EMPTY_PRELABEL_MODEL_LIBRARY } from "../types/prelabel";
 import * as api from "../lib/tauri-api";
+import { checkAppUpdate } from "../lib/updater";
+import { useOperations, type OperationHandle } from "../store/useOperations";
 
 vi.mock("react-konva", () =>
   Object.fromEntries(
@@ -96,10 +98,10 @@ describe("image deletion entry wiring", () => {
     }
     await act(async () => button(label).click());
   }
-  async function key(value: string) {
+  async function key(value: string, ctrlKey = false) {
     await act(async () => {
       window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true }),
+        new KeyboardEvent("keydown", { key: value, ctrlKey, bubbles: true, cancelable: true }),
       );
     });
   }
@@ -126,6 +128,29 @@ describe("image deletion entry wiring", () => {
     expect(document.body.textContent).not.toContain("批量抽取未准备视频");
     await click("设置");
     expect(document.body.textContent).not.toContain("抽帧方式");
+  });
+  it("keeps error dismissal and update controls outside annotation resource gating", async () => {
+    await openFixture();
+    vi.mocked(checkAppUpdate).mockRejectedValueOnce(new Error("offline"));
+    await click("检查更新");
+    let handle!: OperationHandle;
+    await act(async () => {
+      handle = useOperations.getState().begin({ label: "busy", resource: "project-annotations" });
+    });
+    const updateClose = document.querySelector<HTMLButtonElement>('[aria-label="关闭更新提示"]')!;
+    expect(updateClose).not.toBeNull();
+    expect(updateClose.closest(".pointer-events-none")).toBeNull();
+    await act(async () => updateClose.click());
+    expect(document.querySelector('[aria-label="关闭更新提示"]')).toBeNull();
+    // Starting another action during the lock reports busy through App's error channel.
+    await key("s", true);
+    const alert = document.querySelector('[role="alert"]');
+    if (!alert) throw new Error("expected busy error");
+    const dismiss = alert.querySelector<HTMLButtonElement>("button")!;
+    expect(dismiss.closest(".pointer-events-none")).toBeNull();
+    await act(async () => dismiss.click());
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => handle.complete());
   });
   it("list context menu targets the clicked file without changing the selected image; F8 targets current", async () => {
     await openFixture();

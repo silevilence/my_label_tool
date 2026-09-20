@@ -24,20 +24,26 @@ export async function installAppUpdate(
   let downloaded = 0;
   let total: number | null = null;
 
-  await update.download((event: DownloadEvent) => {
-    if (event.event === "Started") {
-      downloaded = 0;
-      total = event.data.contentLength ?? null;
-    } else if (event.event === "Progress") {
-      downloaded += event.data.chunkLength;
-    }
+  try {
+    await update.download((event: DownloadEvent) => {
+      if (event.event === "Started") {
+        downloaded = 0;
+        total = event.data.contentLength ?? null;
+      } else if (event.event === "Progress") {
+        downloaded += event.data.chunkLength;
+      }
 
-    onProgress({
-      downloaded,
-      total,
-      percent: total && total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : null,
+      onProgress({
+        downloaded,
+        total,
+        percent: total && total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : null,
+      });
     });
-  });
+  } catch (error) {
+    await update.close();
+    if (isCancelled()) return false;
+    throw error;
+  }
 
   if (isCancelled()) {
     await update.close();

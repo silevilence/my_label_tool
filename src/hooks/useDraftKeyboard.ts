@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { isEditableTarget } from "../lib/app-utils";
 import { useOverlayStore } from "../store/useOverlayStore";
 import { useOperations } from "../store/useOperations";
@@ -7,8 +7,11 @@ export function useDraftKeyboard(
   gesture: ReturnType<typeof useDraftGesture>,
   completePolygon: () => void,
 ) {
+  const latest = useRef({ gesture, completePolygon });
+  latest.current = { gesture, completePolygon };
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
+      const { gesture, completePolygon } = latest.current;
       if (
         isEditableTarget(event.target) ||
         useOverlayStore.getState().depth() > 0 ||
@@ -25,5 +28,5 @@ export function useDraftKeyboard(
     }
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [gesture, completePolygon]);
+  }, []);
 }

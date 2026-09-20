@@ -1,0 +1,70 @@
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ImageSearchDialog } from "./ImageSearchDialog";
+import { useAnnotationStore as store } from "../../store/useAnnotationStore";
+vi.mock("../../lib/tauri-api", () => ({ imageFileSrc: (path: string) => path }));
+const images = ["a", "b", "c"].map((name) => ({ name: `${name}.png`, path: name }));
+let root: Root;
+let host: HTMLDivElement;
+const close = vi.fn();
+const select = vi.fn((path: string) => store.getState().select(path));
+beforeEach(async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.clearAllMocks();
+  store.getState().setImages(images);
+  store.getState().pushScope({ kind: "video", ids: ["a"], label: "video" });
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  await act(async () =>
+    root.render(
+      <ImageSearchDialog
+        images={images}
+        labels={[]}
+        annotationsByImage={{}}
+        selectedPath="a"
+        onClose={close}
+        onSelectImage={select}
+      />,
+    ),
+  );
+});
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+});
+async function query(value: string) {
+  const input = document.querySelector("input")!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+function key(value: string) {
+  act(() =>
+    document.querySelector("input")!.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: value,
+        bubbles: true,
+        cancelable: true,
+      }),
+    ),
+  );
+}
+it("keeps candidate preview and Escape local without discarding the active video scope", async () => {
+  await query("b.png");
+  expect(document.querySelector("img")?.getAttribute("alt")).toBe("b.png");
+  key("Escape");
+  expect(select).not.toHaveBeenCalled();
+  expect(store.getState().selectedPath).toBe("a");
+  expect(store.getState().scopeStack.map((scope) => scope.kind)).toEqual(["project", "video"]);
+  expect(close).toHaveBeenCalledOnce();
+});
+it("commits the candidate and search scope only on confirmation", async () => {
+  await query("b.png");
+  key("Enter");
+  expect(select).toHaveBeenCalledWith("b");
+  expect(store.getState().selectedPath).toBe("b");
+  expect(store.getState().scopeStack.slice(-1)[0]).toMatchObject({ kind: "search", ids: ["b"] });
+});

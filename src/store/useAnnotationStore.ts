@@ -119,7 +119,13 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     const state = get();
     const ids = scopePaths(state);
     const index = ids.indexOf(state.selectedPath);
-    const path = ids[Math.max(0, Math.min(ids.length - 1, index < 0 ? 0 : index + delta))];
+    const path =
+      ids[
+        Math.max(
+          0,
+          Math.min(ids.length - 1, index < 0 ? (delta < 0 ? ids.length - 1 : 0) : index + delta),
+        )
+      ];
     if (path) state.select(path);
   },
   selectUnannotated: (delta) => {

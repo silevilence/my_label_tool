@@ -601,7 +601,7 @@ function handleShapeDragStart(event: KonvaEventObject<DragEvent>, mode: Interact
   if (
     resolveGesture(
       {
-        button: event.evt.button,
+        button: event.evt.button ?? ("touches" in event.evt ? 0 : -1),
         buttons: event.evt.buttons,
         ctrlKey: event.evt.ctrlKey,
         shiftKey: event.evt.shiftKey,

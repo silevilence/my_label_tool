@@ -156,7 +156,6 @@ describe("plugin UI acceptance", () => {
           disabled={false}
           isSaving={false}
           pluginExportProgress={{
-            exportId: "export-1",
             percent: 47,
             message: "正在生成",
             canCancel: true,

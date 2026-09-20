@@ -1,6 +1,5 @@
 import { SHORTCUT_ACTIONS } from "../lib/defaults/shortcuts";
 import { SHORTCUT_ZH_CN as text } from "../i18n/shortcuts.zh-CN";
-import { getInteractionMode } from "../components/canvas/geometry";
 import { useOperations } from "../store/useOperations";
 import { useEffect } from "react";
 import { useShortcut } from "./useShortcut";
@@ -12,7 +11,6 @@ import type { ShortcutMap } from "../lib/defaults/shortcuts";
 import type { AnnotationShapeType, LabelConfig } from "../types/annotation";
 
 interface UseKeyboardShortcutsParams {
-  enabled?: boolean;
   deleteCurrentImage: () => void;
   labels: LabelConfig[];
   selectedPath: string;
@@ -25,14 +23,13 @@ interface UseKeyboardShortcutsParams {
   selectAdjacentImage: (delta: number) => void;
   selectAdjacentFrame?: (delta: -1 | 1) => void;
   selectShapeType: (shapeType: AnnotationShapeType) => void;
-  undoPolygonPoint: () => boolean;
+  undoPolygonPoint?: () => boolean;
   undo: () => void;
   zoomFromKeyboard: (delta: 1 | -1) => void;
   onShortcutConflict: (message: string) => void;
 }
 
 export function useKeyboardShortcuts({
-  enabled = true,
   deleteCurrentImage,
   labels,
   selectedPath,
@@ -71,12 +68,17 @@ export function useKeyboardShortcuts({
   useShortcut("selectRectTool", () => selectShapeType("rect"));
   useShortcut("selectPolygonTool", () => selectShapeType("polygon"));
   useShortcut("selectPointTool", () => selectShapeType("point"));
-  useShortcut("undoPolygonPoint", () => {
-    undoPolygonPoint();
-  });
+  useShortcut(
+    "undoPolygonPoint",
+    undoPolygonPoint
+      ? () => {
+          undoPolygonPoint();
+        }
+      : undefined,
+  );
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (!enabled || event.defaultPrevented) return;
+      if (event.defaultPrevented) return;
       const overlay = useOverlayStore.getState();
       const handlers = useShortcutStore.getState().handlers;
       const action = resolveShortcut(event, {
@@ -84,7 +86,6 @@ export function useKeyboardShortcuts({
         hasLightOverlay: overlay.hasLight(),
         isEditableTarget: isEditableTarget(event.target),
         busy: !useOperations.getState().canStart("project-annotations"),
-        mode: getInteractionMode(event.ctrlKey, event.shiftKey),
         shortcuts,
         labelShortcuts: labels,
         available: [...Object.keys(handlers), ...labels.map((label) => `label:${label.id}`)],
@@ -106,5 +107,5 @@ export function useKeyboardShortcuts({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [enabled, labels, shortcuts, changeCurrentLabel, onShortcutConflict]);
+  }, [labels, shortcuts, changeCurrentLabel, onShortcutConflict]);
 }

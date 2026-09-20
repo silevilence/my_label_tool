@@ -36,10 +36,11 @@ export function normalizeRectPoints(rect: DrawingRect): number[] {
 
 export function toCanvasRect(points: number[], layout: ImageLayout): CanvasRect {
   const [x, y, width, height] = points;
+  const transform = createTransform(layout);
   return {
-    ...createTransform(layout).toScreen({ x, y }),
-    width: createTransform(layout).toScreenLength(width),
-    height: createTransform(layout).toScreenLength(height),
+    ...transform.toScreen({ x, y }),
+    width: transform.toScreenLength(width),
+    height: transform.toScreenLength(height),
   };
 }
 

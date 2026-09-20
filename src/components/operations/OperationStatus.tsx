@@ -1,11 +1,24 @@
+import { useEffect } from "react";
 import { useOperations } from "../../store/useOperations";
 import { OPERATION_ZH_CN as text } from "../../i18n/operations.zh-CN";
 
 export function OperationStatus() {
   const { operations, cancel, dismiss } = useOperations();
+  useEffect(() => {
+    const timers = operations
+      .filter((op) => op.status === "completed")
+      .map((op) =>
+        window.setTimeout(
+          () => dismiss(op.id),
+          Math.max(0, (op.finishedAt ?? Date.now()) + 5000 - Date.now()),
+        ),
+      );
+    return () => timers.forEach(window.clearTimeout);
+  }, [operations, dismiss]);
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex max-h-[40vh] w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto">
+    <div className="fixed top-24 right-4 z-50 flex max-h-[40vh] w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto">
       {[...operations]
+        .reverse()
         .sort((a, b) => Number(b.status === "running") - Number(a.status === "running"))
         .map((op) => (
           <section

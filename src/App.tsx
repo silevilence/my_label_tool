@@ -666,7 +666,7 @@ function App() {
     save: () => void saveWithFeedback(),
     selectAdjacentImage,
     selectShapeType,
-    undoPolygonPoint,
+    undoPolygonPoint: gesture.state === "polygon" ? undoPolygonPoint : undefined,
     undo,
     zoomFromKeyboard,
     onShortcutConflict: showMessage,

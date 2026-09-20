@@ -537,7 +537,7 @@ export function usePrelabelExecution({
       if (operation.current === owner && runningRef.current) {
         cancelRequestedRef.current = false;
         setProgress((current) => ({ ...current, cancelRequested: false }));
-        setError(text.pluginCancelFailed(reason));
+        setError(operationId ? text.pluginCancelFailed(reason) : text.cancelFailed(reason));
       }
       throw reason;
     }

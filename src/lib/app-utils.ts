@@ -1,3 +1,4 @@
+import { normalizeShortcutKey } from "./shortcut-utils";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./defaults/exports";
 import { DEFAULT_LABEL_TEMPLATES } from "./defaults/labels";
 import { DEFAULT_SHORTCUTS, SHORTCUT_ACTIONS, type ShortcutMap } from "./defaults/shortcuts";
@@ -11,7 +12,7 @@ export function mergeShortcuts(savedShortcuts: Record<string, string>): Shortcut
   const nextShortcuts = { ...DEFAULT_SHORTCUTS };
   for (const action of SHORTCUT_ACTIONS) {
     if (action.rebindable && typeof savedShortcuts[action.id] === "string")
-      nextShortcuts[action.id] = savedShortcuts[action.id];
+      nextShortcuts[action.id] = normalizeShortcutKey(savedShortcuts[action.id]);
   }
   // Every newly introduced default yields to keys explicitly saved by the user.
   for (const action of SHORTCUT_ACTIONS) {
@@ -19,7 +20,8 @@ export function mergeShortcuts(savedShortcuts: Record<string, string>): Shortcut
       action.rebindable &&
       savedShortcuts[action.id] === undefined &&
       Object.entries(savedShortcuts).some(
-        ([id, key]) => id !== action.id && key === action.defaultKey,
+        ([id, key]) =>
+          id !== action.id && normalizeShortcutKey(key) === normalizeShortcutKey(action.defaultKey),
       )
     )
       nextShortcuts[action.id] = "";

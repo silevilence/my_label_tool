@@ -188,14 +188,13 @@ export function AppSidebar({
                 setMenuAnchor(menuAnchor ? null : { x: rect.right - 224, y: rect.bottom + 8 });
               }}
               className="cursor-pointer list-none rounded border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-800"
-              title="菜单"
+              title={interactionText.mainMenu}
             >
               ☰
             </button>
             {menuAnchor && (
               <Overlay
                 kind="light"
-                role="menu"
                 label={interactionText.mainMenu}
                 anchor={menuAnchor}
                 onClose={closeMenu}

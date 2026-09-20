@@ -41,3 +41,20 @@ it("turns off cancellation before installation and then relaunches", async () =>
   expect(order).toEqual(["uncancellable", "install"]);
   expect(relaunch).toHaveBeenCalledOnce();
 });
+
+it("closes a rejected transfer and reports cancellation only when it was requested", async () => {
+  vi.mocked(relaunch).mockClear();
+  const update = {
+    download: vi.fn().mockRejectedValue(new Error("offline")),
+    install: vi.fn(),
+    close: vi.fn(),
+  };
+  await expect(installAppUpdate(update as unknown as Update, vi.fn(), () => true)).resolves.toBe(
+    false,
+  );
+  expect(update.close).toHaveBeenCalledOnce();
+  expect(update.install).not.toHaveBeenCalled();
+  expect(relaunch).not.toHaveBeenCalled();
+  await expect(installAppUpdate(update as unknown as Update, vi.fn())).rejects.toThrow("offline");
+  expect(update.close).toHaveBeenCalledTimes(2);
+});

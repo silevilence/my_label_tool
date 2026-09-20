@@ -20,6 +20,8 @@ export interface OperationView {
   percent: number | null;
   canCancel: boolean;
   cancelRequested: boolean;
+  startedAt: number;
+  finishedAt?: number;
 }
 export interface OperationHandle {
   id: string;
@@ -75,6 +77,7 @@ export const useOperations = create<Operations>((set, get) => ({
           percent: null,
           canCancel: !!input.cancel,
           cancelRequested: false,
+          startedAt: Date.now(),
         },
       ],
     }));
@@ -92,12 +95,13 @@ export const useOperations = create<Operations>((set, get) => ({
           ...(message === undefined ? {} : { message }),
         }),
       complete: (message = text.completed, kind = "success") => {
-        update({ status: "completed", message, kind, canCancel: false });
+        update({ status: "completed", message, kind, canCancel: false, finishedAt: Date.now() });
         cancellations.delete(id);
       },
       fail: (error) => {
         update({
           status: "failed",
+          finishedAt: Date.now(),
           message: error instanceof Error ? error.message : String(error),
           kind: "error",
           canCancel: false,
@@ -127,7 +131,12 @@ export const useOperations = create<Operations>((set, get) => ({
       set((state) => ({
         operations: state.operations.map((item) =>
           item.id === id && item.status === "running"
-            ? { ...item, cancelRequested: false, kind: "error", message: String(error) }
+            ? {
+                ...item,
+                cancelRequested: false,
+                kind: "error",
+                message: error instanceof Error ? error.message : String(error),
+              }
             : item,
         ),
       }));

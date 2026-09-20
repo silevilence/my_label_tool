@@ -630,244 +630,245 @@ export function AppLayout({
 
           <div className="shrink-0">{canvasFooter}</div>
         </div>
+      </div>
 
-        {isSaving && (
-          <div className="pointer-events-none fixed left-1/2 top-5 z-[70] w-72 -translate-x-1/2 rounded-xl border border-sky-400/40 bg-slate-950/90 p-4 text-sm text-slate-100 shadow-2xl">
-            <div className="mb-3 flex items-center justify-between">
-              <span>正在保存...</span>
-              <span className="text-xs text-slate-400">Ctrl+S</span>
+      {isSaving && (
+        <div className="pointer-events-none fixed left-1/2 top-5 z-[70] w-72 -translate-x-1/2 rounded-xl border border-sky-400/40 bg-slate-950/90 p-4 text-sm text-slate-100 shadow-2xl">
+          <div className="mb-3 flex items-center justify-between">
+            <span>正在保存...</span>
+            <span className="text-xs text-slate-400">Ctrl+S</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+            <div className="progress-indeterminate h-full w-1/2 rounded-full bg-sky-400" />
+          </div>
+        </div>
+      )}
+
+      {showSaveSuccess && (
+        <div className="pointer-events-none fixed left-1/2 top-5 z-[70] -translate-x-1/2 rounded-full border border-emerald-400/40 bg-emerald-500/90 px-4 py-2 text-sm font-medium text-white shadow-2xl">
+          保存完成
+        </div>
+      )}
+
+      {transientMessage && (
+        <div className="pointer-events-none fixed left-1/2 top-16 z-[70] -translate-x-1/2 rounded-full border border-amber-300/50 bg-amber-500/90 px-4 py-2 text-sm font-medium text-slate-950 shadow-2xl">
+          {transientMessage}
+        </div>
+      )}
+
+      {error && (
+        <div
+          className="fixed left-1/2 top-5 z-[80] flex max-w-xl -translate-x-1/2 items-start gap-3 rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-sm text-red-100 shadow-2xl"
+          role="alert"
+        >
+          <span>{error}</span>
+          {onDismissError && (
+            <button
+              type="button"
+              aria-label={appText.dismissError}
+              className="shrink-0 rounded px-1 text-red-200 hover:bg-red-900 focus-visible:outline focus-visible:outline-red-300"
+              onClick={onDismissError}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
+
+      {isSearchOpen && (
+        <Suspense fallback={null}>
+          <ImageSearchDialog
+            annotationsByImage={annotationsByImage}
+            images={images}
+            labels={labels}
+            selectedPath={selectedPath}
+            onClose={() => setIsSearchOpen(false)}
+            onSelectImage={setSelectedPath}
+          />
+        </Suspense>
+      )}
+
+      {updateMessage && (
+        <div className="fixed right-5 top-5 z-[75] w-80 rounded-xl border border-slate-700 bg-slate-950/95 p-4 text-sm text-slate-100 shadow-2xl">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-medium">
+                {updateStatus === "available"
+                  ? "发现更新"
+                  : updateStatus === "error"
+                    ? "更新失败"
+                    : "自动更新"}
+              </div>
+              <p className="mt-1 text-slate-300">{updateMessage}</p>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
-              <div className="progress-indeterminate h-full w-1/2 rounded-full bg-sky-400" />
-            </div>
-          </div>
-        )}
-
-        {showSaveSuccess && (
-          <div className="pointer-events-none fixed left-1/2 top-5 z-[70] -translate-x-1/2 rounded-full border border-emerald-400/40 bg-emerald-500/90 px-4 py-2 text-sm font-medium text-white shadow-2xl">
-            保存完成
-          </div>
-        )}
-
-        {transientMessage && (
-          <div className="pointer-events-none fixed left-1/2 top-16 z-[70] -translate-x-1/2 rounded-full border border-amber-300/50 bg-amber-500/90 px-4 py-2 text-sm font-medium text-slate-950 shadow-2xl">
-            {transientMessage}
-          </div>
-        )}
-
-        {error && (
-          <div
-            className="fixed left-1/2 top-5 z-[80] flex max-w-xl -translate-x-1/2 items-start gap-3 rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-sm text-red-100 shadow-2xl"
-            role="alert"
-          >
-            <span>{error}</span>
-            {onDismissError && (
+            {updateStatus !== "checking" && updateStatus !== "downloading" && (
               <button
+                aria-label="关闭更新提示"
+                className="rounded px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
                 type="button"
-                aria-label={appText.dismissError}
-                className="shrink-0 rounded px-1 text-red-200 hover:bg-red-900 focus-visible:outline focus-visible:outline-red-300"
-                onClick={onDismissError}
+                onClick={() => setUpdateMessage("")}
               >
                 ×
               </button>
             )}
           </div>
-        )}
-
-        {isSearchOpen && (
-          <Suspense fallback={null}>
-            <ImageSearchDialog
-              annotationsByImage={annotationsByImage}
-              images={images}
-              labels={labels}
-              selectedPath={selectedPath}
-              onClose={() => setIsSearchOpen(false)}
-              onSelectImage={setSelectedPath}
-            />
-          </Suspense>
-        )}
-
-        {updateMessage && (
-          <div className="fixed right-5 top-5 z-[75] w-80 rounded-xl border border-slate-700 bg-slate-950/95 p-4 text-sm text-slate-100 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-medium">
-                  {updateStatus === "available"
-                    ? "发现更新"
-                    : updateStatus === "error"
-                      ? "更新失败"
-                      : "自动更新"}
-                </div>
-                <p className="mt-1 text-slate-300">{updateMessage}</p>
+          {updateStatus === "downloading" && (
+            <div className="mt-3">
+              <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className={`h-full rounded-full bg-sky-400 ${
+                    updateProgress?.percent == null ? "progress-indeterminate w-1/2" : ""
+                  }`}
+                  style={
+                    updateProgress?.percent == null
+                      ? undefined
+                      : { width: `${updateProgress?.percent ?? 0}%` }
+                  }
+                />
               </div>
-              {updateStatus !== "checking" && updateStatus !== "downloading" && (
-                <button
-                  aria-label="关闭更新提示"
-                  className="rounded px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-                  type="button"
-                  onClick={() => setUpdateMessage("")}
-                >
-                  ×
-                </button>
-              )}
+              <div className="mt-1 text-xs text-slate-500">
+                {updateProgress?.percent == null
+                  ? "正在下载..."
+                  : `已下载 ${updateProgress?.percent ?? 0}%`}
+              </div>
             </div>
-            {updateStatus === "downloading" && (
-              <div className="mt-3">
-                <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
-                  <div
-                    className={`h-full rounded-full bg-sky-400 ${
-                      updateProgress?.percent == null ? "progress-indeterminate w-1/2" : ""
-                    }`}
-                    style={
-                      updateProgress?.percent == null
-                        ? undefined
-                        : { width: `${updateProgress?.percent ?? 0}%` }
-                    }
-                  />
-                </div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {updateProgress?.percent == null
-                    ? "正在下载..."
-                    : `已下载 ${updateProgress?.percent ?? 0}%`}
-                </div>
-              </div>
-            )}
-            {updateStatus === "available" && (
-              <div className="mt-3 flex gap-2">
-                <button
-                  className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400"
-                  type="button"
-                  onClick={installUpdate}
-                >
-                  立即更新
-                </button>
-                <button
-                  className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-100 hover:bg-slate-800"
-                  type="button"
-                  onClick={() => setUpdateMessage("")}
-                >
-                  稍后
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+          )}
+          {updateStatus === "available" && (
+            <div className="mt-3 flex gap-2">
+              <button
+                className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400"
+                type="button"
+                onClick={installUpdate}
+              >
+                立即更新
+              </button>
+              <button
+                className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-100 hover:bg-slate-800"
+                type="button"
+                onClick={() => setUpdateMessage("")}
+              >
+                稍后
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
-        {isShortcutSettingsOpen && (
-          <Suspense fallback={null}>
-            <ShortcutSettings
-              helpDisplaySettings={helpDisplaySettings}
-              labelDisplaySettings={labelDisplaySettings}
-              labelShortcuts={labelShortcuts}
-              shortcuts={shortcuts}
-              onChangeHelpDisplaySetting={setHelpDisplaySetting}
-              onChangeLabelDisplaySetting={setLabelDisplaySetting}
-              onChangeShortcut={updateShortcut}
-              onClose={() => setIsShortcutSettingsOpen(false)}
-            />
-          </Suspense>
-        )}
-        {isPrelabelSettingsOpen && (
-          <Suspense fallback={null}>
-            <PrelabelSettings
-              activeProjectConfig={activeProjectConfig}
-              isLabelDirty={isLabelDirty}
-              isLoaded={prelabelModels.isLoaded}
-              labels={labels}
-              library={prelabelModels.library}
-              pluginSources={pluginPrelabelSources}
-              onAddModel={prelabelModels.addModel}
-              onClose={() => setIsPrelabelSettingsOpen(false)}
-              onDeleteModel={prelabelModels.deleteModel}
-              onSelectModel={prelabelModels.selectModel}
-              onSaveMappings={savePrelabelMappings}
-              onUpdateModel={prelabelModels.updateModel}
-            />
-          </Suspense>
-        )}
-        {isPrelabelExecutionOpen && (
-          <Suspense fallback={null}>
-            <PrelabelExecutionDialog
-              execution={prelabelExecution}
-              hasSelectedImage={Boolean(selectedPath)}
-              onClose={() => setIsPrelabelExecutionOpen(false)}
-            />
-          </Suspense>
-        )}
-
-        {contextMenu && (
-          <CanvasContextMenu
-            onClose={() => setContextMenu(null)}
-            canDeleteImage={
-              canDeleteImage &&
-              Boolean(selectedImage) &&
-              !videos.some((video) => video.images.some((image) => image.path === selectedPath))
-            }
-            onDeleteImage={() => {
-              setContextMenu(null);
-              requestDeleteImage(selectedPath);
-            }}
-            annotation={contextAnnotation}
-            canNextImage={selectedImageIndex >= 0 && selectedImageIndex < scopedPaths.length - 1}
-            canNextUnannotatedImage={hasNextUnannotatedImage}
-            canPreviousImage={selectedImageIndex > 0}
-            canPreviousUnannotatedImage={hasPreviousUnannotatedImage}
+      {isShortcutSettingsOpen && (
+        <Suspense fallback={null}>
+          <ShortcutSettings
+            helpDisplaySettings={helpDisplaySettings}
+            labelDisplaySettings={labelDisplaySettings}
+            labelShortcuts={labelShortcuts}
+            shortcuts={shortcuts}
+            onChangeHelpDisplaySetting={setHelpDisplaySetting}
+            onChangeLabelDisplaySetting={setLabelDisplaySetting}
+            onChangeShortcut={updateShortcut}
+            onClose={() => setIsShortcutSettingsOpen(false)}
+          />
+        </Suspense>
+      )}
+      {isPrelabelSettingsOpen && (
+        <Suspense fallback={null}>
+          <PrelabelSettings
+            activeProjectConfig={activeProjectConfig}
+            isLabelDirty={isLabelDirty}
+            isLoaded={prelabelModels.isLoaded}
             labels={labels}
-            x={contextMenu.x}
-            y={contextMenu.y}
-            onChangeLabel={changeAnnotationLabel}
-            onDeleteAnnotation={deleteContextAnnotation}
-            onFitHeight={() => {
-              fitImageHeight();
-              setContextMenu(null);
-            }}
-            onFitWidth={() => {
-              fitImageWidth();
-              setContextMenu(null);
-            }}
-            onNextImage={() => {
-              selectAdjacentImage(1);
-              setContextMenu(null);
-            }}
-            onNextUnannotatedImage={() => {
-              selectAdjacentUnannotatedImage(1);
-              setContextMenu(null);
-            }}
-            onOriginalSize={() => {
-              setImageScale(1);
-              setContextMenu(null);
-            }}
-            onPreviousImage={() => {
-              selectAdjacentImage(-1);
-              setContextMenu(null);
-            }}
-            onPreviousUnannotatedImage={() => {
-              selectAdjacentUnannotatedImage(-1);
-              setContextMenu(null);
-            }}
-            onResetZoom={() => {
-              resetZoom();
-              setContextMenu(null);
-            }}
-            onZoomIn={() => {
-              zoomFromKeyboard(1);
-              setContextMenu(null);
-            }}
-            onZoomOut={() => {
-              zoomFromKeyboard(-1);
-              setContextMenu(null);
-            }}
+            library={prelabelModels.library}
+            pluginSources={pluginPrelabelSources}
+            onAddModel={prelabelModels.addModel}
+            onClose={() => setIsPrelabelSettingsOpen(false)}
+            onDeleteModel={prelabelModels.deleteModel}
+            onSelectModel={prelabelModels.selectModel}
+            onSaveMappings={savePrelabelMappings}
+            onUpdateModel={prelabelModels.updateModel}
           />
-        )}
+        </Suspense>
+      )}
+      {isPrelabelExecutionOpen && (
+        <Suspense fallback={null}>
+          <PrelabelExecutionDialog
+            execution={prelabelExecution}
+            hasSelectedImage={Boolean(selectedPath)}
+            onClose={() => setIsPrelabelExecutionOpen(false)}
+          />
+        </Suspense>
+      )}
 
-        {annotationToDelete && (
-          <DeleteAnnotationDialog
-            labelName={labelById.get(annotationToDelete.labelId)?.name ?? "当前标注"}
-            onCancel={() => setAnnotationToDelete(null)}
-            onConfirm={confirmDeleteAnnotation}
-          />
-        )}
-      </div>
+      {contextMenu && (
+        <CanvasContextMenu
+          onClose={() => setContextMenu(null)}
+          canDeleteImage={
+            canDeleteImage &&
+            Boolean(selectedImage) &&
+            !videos.some((video) => video.images.some((image) => image.path === selectedPath))
+          }
+          onDeleteImage={() => {
+            setContextMenu(null);
+            requestDeleteImage(selectedPath);
+          }}
+          annotation={contextAnnotation}
+          canNextImage={selectedImageIndex >= 0 && selectedImageIndex < scopedPaths.length - 1}
+          canNextUnannotatedImage={hasNextUnannotatedImage}
+          canPreviousImage={selectedImageIndex > 0}
+          canPreviousUnannotatedImage={hasPreviousUnannotatedImage}
+          labels={labels}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onChangeLabel={changeAnnotationLabel}
+          onDeleteAnnotation={deleteContextAnnotation}
+          onFitHeight={() => {
+            fitImageHeight();
+            setContextMenu(null);
+          }}
+          onFitWidth={() => {
+            fitImageWidth();
+            setContextMenu(null);
+          }}
+          onNextImage={() => {
+            selectAdjacentImage(1);
+            setContextMenu(null);
+          }}
+          onNextUnannotatedImage={() => {
+            selectAdjacentUnannotatedImage(1);
+            setContextMenu(null);
+          }}
+          onOriginalSize={() => {
+            setImageScale(1);
+            setContextMenu(null);
+          }}
+          onPreviousImage={() => {
+            selectAdjacentImage(-1);
+            setContextMenu(null);
+          }}
+          onPreviousUnannotatedImage={() => {
+            selectAdjacentUnannotatedImage(-1);
+            setContextMenu(null);
+          }}
+          onResetZoom={() => {
+            resetZoom();
+            setContextMenu(null);
+          }}
+          onZoomIn={() => {
+            zoomFromKeyboard(1);
+            setContextMenu(null);
+          }}
+          onZoomOut={() => {
+            zoomFromKeyboard(-1);
+            setContextMenu(null);
+          }}
+        />
+      )}
+
+      {annotationToDelete && (
+        <DeleteAnnotationDialog
+          labelName={labelById.get(annotationToDelete.labelId)?.name ?? "当前标注"}
+          onCancel={() => setAnnotationToDelete(null)}
+          onConfirm={confirmDeleteAnnotation}
+        />
+      )}
+
       {projectSettings}
     </main>
   );

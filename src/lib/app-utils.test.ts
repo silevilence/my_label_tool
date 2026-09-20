@@ -33,6 +33,12 @@ import {
 } from "./app-utils";
 
 describe("app utils", () => {
+  it("normalizes saved single keys before reserving them against new defaults", () => {
+    expect(mergeShortcuts({ nextImage: "R" })).toMatchObject({
+      nextImage: "r",
+      selectRectTool: "",
+    });
+  });
   beforeEach(() => {
     useAnnotationStore.setState({
       annotationsByImage: {},

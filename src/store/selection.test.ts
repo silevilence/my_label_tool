@@ -36,9 +36,13 @@ describe("selection and scope", () => {
     expect(get().selectedPath).toBe("");
     get().selectAdjacent(1);
     get().selectUnannotated(-1);
+    expect(get().selectedPath).toBe("");
+    expect(get().scopeStack).toHaveLength(2);
     get().popScope();
     expect(get().selectedPath).toBe("a");
     get().pushScope({ kind: "video", ids: ["b"], label: "one" });
+    get().pushScope({ kind: "search", ids: ["b"], label: "nested" });
+    expect(get().scopeStack).toHaveLength(3);
     get().select("d");
     expect(get().scopeStack).toHaveLength(1);
     get().setImages([]);
@@ -59,6 +63,9 @@ describe("selection and scope", () => {
     store.setState({ selectedPath: "missing" });
     get().selectAdjacent(1);
     expect(get().selectedPath).toBe("a");
+    store.setState({ selectedPath: "missing" });
+    get().selectAdjacent(-1);
+    expect(get().selectedPath).toBe("d");
   });
   it("deletes and resumes atomically, pruning frame metadata, annotations and history", () => {
     get().addAnnotation("d", { id: "s", type: "point", labelId: "l", points: [1, 2] });

@@ -27,7 +27,12 @@ export function useVideoImport(
       resource: ["video-frames", "project-annotations", "export-dir"],
       cancel: async () => {
         cancelled.current = true;
-        await cancelVideoImport();
+        try {
+          await cancelVideoImport();
+        } catch (error) {
+          cancelled.current = false;
+          throw error;
+        }
       },
     });
     if (!operation.current) setError(operationText.busy);
@@ -74,8 +79,11 @@ export function useVideoImport(
         },
       );
     } catch (error) {
-      handle.fail(error);
-      setError(String(error));
+      if (cancelled.current) handle.complete(operationText.cancelled, "warning");
+      else {
+        handle.fail(error);
+        setError(String(error));
+      }
     } finally {
       pending.current = false;
       handle.complete(
@@ -113,8 +121,11 @@ export function useVideoImport(
       const result = await importVideo(source, folder, interval);
       await onImported(result);
     } catch (error) {
-      handle.fail(error);
-      setError(String(error));
+      if (cancelled.current) handle.complete(operationText.cancelled, "warning");
+      else {
+        handle.fail(error);
+        setError(String(error));
+      }
     } finally {
       pending.current = false;
       handle.complete(

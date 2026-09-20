@@ -37,6 +37,12 @@ export function ImageSearchDialog({
   const [cursorIndex, setCursorIndex] = useState(0);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [searchResults, setSearchResults] = useState(images);
+  const [candidateIndex, setCandidateIndex] = useState(() =>
+    Math.max(
+      0,
+      images.findIndex((image) => image.path === selectedPath),
+    ),
+  );
   const [searchError, setSearchError] = useState("");
   const [isPreviewError, setIsPreviewError] = useState(false);
   const labelById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
@@ -56,8 +62,7 @@ export function ImageSearchDialog({
     () => (isRegexSearch ? [] : getSearchHighlights(searchText)),
     [isRegexSearch, searchText],
   );
-  const candidate =
-    searchResults.find((image) => image.path === selectedPath) ?? searchResults[0] ?? null;
+  const candidate = searchResults[candidateIndex] ?? searchResults[0] ?? null;
   const searchPlaceholder = isRegexSearch
     ? "按文件名正则搜索，例如：WIN_.*Pro\\.jpg"
     : "搜索图片：@tag(person) -bad @size(>1MB)";
@@ -95,23 +100,22 @@ export function ImageSearchDialog({
     }
   }, [deferredSearchText, images, isRegexSearch, searchIndex]);
 
+  const queryRef = useRef({ text: deferredSearchText, regex: isRegexSearch });
   useEffect(() => {
-    if (candidate) {
-      onSelectImage(candidate.path);
-    }
-  }, [candidate, onSelectImage]);
+    if (queryRef.current.text !== deferredSearchText || queryRef.current.regex !== isRegexSearch)
+      setCandidateIndex(0);
+    queryRef.current = { text: deferredSearchText, regex: isRegexSearch };
+  }, [deferredSearchText, isRegexSearch]);
 
   function confirmCandidate() {
     if (!candidate) {
       return;
     }
-    useAnnotationStore
-      .getState()
-      .pushScope({
-        kind: "search",
-        ids: searchResults.map((image) => image.path),
-        label: selectionText.search(searchText, searchResults.length),
-      });
+    useAnnotationStore.getState().pushScope({
+      kind: "search",
+      ids: searchResults.map((image) => image.path),
+      label: selectionText.search(searchText, searchResults.length),
+    });
     onSelectImage(candidate.path);
     onClose();
   }
@@ -143,7 +147,7 @@ export function ImageSearchDialog({
       searchResults.findIndex((image) => image.path === candidate?.path),
     );
     const nextIndex = (currentIndex + delta + searchResults.length) % searchResults.length;
-    onSelectImage(searchResults[nextIndex].path);
+    setCandidateIndex(nextIndex);
   }
 
   return (
@@ -292,7 +296,7 @@ export function ImageSearchDialog({
                       confirmCandidate();
                       return;
                     }
-                    onSelectImage(image.path);
+                    setCandidateIndex(searchResults.indexOf(image));
                   }}
                 >
                   {image.name}

@@ -39,6 +39,7 @@ export function DeleteImageDialog({
       pointerOnly
       role="alertdialog"
       labelledBy="delete-image-title"
+      describedBy="delete-image-description"
     >
       <section
         aria-labelledby="delete-image-title"

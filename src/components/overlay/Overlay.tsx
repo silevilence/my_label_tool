@@ -45,6 +45,7 @@ interface OverlayProps {
   kind?: OverlayKind;
   canDismiss?: boolean | (() => boolean);
   labelledBy?: string;
+  describedBy?: string;
   label?: string;
   size?: keyof typeof sizes;
   role?: "dialog" | "alertdialog" | "menu";
@@ -62,6 +63,7 @@ function MountedOverlay({
   kind = "blocking",
   canDismiss = true,
   labelledBy,
+  describedBy,
   label,
   size = "md",
   role = "dialog",
@@ -76,6 +78,27 @@ function MountedOverlay({
   latest.current = { onClose, canDismiss, pointerOnly };
   const stack = useOverlayStore((state) => state.stack);
   const anchored = anchor !== undefined;
+  const anchorX = anchor?.x,
+    anchorY = anchor?.y;
+  useLayoutEffect(() => {
+    if (anchorX === undefined || anchorY === undefined || !panel.current) return;
+    const position = () => {
+      const element = panel.current;
+      if (!element) return;
+      const { width, height } = element.getBoundingClientRect();
+      element.style.left = `${Math.max(8, Math.min(anchorX, window.innerWidth - width - 8))}px`;
+      element.style.top = `${Math.max(8, Math.min(anchorY, window.innerHeight - height - 8))}px`;
+      element.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
+    };
+    position();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(position);
+    observer?.observe(panel.current);
+    window.addEventListener("resize", position);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", position);
+    };
+  }, [anchorX, anchorY]);
   useLayoutEffect(() => {
     const previous = document.activeElement;
     const store = useOverlayStore.getState();
@@ -102,7 +125,10 @@ function MountedOverlay({
               : 0
             : (index + (event.shiftKey ? -1 : 1) + elements.length) % elements.length;
         (elements[next] ?? panel.current)?.focus();
-      } else if (latest.current.pointerOnly) {
+      } else if (
+        latest.current.pointerOnly &&
+        !(event.type === "keyup" && ["Control", "Shift", "Alt", "Meta"].includes(event.key))
+      ) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }
@@ -133,6 +159,7 @@ function MountedOverlay({
   return createPortal(
     <ParentOverlay.Provider value={id}>
       <div
+        onContextMenu={(event) => event.preventDefault()}
         className={
           anchored
             ? "pointer-events-none fixed inset-0"
@@ -153,17 +180,16 @@ function MountedOverlay({
           role={role}
           aria-modal={kind === "blocking" ? true : undefined}
           aria-labelledby={labelledBy}
+          aria-describedby={describedBy}
           aria-label={label}
           className={`pointer-events-auto max-h-[calc(100dvh-2rem)] overflow-y-auto outline-none [&>section]:mx-auto ${anchored ? "absolute" : `w-full ${sizes[size]}`}`}
           style={
             anchor
               ? {
-                  left: Math.max(8, Math.min(anchor.x, window.innerWidth - 184)),
-                  top: Math.max(8, Math.min(anchor.y, window.innerHeight / 2)),
-                  maxHeight:
-                    window.innerHeight -
-                    Math.max(8, Math.min(anchor.y, window.innerHeight / 2)) -
-                    16,
+                  left: anchor.x,
+                  top: anchor.y,
+                  maxHeight: window.innerHeight - 16,
+                  maxWidth: window.innerWidth - 16,
                 }
               : undefined
           }

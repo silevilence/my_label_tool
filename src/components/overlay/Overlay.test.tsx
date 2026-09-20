@@ -3,6 +3,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { Overlay } from "./Overlay";
 import { useOverlayStore } from "../../store/useOverlayStore";
+import { ShortcutSettings } from "../settings/ShortcutSettings";
+import { DEFAULT_SHORTCUTS } from "../../lib/defaults/shortcuts";
+import {
+  DEFAULT_HELP_DISPLAY_SETTINGS,
+  DEFAULT_LABEL_DISPLAY_SETTINGS,
+} from "../../lib/defaults/display";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -51,7 +57,7 @@ it("registers nested overlays in depth order and delivers Escape only to the dis
   expect(inner).toHaveBeenCalledTimes(1);
   expect(outer).not.toHaveBeenCalled();
 });
-it("traps focus, restores the opener, and gives short viewports a bounded scrolling panel", () => {
+it("traps focus and restores the opener", () => {
   const opener = document.createElement("button");
   document.body.append(opener);
   opener.focus();
@@ -63,9 +69,6 @@ it("traps focus, restores the opener, and gives short viewports a bounded scroll
       </Overlay>,
     ),
   );
-  const panel = document.querySelector('[role="dialog"]')!;
-  expect(panel.className).toContain("max-h-[calc(100dvh-2rem)]");
-  expect(panel.className).toContain("overflow-y-auto");
   key("Tab", true);
   expect(document.activeElement?.textContent).toBe("last");
   key("Tab");
@@ -75,6 +78,89 @@ it("traps focus, restores the opener, and gives short viewports a bounded scroll
   act(() => root.render(null));
   expect(document.activeElement).toBe(opener);
   opener.remove();
+});
+
+it("cancels shortcut recording before closing its nested settings overlay", () => {
+  const outer = vi.fn(),
+    close = vi.fn(),
+    change = vi.fn();
+  act(() =>
+    root.render(
+      <Overlay onClose={outer} label="parent">
+        <ShortcutSettings
+          helpDisplaySettings={DEFAULT_HELP_DISPLAY_SETTINGS}
+          labelDisplaySettings={DEFAULT_LABEL_DISPLAY_SETTINGS}
+          labelShortcuts={[]}
+          shortcuts={DEFAULT_SHORTCUTS}
+          onChangeHelpDisplaySetting={vi.fn()}
+          onChangeLabelDisplaySetting={vi.fn()}
+          onChangeShortcut={change}
+          onClose={close}
+        />
+      </Overlay>,
+    ),
+  );
+  act(() =>
+    [...document.querySelectorAll("button")].find((b) => b.textContent === "录制")!.click(),
+  );
+  expect(document.body.textContent).toContain("按键中...");
+  key("Escape");
+  expect(document.body.textContent).not.toContain("按键中...");
+  expect(close).not.toHaveBeenCalled();
+  expect(outer).not.toHaveBeenCalled();
+  expect(change).not.toHaveBeenCalled();
+  key("Escape");
+  expect(close).toHaveBeenCalledOnce();
+  expect(outer).not.toHaveBeenCalled();
+});
+
+it("allows modifier release through pointer-only overlays and suppresses backdrop context menus", () => {
+  const release = vi.fn();
+  window.addEventListener("keyup", release);
+  act(() =>
+    root.render(
+      <Overlay onClose={vi.fn()} pointerOnly label="delete" describedBy="consequence">
+        <p id="consequence">consequence</p>
+        <button>confirm</button>
+      </Overlay>,
+    ),
+  );
+  const panel = document.querySelector('[role="dialog"]')!;
+  expect(panel.getAttribute("aria-describedby")).toBe("consequence");
+  act(() => panel.dispatchEvent(new KeyboardEvent("keyup", { key: "Control", bubbles: true })));
+  expect(release).toHaveBeenCalledOnce();
+  const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+  panel.parentElement!.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  window.removeEventListener("keyup", release);
+});
+
+it("keeps anchored menus near the pointer and clamps against measured bounds", () => {
+  const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+    width: 200,
+    height: 100,
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 200,
+    bottom: 100,
+    toJSON: () => ({}),
+  });
+  const render = (y: number) =>
+    act(() =>
+      root.render(
+        <Overlay onClose={vi.fn()} kind="light" anchor={{ x: 50, y }}>
+          <button>menu</button>
+        </Overlay>,
+      ),
+    );
+  render(window.innerHeight - 150);
+  const panel = document.querySelector<HTMLElement>('[role="dialog"]')!;
+  expect(parseFloat(panel.style.top)).toBe(window.innerHeight - 150);
+  render(window.innerHeight - 10);
+  expect(parseFloat(panel.style.top) + 100).toBeLessThanOrEqual(window.innerHeight - 8);
+  rect.mockRestore();
 });
 it("light overlays register independently and closed overlays never gate input", () => {
   act(() =>

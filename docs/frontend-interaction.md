@@ -64,7 +64,7 @@ useShortcut(id, handler)                       // 功能模块挂载时注册行
 resolveShortcut(event, ctx) → actionId | null  // 纯函数：匹配 · 优先级 · 门禁 · 冲突
 ```
 
-`ctx` 至少包含：`hasBlockingOverlay` / `hasLightOverlay`（来自 §1）、`isEditableTarget`、`busy`（来自 §3）、`mode`（来自 §5）、用户键位表与标签键位表。
+`ctx` 至少包含：`hasBlockingOverlay` / `hasLightOverlay`（来自 §1）、`isEditableTarget`、`busy`（来自 §3）、用户键位表与标签键位表。修饰键由键盘事件解析；多边形撤点通过草稿状态决定是否注册，避免保留未参与裁决的 mode 字段。
 
 **实现**
 
@@ -99,7 +99,7 @@ useOperations() → {
 
 - 允许并发；占用同一资源的操作互斥，裁决只在 `canStart` 一处。今天的 `workspaceDisabled`、键盘门禁、`canDeleteImage` 与写三遍的视频导入锁表达式退化为读它的数据。
 - 消息按操作归属并带 `kind`（`success | warning | error`）：成功不再穿错误配色，两条提示通道（5 秒红框 / 2.2 秒琥珀条）按 kind 分流，不再是「后写覆盖前写」。
-- 取消是操作的属性：界面上「哪里能取消」不再由各组件自行判断（当前更新下载没有任何取消入口）。
+- 取消是操作的属性：界面上「哪里能取消」不再由各组件自行判断（更新下载通过操作卡片取消安装）。
 - 各界面（`ExportPanel`、`PrelabelExecutionDialog`、`VideoBatchDialog`、`DeleteImageDialog`、`AppLayout` 的保存遮罩与更新面板）退化为薄适配器。
 
 **测试面**：注册表的归约（并发登记、资源互斥、终态与消息归属、取消传播）可纯函数化测试；界面只断言「读同一份状态」。
@@ -124,7 +124,7 @@ removeImages(paths: string[]): void        // 删除 + 接续 + 标注清理 + �
 **实现**
 
 - 删除与接续在同一次更新内完成：今天 `removeImage`（store）与 `setImages`（hook）分开写，`useImageDeletion.ts` 的 `remaining[Math.min(index, remaining.length - 1)]` 在 `index = -1` 时把选择清成空串（画布变白而不是停在邻图）。
-- 作用域栈顶决定「上一张 / 下一张 / 下一个未标注」：项目序（图片与视频帧按项目序合并）→ 搜索结果 → 单个视频的帧序。今天的 `←/→`（全项目序）、`PageUp/PageDown`（当前视频帧序）与搜索对话框私有游标成为同一模型的三个实例。
+- 作用域栈顶决定「上一张 / 下一张 / 下一个未标注」：项目序（图片与视频帧按项目序合并）→ 搜索结果 → 单个视频的帧序。今天的 `←/→`（全项目序）、`PageUp/PageDown`（当前视频帧序）与确认后的搜索结果使用同一模型。搜索面板仅保存临时候选序号，确认前不修改编辑对象或作用域。
 - 作用域必须**常驻可见、可退出**（侧栏作用域条，如「搜索结果：含 person 的 37 张 ✕」）；`ProjectMediaList` 的 `remembered` 影子游标与 `ImageSearchDialog` 的 `candidatePath` 随之删除。
 - 列表行注册滚入视口（今天由 App 的 `selectedImageButtonRef` + 两个渲染器各自赋值约定，漏赋值即静默失效）——抽成一个列表行模块，行自己持有注册责任。
 
@@ -150,8 +150,8 @@ useDraftGesture() → { state: "idle" | "rect" | "polygon" | "point" | "pan",
 
 - Stage 用 `resolveGesture` 统一分类；Konva 保留拖拽与 `Transformer` 变换（不自实现），三个图形渲染器只向同一解析器询问「当前模式下我能否被拖动 / 被选中」，删除各自的按钮与模式守卫。
 - 解析器把中键归为 cancel，未支持的按钮归为 null；拖拽阶段仅允许默认模式左键命中图形。
-- 草稿状态机统一开始 / 更新 / 提交 / 取消：`Esc` 处处可用（**当前矩形绘制中无法取消**，只能中键；多边形可以），取消语义与中键一致。
-- 屏幕 ↔ 原图坐标转换收成一个 adapter（`createTransform(layout)`），供画布交互、缩放、多边形草稿与插值预览共用（当前反向变换在 5 处各自重推）。
+- 草稿状态机统一开始 / 更新 / 提交 / 取消：`Esc` 处处可用（矩形和多边形均支持），取消语义与中键一致。
+- 屏幕 ↔ 原图坐标转换收成一个 adapter（`createTransform(layout)`），供画布交互、缩放、多边形草稿与插值预览共用（替代原先 5 处重复变换）。
 - 交互状态仍留在组件本地（见 ADR 0009 对 `AGENTS.md §6` 的修订范围）。
 
 **测试面**：`resolveGesture` 的分类矩阵（按钮 × 模式 × 命中/背景）、草稿状态机的转移与取消、坐标往返一致性与缩放锚点不变量。
@@ -168,7 +168,7 @@ frameSummaries(video, annotations, framePaths) → Array<{ index, frameIndex, ti
 ```
 
 ```ts
-useVideoFrameNavigation(video, images, selectedPath) → { currentIndex, select, step(delta), canStep(delta) }
+useVideoFrameNavigation(video, images, selectedPath) → { frames, currentIndex, select, step(delta), canStep(delta) }
 ```
 
 **实现**

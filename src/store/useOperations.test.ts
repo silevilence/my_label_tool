@@ -38,6 +38,9 @@ it("requests cancellation once, retains resources until terminal acknowledgement
   const handle = tryBeginOperation({ label: "download", resource: "model-download", cancel })!;
   await useOperations.getState().cancel(handle.id);
   expect(handle.cancelRequested).toBe(false);
+  expect(useOperations.getState().operations.find((op) => op.id === handle.id)?.message).toBe(
+    "retry",
+  );
   await useOperations.getState().cancel(handle.id);
   await useOperations.getState().cancel(handle.id);
   expect(cancel).toHaveBeenCalledTimes(2);
@@ -65,4 +68,5 @@ it("allows changing cancellation support and ignores unknown ids", async () => {
   expect(cancel).not.toHaveBeenCalled();
   useOperations.getState().dismiss(handle.id);
   expect(handle.cancelRequested).toBe(false);
+  expect(useOperations.getState().operations.some((op) => op.id === handle.id)).toBe(false);
 });

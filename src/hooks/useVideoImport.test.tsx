@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useVideoImport } from "./useVideoImport";
+import { useOperations } from "../store/useOperations";
 
 const api = vi.hoisted(() => ({
   confirmAction: vi.fn(),
@@ -22,6 +23,7 @@ function Harness() {
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.resetAllMocks();
+  useOperations.setState({ operations: [] });
   api.confirmAction.mockResolvedValue(true);
   api.selectVideoFile.mockResolvedValue("movie.mp4");
   api.selectExportFolder.mockResolvedValue("output");
@@ -107,4 +109,30 @@ it("publishes busy immediately and retains it until cancelled extraction settles
     await pending;
   });
   expect(controls.busy).toBe(false);
+});
+
+it("treats the backend's rejected extraction after cancellation as a warning, not a failure", async () => {
+  let reject!: (error: Error) => void;
+  api.importVideo.mockReturnValueOnce(
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    }),
+  );
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = controls.start(5, "project", "movie.mp4");
+  });
+  await act(async () => controls.cancel());
+  expect(useOperations.getState().canStart("video-frames")).toBe(false);
+  await act(async () => {
+    reject(new Error("VIDEO_INTERRUPTED"));
+    await pending;
+  });
+  expect(imported).not.toHaveBeenCalled();
+  expect(error.mock.calls.filter(([message]) => message)).toEqual([]);
+  expect(useOperations.getState().operations[0]).toMatchObject({
+    status: "completed",
+    kind: "warning",
+  });
+  expect(useOperations.getState().canStart("video-frames")).toBe(true);
 });

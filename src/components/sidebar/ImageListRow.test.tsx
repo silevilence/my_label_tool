@@ -16,10 +16,13 @@ it("owns scrolling and exposes an exit for the current scope", () => {
     root.render(
       <>
         <ImageListRow selected>a</ImageListRow>
+        <ImageListRow selected={false}>b</ImageListRow>
         <ScopeBar />
       </>,
     ),
   );
+  expect(scroll).toHaveBeenCalledTimes(1);
+  expect((scroll.mock.instances[0] as HTMLElement)?.textContent).toBe("a");
   expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
   expect(container.textContent).toContain("Search: a");
   act(() => container.querySelector<HTMLButtonElement>("button[aria-label]")!.click());

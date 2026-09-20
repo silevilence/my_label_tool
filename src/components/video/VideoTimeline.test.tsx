@@ -111,3 +111,37 @@ it("handles missing selection, one frame, and disabled extraction state", async 
   );
   expect(container.querySelector("input")?.disabled).toBe(true);
 });
+
+it("centres the playhead on its density segment for dense timelines and shows annotation/keyframe markers", () => {
+  const dense = Array.from({ length: 300 }, (_, index) => ({
+    ...frames[0],
+    index,
+    path: `frame-${index}`,
+    frameIndex: index,
+    annotated: index === 1,
+    keyframe: index === 1,
+  }));
+  for (const index of [0, 1, 150, 299]) {
+    act(() =>
+      root.render(
+        <VideoTimeline
+          frames={dense}
+          currentIndex={index}
+          totalFrames={300}
+          onSelectFrame={vi.fn()}
+        />,
+      ),
+    );
+    const playhead = container.querySelector<HTMLElement>('[aria-hidden="true"]')!;
+    const percent = Number(playhead.style.left.match(/[\d.]+/)![0]);
+    const centre = (percent / 100) * 640;
+    expect(centre).toBeGreaterThan((index / 300) * 640);
+    expect(centre).toBeLessThan(((index + 1) / 300) * 640);
+  }
+  const marked = container.querySelector('[data-frame-path="frame-1"]')!;
+  expect(marked.getAttribute("data-annotated")).toBe("true");
+  expect(marked.getAttribute("data-keyframe")).toBe("true");
+  expect(marked.children).toHaveLength(1);
+  expect(container.querySelector('[data-frame-path="frame-0"]')!.children).toHaveLength(0);
+  expect(container.textContent).toContain("关键帧");
+});

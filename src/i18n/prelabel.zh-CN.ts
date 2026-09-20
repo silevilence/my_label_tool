@@ -145,6 +145,8 @@ export const PRELABEL_ZH_CN = {
   sourcePluginOption: (name: string) => `插件：${name}`,
   executionSource: (name: string) => `当前来源：${name}`,
   pluginSourceUnavailable: "预打标插件当前不可用",
+  cancelFailed: (reason: unknown) =>
+    `取消预打标失败：${reason instanceof Error ? reason.message : String(reason)}`,
   pluginCancelFailed: (reason: unknown) => `取消插件预打标失败：${String(reason)}`,
   pluginRefreshFailed: (reason: unknown) => `刷新预打标插件状态失败：${String(reason)}`,
   pluginSourcesTitle: "预打标插件",
