@@ -84,5 +84,27 @@ it("rejects invalid intervals and prevents overlapping imports", async () => {
   resolve(false);
   await pending;
   await controls.cancel();
+  expect(api.cancelVideoImport).not.toHaveBeenCalled();
+});
+
+it("publishes busy immediately and retains it until cancelled extraction settles", async () => {
+  let finish!: (result: unknown) => void;
+  api.importVideo.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = controls.start(5, "project", "movie.mp4");
+  });
+  expect(controls.busy).toBe(true);
+  await act(async () => controls.cancel());
   expect(api.cancelVideoImport).toHaveBeenCalledOnce();
+  expect(controls.busy).toBe(true);
+  await act(async () => {
+    finish({ folderPath: "project/new", video: { frames: [] } });
+    await pending;
+  });
+  expect(controls.busy).toBe(false);
 });

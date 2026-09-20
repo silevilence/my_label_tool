@@ -1,3 +1,5 @@
+import { tryBeginOperation } from "../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../i18n/operations.zh-CN";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { listTextFiles, readTextFile } from "../lib/tauri-api";
 import { saveProjectConfig } from "../lib/app-utils";
@@ -53,6 +55,14 @@ export function useProjectSettings(
       setSaveError(text.invalidSettings);
       return false;
     }
+    const operation = tryBeginOperation({
+      label: text.saveSettings,
+      resource: ["project-annotations", "export-dir"],
+    });
+    if (!operation) {
+      setSaveError(operationText.busy);
+      return false;
+    }
     pending.current = true;
     setSaving(true);
     setSaveError("");
@@ -63,9 +73,11 @@ export function useProjectSettings(
       setConfig((latest) => (latest ? { ...latest, settings } : latest));
       return true;
     } catch (error) {
+      operation.fail(error);
       if (current.current.configPath === configPath) setSaveError(String(error));
       return false;
     } finally {
+      operation.complete();
       pending.current = false;
       setSaving(false);
     }

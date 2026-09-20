@@ -1,3 +1,5 @@
+import { tryBeginOperation, useOperations, type OperationHandle } from "../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../i18n/operations.zh-CN";
 import { useMemo, useRef, useState } from "react";
 import {
   cancelPrelabelInference,
@@ -100,7 +102,37 @@ export function usePrelabelExecution({
   insertAnnotationsBatch,
   setError,
 }: UsePrelabelExecutionOptions) {
-  const [progress, setProgress] = useState<PrelabelExecutionProgress>(IDLE_PROGRESS);
+  const [progress, setProgressState] = useState<PrelabelExecutionProgress>(IDLE_PROGRESS);
+  const operation = useRef<OperationHandle | null>(null);
+  const progressRef = useRef(IDLE_PROGRESS);
+  function setProgress(
+    update:
+      | PrelabelExecutionProgress
+      | ((current: PrelabelExecutionProgress) => PrelabelExecutionProgress),
+  ) {
+    const next = typeof update === "function" ? update(progressRef.current) : update;
+    progressRef.current = next;
+    operation.current?.progress(next.percent, next.message);
+    if (!next.isRunning)
+      operation.current?.complete(next.message, next.cancelRequested ? "warning" : "success");
+    setProgressState(next);
+  }
+  function beginOperation() {
+    const handle = tryBeginOperation({
+      label: operationText.prelabel,
+      resource:
+        currentSource?.kind === "builtin"
+          ? ["project-annotations", "onnx-runtime"]
+          : "project-annotations",
+      cancel: currentSource?.supportsCancel ? cancel : undefined,
+    });
+    if (!handle) {
+      setError(operationText.busy);
+      return false;
+    }
+    operation.current = handle;
+    return true;
+  }
   const cancelRequestedRef = useRef(false);
   const activePluginOperationIdRef = useRef<string | null>(null);
   const runningRef = useRef(false);
@@ -138,7 +170,8 @@ export function usePrelabelExecution({
         selectionId: source.selectionId,
         kind: "plugin" as const,
         name: source.pluginName,
-        classNames: source.classNames.length > 0 ? source.classNames : labels.map((label) => label.name),
+        classNames:
+          source.classNames.length > 0 ? source.classNames : labels.map((label) => label.name),
         enabled: source.enabled,
         disabledReason: source.disabledReason,
         supportsCancel: source.supportsCancel,
@@ -169,9 +202,16 @@ export function usePrelabelExecution({
     if (!currentSource?.enabled || !selectedPath || runningRef.current) {
       return;
     }
-    const taskContext = { activeProjectConfig, images, labels, model: currentModel, source: currentSource };
+    const taskContext = {
+      activeProjectConfig,
+      images,
+      labels,
+      model: currentModel,
+      source: currentSource,
+    };
     const mappings = currentMappings;
     const taskId = currentSource.kind === "builtin" ? crypto.randomUUID() : null;
+    if (!beginOperation()) return;
     runningRef.current = true;
     cancelRequestedRef.current = false;
     taskIdRef.current = taskId;
@@ -186,14 +226,7 @@ export function usePrelabelExecution({
       percent: null,
     });
     try {
-      const outcome = await inferWithSource(
-        currentSource,
-        [selectedPath],
-        mappings,
-        0,
-        1,
-        taskId,
-      );
+      const outcome = await inferWithSource(currentSource, [selectedPath], mappings, 0, 1, taskId);
       if (!isContextCurrent(taskContext)) {
         throw new Error(text.executionContextChanged);
       }
@@ -215,13 +248,16 @@ export function usePrelabelExecution({
         percent: result ? 100 : 0,
       });
     } catch (reason) {
+      operation.current?.fail(text.inferenceFailed(reason));
       setError(text.inferenceFailed(reason));
       setProgress({ ...IDLE_PROGRESS, message: text.inferenceStopped });
     } finally {
       runningRef.current = false;
       taskIdRef.current = null;
       if (currentSource.kind === "plugin") {
-        void refreshPluginSources().catch((reason: unknown) => setError(text.pluginRefreshFailed(reason)));
+        void refreshPluginSources().catch((reason: unknown) =>
+          setError(text.pluginRefreshFailed(reason)),
+        );
       }
     }
   }
@@ -236,7 +272,13 @@ export function usePrelabelExecution({
       return;
     }
 
-    const taskContext = { activeProjectConfig, images, labels, model: currentModel, source: currentSource };
+    const taskContext = {
+      activeProjectConfig,
+      images,
+      labels,
+      model: currentModel,
+      source: currentSource,
+    };
     const mappings = currentMappings;
     const expectedAnnotations = new Map(
       targets.map((image) => [
@@ -246,6 +288,7 @@ export function usePrelabelExecution({
     );
     const historyGroupId = crypto.randomUUID();
     const taskId = currentSource.kind === "builtin" ? crypto.randomUUID() : null;
+    if (!beginOperation()) return;
     runningRef.current = true;
     cancelRequestedRef.current = false;
     taskIdRef.current = taskId;
@@ -333,6 +376,7 @@ export function usePrelabelExecution({
         });
         return;
       }
+      operation.current?.fail(text.inferenceFailed(reason));
       setError(text.inferenceFailed(reason));
       setProgress({
         operation: "batch",
@@ -347,7 +391,9 @@ export function usePrelabelExecution({
       runningRef.current = false;
       taskIdRef.current = null;
       if (currentSource.kind === "plugin") {
-        void refreshPluginSources().catch((reason: unknown) => setError(text.pluginRefreshFailed(reason)));
+        void refreshPluginSources().catch((reason: unknown) =>
+          setError(text.pluginRefreshFailed(reason)),
+        );
       }
     }
   }
@@ -424,9 +470,7 @@ export function usePrelabelExecution({
             setProgress((current) => ({
               ...current,
               message:
-                typeof event.payload.message === "string"
-                  ? event.payload.message
-                  : current.message,
+                typeof event.payload.message === "string" ? event.payload.message : current.message,
               percent:
                 chunkPercent == null || total === 0
                   ? current.percent
@@ -510,7 +554,9 @@ export function usePrelabelExecution({
   }
 
   return {
-    cancel,
+    cancel: () => {
+      if (operation.current) void useOperations.getState().cancel(operation.current.id);
+    },
     currentModel,
     currentSource,
     currentSourceId: currentSource?.selectionId ?? "",

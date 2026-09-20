@@ -1,3 +1,5 @@
+import { tryBeginOperation } from "../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../i18n/operations.zh-CN";
 import { useEffect, useState } from "react";
 import {
   checkAppUpdate,
@@ -66,17 +68,45 @@ export function useAppUpdate(setError: (message: string) => void) {
       return;
     }
 
+    let cancelled = false;
+    const operation = tryBeginOperation({
+      label: operationText.update,
+      resource: "app-update",
+      cancel: () => {
+        cancelled = true;
+        setUpdateMessage(operationText.updateCancelled);
+      },
+    });
+    if (!operation) return;
+    operation.progress(null, operationText.updateCancelHint);
     setUpdateStatus("downloading");
     setUpdateMessage(`正在下载并安装 ${pendingUpdate.version}...`);
 
     try {
-      await installAppUpdate(pendingUpdate, setUpdateProgress);
+      const installed = await installAppUpdate(
+        pendingUpdate,
+        (progress) => {
+          setUpdateProgress(progress);
+          operation.progress(progress.percent);
+        },
+        () => cancelled,
+        () => operation.setCancel(),
+      );
+      if (!installed) {
+        operation.complete(operationText.updateCancelled, "warning");
+        setPendingUpdate(null);
+        setUpdateStatus("idle");
+        setUpdateMessage(operationText.updateCancelled);
+        return;
+      }
+      operation.complete();
       setUpdateStatus("installed");
       setUpdateMessage("更新已安装，正在重启...");
     } catch (caughtError: unknown) {
       const message = `安装更新失败：${
         caughtError instanceof Error ? caughtError.message : String(caughtError)
       }`;
+      operation.fail(message);
       setUpdateStatus("error");
       setUpdateMessage(message);
       setError(message);

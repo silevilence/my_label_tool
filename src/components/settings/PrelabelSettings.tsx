@@ -1,3 +1,5 @@
+import { tryBeginOperation, useOperations, type OperationHandle } from "../../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../../i18n/operations.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 // This settings workspace keeps model-library, runtime, and PT-conversion orchestration together
 // because they share one guarded mutation lifecycle and active selection. The import form
@@ -103,9 +105,16 @@ export function PrelabelSettings({
   const [ptConversionSession, setPtConversionSession] = useState<PtConversionSession | null>(null);
   const [ptConversionNotice, setPtConversionNotice] = useState("");
   const [error, setError] = useState("");
-  const [isBusy, setIsBusy] = useState(false);
+  const modelOperation = useRef<OperationHandle | null>(null);
+  const runtimeOperation = useRef<OperationHandle | null>(null);
+  const operations = useOperations((state) => state.operations);
+  const isBusy = operations.some(
+    (op) => op.id === modelOperation.current?.id && op.status === "running",
+  );
   const [runtimeStatus, setRuntimeStatus] = useState<OnnxRuntimeStatus | null>(null);
-  const [isRuntimeBusy, setIsRuntimeBusy] = useState(false);
+  const isRuntimeBusy = operations.some(
+    (op) => op.id === runtimeOperation.current?.id && op.status === "running",
+  );
   const [runtimeNotice, setRuntimeNotice] = useState("");
   const [modelValidation, setModelValidation] = useState("");
   const [downloadProgress, setDownloadProgress] = useState<{
@@ -180,29 +189,41 @@ export function PrelabelSettings({
     if (mutationInFlight.current) {
       return;
     }
+    const operation = tryBeginOperation({ label: operationText.model, resource: "model-download" });
+    if (!operation) {
+      setError(operationText.busy);
+      return;
+    }
+    modelOperation.current = operation;
     mutationInFlight.current = true;
-    setIsBusy(true);
     setError("");
     try {
       await action();
     } catch (reason) {
+      operation.fail(reason);
       setError(String(reason));
     } finally {
       mutationInFlight.current = false;
-      setIsBusy(false);
+      operation.complete();
     }
   }
 
   async function runRuntimeAction(action: () => Promise<OnnxRuntimeStatus>) {
-    setIsRuntimeBusy(true);
+    const operation = tryBeginOperation({ label: operationText.runtime, resource: "onnx-runtime" });
+    if (!operation) {
+      setError(operationText.busy);
+      return;
+    }
+    runtimeOperation.current = operation;
     setError("");
     setModelValidation("");
     try {
       setRuntimeStatus(await action());
     } catch (reason) {
+      operation.fail(reason);
       setError(text.runtimeOperationFailed(reason));
     } finally {
-      setIsRuntimeBusy(false);
+      operation.complete();
     }
   }
 
@@ -223,13 +244,23 @@ export function PrelabelSettings({
     const downloadId = crypto.randomUUID();
     cancelledDownloads.current.delete(downloadId);
     activeDownloadId.current = downloadId;
-    setIsRuntimeBusy(true);
+    const operation = tryBeginOperation({ label: operationText.runtime, resource: "onnx-runtime" });
+    if (!operation) {
+      setError(operationText.busy);
+      return;
+    }
+    runtimeOperation.current = operation;
     setError("");
     setRuntimeNotice("");
+    operation.setCancel(cancelRuntimeDownload);
     setDownloadProgress(null);
     try {
       const outcome = await downloadOnnxRuntime(downloadId, (event) => {
         if (event.event === "progress") {
+          operation.progress(
+            event.total ? (event.downloaded / event.total) * 100 : null,
+            event.fileName,
+          );
           setDownloadProgress({
             file: event.fileName,
             downloaded: event.downloaded,
@@ -238,18 +269,21 @@ export function PrelabelSettings({
         }
       });
       if (cancelledDownloads.current.has(downloadId) || outcome.cancelled) {
+        operation.complete(text.runtimeDownloadCancelled, "warning");
         setRuntimeNotice(text.runtimeDownloadCancelled);
       } else {
         setRuntimeStatus(await getOnnxRuntimeStatus());
+        operation.complete(text.runtimeCompleted);
         setRuntimeNotice(text.runtimeCompleted);
       }
     } catch (reason) {
+      operation.fail(reason);
       setError(text.runtimeOperationFailed(reason));
     } finally {
       if (activeDownloadId.current === downloadId) {
         activeDownloadId.current = null;
       }
-      setIsRuntimeBusy(false);
+      operation.complete();
       setDownloadProgress(null);
     }
   }
@@ -280,24 +314,31 @@ export function PrelabelSettings({
       }
       const downloadId = crypto.randomUUID();
       activeModelDownloadId.current = downloadId;
+      modelOperation.current?.setCancel(cancelModelDownload);
       setIsModelUpdating(true);
       setModelUpdateNotice(null);
       setModelUpdateProgress(null);
       try {
         const result = await downloadPrelabelModel(sourceUrl, downloadId, (event) => {
           if (event.event === "progress") {
+            modelOperation.current?.progress(
+              event.total ? (event.downloaded / event.total) * 100 : null,
+            );
             setModelUpdateProgress({ downloaded: event.downloaded, total: event.total });
           }
         });
         // A cancellation request may lose the race to installation. Only the backend's
         // terminal result determines whether the downloaded model needs to be persisted.
         if (!result) {
+          modelOperation.current?.complete(text.modelUpdateCancelled, "warning");
           setModelUpdateNotice({ tone: "warning", message: text.modelUpdateCancelled });
         } else {
           await onUpdateModel(applyModelDownloadResult({ ...model, sourceUrl }, result));
+          modelOperation.current?.complete(text.modelUpdateCompleted(model.name));
           setModelUpdateNotice({ tone: "success", message: text.modelUpdateCompleted(model.name) });
         }
       } catch (reason) {
+        modelOperation.current?.fail(reason);
         setError(text.modelUpdateFailed(reason));
       } finally {
         activeModelDownloadId.current = null;
@@ -324,7 +365,12 @@ export function PrelabelSettings({
   }
 
   async function validateModel(model: PrelabelModelConfig) {
-    setIsRuntimeBusy(true);
+    const operation = tryBeginOperation({ label: operationText.runtime, resource: "onnx-runtime" });
+    if (!operation) {
+      setError(operationText.busy);
+      return;
+    }
+    runtimeOperation.current = operation;
     setError("");
     setModelValidation("");
     try {
@@ -339,9 +385,10 @@ export function PrelabelSettings({
       );
       setRuntimeStatus(await getOnnxRuntimeStatus());
     } catch (reason) {
+      operation.fail(reason);
       setError(text.modelValidationFailed(reason));
     } finally {
-      setIsRuntimeBusy(false);
+      operation.complete();
     }
   }
 
@@ -382,8 +429,13 @@ export function PrelabelSettings({
     if (mutationInFlight.current || session.status !== "confirming" || !session.plan) {
       return;
     }
+    const operation = tryBeginOperation({ label: operationText.model, resource: "model-download" });
+    if (!operation) {
+      setError(operationText.busy);
+      return;
+    }
+    modelOperation.current = operation;
     mutationInFlight.current = true;
-    setIsBusy(true);
     setError("");
     setPtConversionNotice("");
     setPtConversionSession((current) =>
@@ -411,6 +463,7 @@ export function PrelabelSettings({
       setPtGuidance(null);
       setPtConversionSession(null);
     } catch (reason) {
+      operation.fail(reason);
       if (
         cancelledConversions.current.has(session.conversionId) &&
         isPtConversionCancelledResult(reason)
@@ -430,7 +483,7 @@ export function PrelabelSettings({
     } finally {
       cancelledConversions.current.delete(session.conversionId);
       mutationInFlight.current = false;
-      setIsBusy(false);
+      operation.complete();
     }
   }
 
@@ -576,7 +629,10 @@ export function PrelabelSettings({
               isDownloading={activeDownloadId.current !== null}
               notice={runtimeNotice}
               status={runtimeStatus}
-              onCancel={() => void cancelRuntimeDownload()}
+              onCancel={() => {
+                if (runtimeOperation.current)
+                  void useOperations.getState().cancel(runtimeOperation.current.id);
+              }}
               onDownload={() => void downloadRuntime()}
               onInstall={() => void installRuntimeManually()}
               onRefresh={() => void refreshRuntime()}
@@ -637,7 +693,10 @@ export function PrelabelSettings({
                   }}
                   onCancel={() => setEditingModel(currentModel)}
                   onChange={setEditingModel}
-                  onCancelUpdate={() => void cancelModelDownload()}
+                  onCancelUpdate={() => {
+                    if (modelOperation.current)
+                      void useOperations.getState().cancel(modelOperation.current.id);
+                  }}
                   onUpdateFromUrl={() => void updateModelFromUrl(editingModel)}
                   onValidate={() => void validateModel(editingModel)}
                   onDelete={() => {

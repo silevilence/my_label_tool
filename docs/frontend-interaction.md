@@ -91,7 +91,9 @@ useOperations() → {
 // OperationHandle: { id, progress(percent, message?), complete(message?), fail(error), cancelRequested }
 ```
 
-`OperationResource` 取值（首批）：`project-annotations`、`export-dir`、`video-frames`、`model-download`、`onnx-runtime`。
+`OperationResource` 取值（首批）：`project-annotations`、`export-dir`、`video-frames`、`model-download`、`onnx-runtime`、`app-update`。操作可同时占用多项资源；图片删除和视频重抽帧同时占用项目标注、导出目录与视频帧，插件导出仅占用导出目录。
+
+更新器取消受当前 Tauri updater API 限制：取消请求阻止安装与重启，当前下载传输结束后才释放资源；界面明确展示此语义，不承诺立即停止网络传输。
 
 **实现**
 

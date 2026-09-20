@@ -57,11 +57,11 @@
   - [x] 冲突判定收敛为一份 `detectConflicts`，供设置面板、标签编辑器与运行时共用；`mergeShortcuts` 的新默认键例外由表推导
   - 验收：四层优先级（blocking / light / canvas / global）与冲突裁决可纯函数验证；新增动作不再修改 `App.tsx` 与 `AppLayout.tsx`
 
-- [ ] **前端交互③：操作注册表与按资源互斥**
-  - [ ] 按 `docs/frontend-interaction.md` §3 实现注册表：`begin` / `progress` / `complete` / `fail` / `canStart(resource)`，操作声明占用资源与取消句柄（ADR 0010）
-  - [ ] 迁移预打标、插件导出、视频导入与抽帧、模型与运行时下载、保存、图片删除到注册表，界面退化为薄适配器
-  - [ ] 消息按操作归属并带类型，成功不再借用错误通道；更新下载补上取消入口
-  - [ ] 删除 `workspaceDisabled`、键盘门禁与 `canDeleteImage` 中的重复与运算，以及写三遍的视频导入锁表达式
+- [x] **前端交互③：操作注册表与按资源互斥**
+  - [x] 按 `docs/frontend-interaction.md` §3 实现注册表：`begin` / `progress` / `complete` / `fail` / `canStart(resource)`，操作声明占用资源与取消句柄（ADR 0010）
+  - [x] 迁移预打标、插件导出、视频导入与抽帧、模型与运行时下载、保存、图片删除到注册表，界面退化为薄适配器
+  - [x] 消息按操作归属并带类型，成功不再借用错误通道；更新下载补上取消入口
+  - [x] 删除 `workspaceDisabled`、键盘门禁与 `canDeleteImage` 中的重复与运算，以及写三遍的视频导入锁表达式
   - 验收：并发操作各自呈现进度与取消、消息不互相覆盖；占用同一资源的操作无法同时启动
 
 - [ ] **前端交互④：选择与作用域归属 store**

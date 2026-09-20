@@ -1,3 +1,5 @@
+import { tryBeginOperation, useOperations, type OperationHandle } from "../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../i18n/operations.zh-CN";
 import type { VideoExtractionSettings } from "../types/project-settings";
 import { useRef, useState } from "react";
 import type { ProjectVideo, VideoImportResult } from "../types/video";
@@ -43,6 +45,7 @@ export function useProjectVideoActions({
   const [replacing, setReplacing] = useState(false);
   const [replacementError, setReplacementError] = useState("");
   const replacingRef = useRef(false);
+  const replacementOperation = useRef<OperationHandle | null>(null);
   // The batch callback must see results committed by earlier iterations, even before React renders.
   const latest = useRef({ folderPath, entries, images });
   latest.current = { folderPath, entries, images };
@@ -75,7 +78,10 @@ export function useProjectVideoActions({
   }
   const importer = useVideoImport(applyImported, setError);
   function requestReextract(path: string, interval: number | VideoExtractionSettings) {
-    if (blocked || importer.busy || replacingRef.current) {
+    if (
+      blocked ||
+      !useOperations.getState().canStart(["video-frames", "project-annotations", "export-dir"])
+    ) {
       setError(text.reextractBusy);
       return;
     }
@@ -86,7 +92,10 @@ export function useProjectVideoActions({
   }
   async function confirmReextract() {
     if (!replacement || replacingRef.current || Date.now() < replacement.readyAt) return;
-    if (blocked || importer.busy) {
+    if (
+      blocked ||
+      !useOperations.getState().canStart(["video-frames", "project-annotations", "export-dir"])
+    ) {
       setReplacementError(text.reextractBusy);
       return;
     }
@@ -98,6 +107,18 @@ export function useProjectVideoActions({
       setReplacementError(text.reextractStale);
       return;
     }
+    const operation = tryBeginOperation({
+      label: operationText.video,
+      resource: ["video-frames", "project-annotations", "export-dir"],
+      cancel: async () => {
+        await cancelVideoImport();
+      },
+    });
+    if (!operation) {
+      setReplacementError(operationText.busy);
+      return;
+    }
+    replacementOperation.current = operation;
     replacingRef.current = true;
     setReplacing(true);
     setReplacementError("");
@@ -112,8 +133,10 @@ export function useProjectVideoActions({
         result,
         replacement.asset.images.map((image) => image.path),
       );
+      operation.complete();
       setReplacement(null);
     } catch (error) {
+      operation.fail(error);
       setReplacementError(error instanceof Error ? error.message : String(error));
     } finally {
       replacingRef.current = false;
@@ -122,7 +145,10 @@ export function useProjectVideoActions({
   }
   function cancelReextract() {
     if (replacingRef.current)
-      void cancelVideoImport().catch((error: unknown) => setReplacementError(String(error)));
+      void (
+        replacementOperation.current &&
+        useOperations.getState().cancel(replacementOperation.current.id)
+      );
     else setReplacement(null);
   }
   async function addVideo(requested?: string) {

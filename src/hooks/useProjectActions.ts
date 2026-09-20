@@ -1,3 +1,5 @@
+import { tryBeginOperation, useOperations, type OperationHandle } from "../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../i18n/operations.zh-CN";
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   baseName,
@@ -109,14 +111,57 @@ export function useProjectActions({
   setSelectedExportFormatId,
 }: UseProjectActionsParams) {
   const projectMigrationGenerationRef = useRef(0);
-  const [pluginExportProgress, setPluginExportProgress] =
-    useState<PluginExportProgressState | null>(null);
+  const exportOperation = useRef<OperationHandle | null>(null);
+  const [activePluginExportId, setActivePluginExportId] = useState<string | null>(null);
+  const exportView = useOperations((state) =>
+    state.operations.find((op) => op.id === exportOperation.current?.id),
+  );
+  const pluginExportProgress: PluginExportProgressState | null =
+    activePluginExportId && exportView?.status === "running"
+      ? {
+          exportId: activePluginExportId,
+          percent: exportView.percent,
+          message: exportView.message,
+          canCancel: exportView.canCancel,
+          cancelling: exportView.cancelRequested,
+        }
+      : null;
 
   function reportError(caughtError: unknown) {
     setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
   }
 
-  async function exportSelectedFormat() {
+  async function runExport(save: boolean) {
+    const handle = tryBeginOperation({
+      label: save ? operationText.save : operationText.export,
+      resource: selectedExportFormatId.startsWith("plugin:")
+        ? "export-dir"
+        : ["export-dir", "project-annotations"],
+    });
+    if (!handle) {
+      setError(operationText.busy);
+      return false;
+    }
+    exportOperation.current = handle;
+    try {
+      const saved = await (save ? saveProjectExportInternal() : exportSelectedFormatInternal());
+      handle.complete(
+        saved ? operationText.completed : operationText.cancelled,
+        saved ? "success" : "warning",
+      );
+      return saved;
+    } catch (error) {
+      handle.fail(error);
+      reportError(error);
+      return false;
+    } finally {
+      exportOperation.current = null;
+    }
+  }
+  const exportSelectedFormat = () => runExport(false);
+  const saveProjectExport = () => runExport(true);
+
+  async function exportSelectedFormatInternal() {
     setError("");
 
     try {
@@ -127,6 +172,7 @@ export function useProjectActions({
       }
       return true;
     } catch (caughtError: unknown) {
+      exportOperation.current?.fail(caughtError);
       reportError(caughtError);
       return false;
     }
@@ -176,13 +222,16 @@ export function useProjectActions({
       const outputDir = await selectExportFolder();
       if (!outputDir) return null;
       const exportId = crypto.randomUUID();
-      setPluginExportProgress({
-        exportId,
-        percent: null,
-        message: pluginText.exportRunning,
-        canCancel: pluginFormat.supportsCancel,
-        cancelling: false,
-      });
+      exportOperation.current?.setCancel(
+        pluginFormat.supportsCancel
+          ? async () => {
+              const result = await cancelPluginExport(exportId);
+              if (!result.found) throw new Error(pluginText.exportCancelUnavailable);
+            }
+          : undefined,
+      );
+      setActivePluginExportId(exportId);
+      exportOperation.current?.progress(null, pluginText.exportRunning);
       try {
         const result = await runPluginExport(
           pluginFormat.pluginId,
@@ -194,26 +243,15 @@ export function useProjectActions({
           exportId,
           (event) => {
             if (!pluginFormat.supportsProgress || event.event !== "progress") return;
-            setPluginExportProgress((current) =>
-              current?.exportId === exportId
-                ? {
-                    ...current,
-                    percent:
-                      typeof event.payload.percent === "number"
-                        ? Math.max(0, Math.min(100, event.payload.percent))
-                        : current.percent,
-                    message:
-                      typeof event.payload.message === "string"
-                        ? event.payload.message
-                        : current.message,
-                  }
-                : current,
+            exportOperation.current?.progress(
+              typeof event.payload.percent === "number" ? event.payload.percent : null,
+              typeof event.payload.message === "string" ? event.payload.message : undefined,
             );
           },
         );
-        setError(pluginText.exportComplete(result.files.length));
+        exportOperation.current?.complete(pluginText.exportComplete(result.files.length));
       } finally {
-        setPluginExportProgress((current) => (current?.exportId === exportId ? null : current));
+        setActivePluginExportId(null);
         void refreshPluginExtensions().catch(reportError);
       }
       return outputDir;
@@ -241,18 +279,19 @@ export function useProjectActions({
     return outputDir;
   }
 
-  async function saveProjectExport() {
+  async function saveProjectExportInternal() {
     setError("");
 
     try {
       if (!activeProjectConfig || selectedExportFormatId !== activeProjectConfig.format) {
-        return await exportSelectedFormat();
+        return await exportSelectedFormatInternal();
       }
 
       await exportToProjectConfig(activeProjectConfig);
       await updateProjectConfig(activeProjectConfig.format, activeProjectConfig.annotationPath);
       return true;
     } catch (caughtError: unknown) {
+      exportOperation.current?.fail(caughtError);
       reportError(caughtError);
       return false;
     }
@@ -527,30 +566,6 @@ export function useProjectActions({
     await migrateProjectPluginConfigs(activeProjectConfig, migrationGeneration);
   }
 
-  async function cancelActivePluginExport(): Promise<void> {
-    const current = pluginExportProgress;
-    if (!current?.canCancel || current.cancelling) return;
-    setPluginExportProgress({
-      ...current,
-      cancelling: true,
-      message: pluginText.exportCancelling,
-    });
-    try {
-      const result = await cancelPluginExport(current.exportId);
-      if (!result.found) {
-        setPluginExportProgress((latest) =>
-          latest?.exportId === current.exportId ? { ...latest, cancelling: false } : latest,
-        );
-        setError(pluginText.exportCancelUnavailable);
-      }
-    } catch (caughtError: unknown) {
-      reportError(caughtError);
-      setPluginExportProgress((latest) =>
-        latest?.exportId === current.exportId ? { ...latest, cancelling: false } : latest,
-      );
-    }
-  }
-
   async function loadConfiguredStandardImport(
     config: ProjectConfig,
     currentImages: ImageFile[],
@@ -706,7 +721,10 @@ export function useProjectActions({
   }
 
   return {
-    cancelActivePluginExport,
+    cancelActivePluginExport: async () => {
+      if (exportOperation.current)
+        await useOperations.getState().cancel(exportOperation.current.id);
+    },
     createProjectFromExternalYolo,
     exportSelectedFormat,
     importAnnotations,

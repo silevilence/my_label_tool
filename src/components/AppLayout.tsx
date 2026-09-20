@@ -1,3 +1,4 @@
+import { useOperations } from "../store/useOperations";
 import { useShortcut } from "../hooks/useShortcut";
 import {
   lazy,
@@ -69,7 +70,6 @@ interface AppLayoutProps {
   projectSettings?: ReactNode;
   interpolationShape?: AnnotationShape | null;
   onDismissError?: () => void;
-  workspaceDisabled?: boolean;
   canvasFooter?: ReactNode;
   videos?: LoadedProjectVideo[];
   addVideo?: (source?: string) => void;
@@ -208,7 +208,6 @@ export function AppLayout({
   projectSettings,
   interpolationShape,
   onDismissError,
-  workspaceDisabled = false,
   canvasFooter,
   videos = [],
   addVideo,
@@ -332,6 +331,7 @@ export function AppLayout({
   updateShortcut,
   zoomFromKeyboard,
 }: AppLayoutProps) {
+  const annotationsBusy = useOperations((state) => !state.canStart("project-annotations"));
   const [canvasPointer, setCanvasPointer] = useState<{ x: number; y: number } | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const selectedImageIndex = images.findIndex((image) => image.path === selectedPath);
@@ -401,13 +401,7 @@ export function AppLayout({
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
       <div
-        className={`flex min-h-0 flex-1 ${workspaceDisabled ? "pointer-events-none opacity-60" : ""}`}
-        onKeyDownCapture={(event) => {
-          if (workspaceDisabled) {
-            event.preventDefault();
-            event.stopPropagation();
-          }
-        }}
+        className={`flex min-h-0 flex-1 ${annotationsBusy ? "pointer-events-none opacity-60" : ""}`}
       >
         <AppSidebar
           reextractVideo={reextractVideo}

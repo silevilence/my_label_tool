@@ -1,3 +1,5 @@
+import { tryBeginOperation, useOperations, type OperationHandle } from "../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../i18n/operations.zh-CN";
 import type { VideoExtractionSettings } from "../types/project-settings";
 import { useRef, useState } from "react";
 import {
@@ -16,7 +18,21 @@ export function useVideoImport(
   onImported: (result: VideoImportResult) => Promise<void>,
   setError: (message: string) => void,
 ) {
-  const [busy, setBusy] = useState(false);
+  const operation = useRef<OperationHandle | null>(null);
+  const operations = useOperations((state) => state.operations);
+  const busy = operations.some((op) => op.id === operation.current?.id && op.status === "running");
+  function begin() {
+    operation.current = tryBeginOperation({
+      label: operationText.video,
+      resource: ["video-frames", "project-annotations", "export-dir"],
+      cancel: async () => {
+        cancelled.current = true;
+        await cancelVideoImport();
+      },
+    });
+    if (!operation.current) setError(operationText.busy);
+    return operation.current;
+  }
   const pending = useRef(false);
   const cancelled = useRef(false);
   const [batch, setBatch] = useState<VideoBatchProgress | null>(null);
@@ -32,9 +48,10 @@ export function useVideoImport(
       !validExtraction(extractionSettings(interval))
     )
       return;
+    const handle = begin();
+    if (!handle) return;
     pending.current = true;
     cancelled.current = false;
-    setBusy(true);
     setError("");
     try {
       await runVideoImportQueue(
@@ -43,11 +60,28 @@ export function useVideoImport(
         interval,
         onImported,
         () => cancelled.current,
-        setBatch,
+        (progress) => {
+          setBatch(progress);
+          handle.progress(
+            progress.total ? (progress.completed / progress.total) * 100 : null,
+            text.batchProgress(progress.completed, progress.total, progress.failures.length),
+          );
+          if (progress.finished)
+            handle.complete(
+              progress.cancelled ? text.batchCancelled : text.batchFinished,
+              progress.cancelled || progress.failures.length ? "warning" : "success",
+            );
+        },
       );
+    } catch (error) {
+      handle.fail(error);
+      setError(String(error));
     } finally {
       pending.current = false;
-      setBusy(false);
+      handle.complete(
+        cancelled.current ? operationText.cancelled : operationText.completed,
+        cancelled.current ? "warning" : "success",
+      );
     }
   }
   async function start(
@@ -56,22 +90,28 @@ export function useVideoImport(
     sourcePath?: string,
   ) {
     if (pending.current || !validExtraction(extractionSettings(interval))) return;
+    const handle = begin();
+    if (!handle) return;
     pending.current = true;
+    cancelled.current = false;
     try {
       if (!projectFolder && !(await confirmAction(text.replace))) return;
       const source = sourcePath || (await selectVideoFile());
-      if (!source) return;
+      if (!source || cancelled.current) return;
       const folder = projectFolder || (await selectExportFolder());
-      if (!folder) return;
-      setBusy(true);
+      if (!folder || cancelled.current) return;
       setError("");
       const result = await importVideo(source, folder, interval);
       await onImported(result);
     } catch (error) {
+      handle.fail(error);
       setError(String(error));
     } finally {
       pending.current = false;
-      setBusy(false);
+      handle.complete(
+        cancelled.current ? operationText.cancelled : operationText.completed,
+        cancelled.current ? "warning" : "success",
+      );
     }
   }
   return {
@@ -82,9 +122,7 @@ export function useVideoImport(
     closeBatch: () => {
       if (!pending.current) setBatch(null);
     },
-    cancel: () => {
-      cancelled.current = true;
-      return cancelVideoImport().catch((error: unknown) => setError(String(error)));
-    },
+    cancel: () =>
+      operation.current ? useOperations.getState().cancel(operation.current.id) : Promise.resolve(),
   };
 }

@@ -3,13 +3,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
 export type AppUpdateStatus =
-  | "idle"
-  | "checking"
-  | "available"
-  | "not-available"
-  | "downloading"
-  | "installed"
-  | "error";
+  "idle" | "checking" | "available" | "not-available" | "downloading" | "installed" | "error";
 
 export interface AppUpdateProgress {
   downloaded: number;
@@ -24,11 +18,13 @@ export function checkAppUpdate(): Promise<Update | null> {
 export async function installAppUpdate(
   update: Update,
   onProgress: (progress: AppUpdateProgress) => void,
-): Promise<void> {
+  isCancelled: () => boolean = () => false,
+  onInstalling: () => void = () => {},
+): Promise<boolean> {
   let downloaded = 0;
   let total: number | null = null;
 
-  await update.downloadAndInstall((event: DownloadEvent) => {
+  await update.download((event: DownloadEvent) => {
     if (event.event === "Started") {
       downloaded = 0;
       total = event.data.contentLength ?? null;
@@ -43,5 +39,12 @@ export async function installAppUpdate(
     });
   });
 
+  if (isCancelled()) {
+    await update.close();
+    return false;
+  }
+  onInstalling();
+  await update.install();
   await relaunch();
+  return true;
 }

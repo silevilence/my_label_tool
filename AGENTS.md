@@ -74,12 +74,13 @@ cargo test --manifest-path src-tauri/Cargo.toml
 my_label_tool/
 ├── src/                            # React 前端
 │   ├── components/                 # UI 组件（AppLayout、DeleteImageDialog 图片删除确认弹窗）
+│   │   ├── operations/             # 按操作归属的进度、取消与终态消息
 │   │   ├── overlay/                # 自注册遮罩、输入门禁、焦点与视口滚动
 │   │   ├── canvas/                 # Konva 画布（CanvasChrome）、几何计算（geometry）、交互类型
 │   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置、插件管理
 │   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）、图片列表右键菜单（ImageListContextMenu）
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
-│   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态、useOverlayStore 遮罩栈、useShortcutStore 动作注册与键位）
+│   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态、useOverlayStore 遮罩栈、useShortcutStore 动作注册与键位、useOperations 资源互斥注册表）
 │   ├── types/                      # 核心类型（annotation、export、prelabel、plugin）
 │   ├── lib/                        # tauri-api 封装、导入导出、插件契约、工具函数
 │   │   ├── defaults/               # 导出模板、标签、快捷键、显示设置默认值

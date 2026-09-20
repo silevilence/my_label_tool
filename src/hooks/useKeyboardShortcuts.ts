@@ -1,3 +1,4 @@
+import { useOperations } from "../store/useOperations";
 import { useEffect } from "react";
 import { useShortcut } from "./useShortcut";
 import { useShortcutStore } from "../store/useShortcutStore";
@@ -79,7 +80,7 @@ export function useKeyboardShortcuts({
         hasBlockingOverlay: overlay.hasBlocking(),
         hasLightOverlay: overlay.hasLight(),
         isEditableTarget: isEditableTarget(event.target),
-        busy: false,
+        busy: !useOperations.getState().canStart("project-annotations"),
         mode: "default",
         shortcuts,
         labelShortcuts: labels,

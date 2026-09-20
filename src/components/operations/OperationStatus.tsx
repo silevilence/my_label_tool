@@ -1,0 +1,40 @@
+import { useOperations } from "../../store/useOperations";
+import { OPERATION_ZH_CN as text } from "../../i18n/operations.zh-CN";
+
+export function OperationStatus() {
+  const { operations, cancel, dismiss } = useOperations();
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex max-h-[40vh] w-80 flex-col gap-2 overflow-y-auto">
+      {operations.map((op) => (
+        <section
+          key={op.id}
+          role="status"
+          className={`rounded border bg-slate-950 p-3 text-sm shadow-xl ${op.kind === "error" ? "border-red-600 text-red-200" : op.kind === "success" ? "border-emerald-600 text-emerald-200" : "border-amber-600 text-amber-200"}`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <strong>{op.label}</strong>
+            {op.status === "running" ? (
+              op.canCancel && (
+                <button
+                  type="button"
+                  disabled={op.cancelRequested}
+                  onClick={() => void cancel(op.id)}
+                >
+                  {op.cancelRequested ? text.cancelling : text.cancel}
+                </button>
+              )
+            ) : (
+              <button type="button" aria-label={text.dismiss} onClick={() => dismiss(op.id)}>
+                ×
+              </button>
+            )}
+          </div>
+          {op.message && <p className="mt-1 break-words">{op.message}</p>}
+          {op.status === "running" && (
+            <progress className="mt-2 w-full" max={100} value={op.percent ?? undefined} />
+          )}
+        </section>
+      ))}
+    </div>
+  );
+}

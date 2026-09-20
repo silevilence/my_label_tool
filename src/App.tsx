@@ -1,3 +1,5 @@
+import { useOperations } from "./store/useOperations";
+import { OperationStatus } from "./components/operations/OperationStatus";
 import { useOverlayStore } from "./store/useOverlayStore";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
@@ -313,10 +315,6 @@ function App() {
   });
 
   const { message: transientMessage, showMessage } = useTransientMessage();
-  const showErrorMessage = (message: string) => {
-    setError("");
-    showMessage(message);
-  };
   const {
     cancelActivePluginExport,
     createProjectFromExternalYolo,
@@ -343,7 +341,7 @@ function App() {
     replaceAnnotations,
     setActiveProjectConfig,
     setActiveProjectConfigPath,
-    setError: showErrorMessage,
+    setError,
     setProjectTemplateId,
     setSelectedExportFormatId,
   });
@@ -362,8 +360,9 @@ function App() {
     setError,
   });
 
-  const imageDeletionBusy =
-    prelabelExecution.progress.isRunning || isSaving || pluginExportProgress !== null;
+  const imageDeletionBusy = useOperations(
+    (state) => !state.canStart(["project-annotations", "export-dir", "video-frames"]),
+  );
   const imageDeletion = useImageDeletion({
     images,
     folderPath,
@@ -616,7 +615,12 @@ function App() {
 
   useEffect(() => {
     function updateMode(event: KeyboardEvent) {
-      if (useOverlayStore.getState().hasBlocking() || useOverlayStore.getState().hasLight()) return;
+      if (
+        useOverlayStore.getState().hasBlocking() ||
+        useOverlayStore.getState().hasLight() ||
+        !useOperations.getState().canStart("project-annotations")
+      )
+        return;
       setInteractionMode(getInteractionMode(event.ctrlKey, event.shiftKey));
     }
 
@@ -660,7 +664,12 @@ function App() {
 
   useEffect(() => {
     function finishPolygonFromKeyboard(event: KeyboardEvent) {
-      if (useOverlayStore.getState().hasBlocking() || useOverlayStore.getState().hasLight()) return;
+      if (
+        useOverlayStore.getState().hasBlocking() ||
+        useOverlayStore.getState().hasLight() ||
+        !useOperations.getState().canStart("project-annotations")
+      )
+        return;
       if (isEditableTarget(event.target) || currentShapeType !== "polygon") {
         return;
       }
@@ -731,6 +740,7 @@ function App() {
 
   return (
     <>
+      <OperationStatus />
       <AppLayout
         reextractVideo={
           !projectSettings.loading
@@ -774,13 +784,6 @@ function App() {
             ? () => setIsProjectSettingsOpen(true)
             : undefined
         }
-        workspaceDisabled={
-          videoImport.busy ||
-          videoImportSource !== null ||
-          videoImport.batch !== null ||
-          videoImport.replacement !== null ||
-          isProjectSettingsOpen
-        }
         videos={videos}
         addVideo={(source) => {
           if (!imageDeletionBusy && !imageDeletion.target) void addVideo(source);
@@ -805,7 +808,7 @@ function App() {
                 images={selectedVideo?.images ?? []}
                 selectedPath={selectedPath}
                 selectedShape={selectedShape}
-                disabled={videoImport.busy || imageDeletionBusy}
+                disabled={imageDeletionBusy}
                 onSelect={setSelectedPath}
                 onError={setError}
                 onPreviewChange={setInterpolationPreview}
@@ -898,7 +901,10 @@ function App() {
         newTemplate={newTemplate}
         openContextMenu={openContextMenu}
         openFolder={() => {
-          if (!videoImport.busy) void openFolder();
+          if (
+            useOperations.getState().canStart(["project-annotations", "export-dir", "video-frames"])
+          )
+            void openFolder();
         }}
         redo={redo}
         retryPluginConfigMigrations={retryPluginConfigMigrations}

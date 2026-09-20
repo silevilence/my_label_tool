@@ -1,3 +1,5 @@
+import { tryBeginOperation, useOperations } from "../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../i18n/operations.zh-CN";
 import { useRef, useState } from "react";
 import { recycleImageFile, type ImageFile } from "../lib/tauri-api";
 import { useAnnotationStore } from "../store/useAnnotationStore";
@@ -29,7 +31,10 @@ export function useImageDeletion(options: {
   function request(path: string) {
     const current = latest.current;
     if (targetRef.current || inFlight.current) return;
-    if (current.busy) {
+    if (
+      current.busy ||
+      !useOperations.getState().canStart(["project-annotations", "export-dir", "video-frames"])
+    ) {
       current.setError(text.busy);
       return;
     }
@@ -51,12 +56,23 @@ export function useImageDeletion(options: {
     const pending = targetRef.current;
     if (!pending || inFlight.current || Date.now() < pending.readyAt) return;
     const current = latest.current;
-    if (current.busy) {
+    if (
+      current.busy ||
+      !useOperations.getState().canStart(["project-annotations", "export-dir", "video-frames"])
+    ) {
       setError(text.busy);
       return;
     }
     if (current.folderPath !== pending.folderPath || !current.images.includes(pending.image)) {
       setError(text.stale);
+      return;
+    }
+    const operation = tryBeginOperation({
+      label: operationText.deleteImage,
+      resource: ["project-annotations", "export-dir", "video-frames"],
+    });
+    if (!operation) {
+      setError(operationText.busy);
       return;
     }
     inFlight.current = true;
@@ -74,9 +90,11 @@ export function useImageDeletion(options: {
           latestState.setSelectedPath(remaining[Math.min(index, remaining.length - 1)]?.path ?? "");
         }
       }
+      operation.complete();
       targetRef.current = null;
       setTarget(null);
     } catch (caught: unknown) {
+      operation.fail(caught);
       setError(text.failure(caught instanceof Error ? caught.message : String(caught)));
     } finally {
       inFlight.current = false;
