@@ -3,6 +3,7 @@ import type { AnnotationShape, LabelConfig } from "../types/annotation";
 import {
   analyzeLabelTemplateChange,
   applyLabelTemplateChange,
+  findDanglingDraftLabels,
   formatLabelTemplateChange,
   hasDanglingLabels,
 } from "./label-template-sync";
@@ -63,5 +64,16 @@ describe("label template sync", () => {
     expect(change.ambiguousNames).toEqual(["Thing"]);
     expect(hasDanglingLabels(annotationsByImage, [label("person", "Person")])).toBe(true);
     expect(hasDanglingLabels(annotationsByImage, [label("person", "Person"), label("deleted", "Deleted")])).toBe(false);
+  });
+
+  it("finds draft-only labels that annotations still reference", () => {
+    const saved = [label("person", "Person")];
+    const draft = [label("person", "Person"), label("new", "New"), label("ghost", "Ghost")];
+    const used = new Set(["person", "ghost"]);
+    expect(findDanglingDraftLabels(draft, saved, used)).toEqual([label("ghost", "Ghost")]);
+    expect(findDanglingDraftLabels(draft, saved, new Set(["person", "new"]))).toEqual([
+      label("new", "New"),
+    ]);
+    expect(findDanglingDraftLabels([saved[0]], saved, used)).toEqual([]);
   });
 });

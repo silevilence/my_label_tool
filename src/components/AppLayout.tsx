@@ -28,6 +28,7 @@ import {
   type OverlayCorner,
 } from "./canvas/CanvasChrome";
 import { getFitScale, isLargeImage, isPointNearAnnotation, type CanvasRect } from "./canvas/geometry";
+import { MISSING_ANNOTATION_LABEL } from "./canvas/types";
 import type { CanvasContextMenu as CanvasContextMenuState, ImageLayout } from "./canvas/types";
 import type { InteractionMode } from "./canvas/types";
 import {
@@ -501,7 +502,7 @@ export function AppLayout({
                       y={imageLayout.y}
                     />
                     {annotations.map((annotation) => {
-                      const label = labelById.get(annotation.labelId) ?? labels[0];
+                      const label = labelById.get(annotation.labelId) ?? MISSING_ANNOTATION_LABEL;
                       const commonProps = {
                         annotation,
                         imageLayout,

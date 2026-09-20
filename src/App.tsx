@@ -275,6 +275,7 @@ function App() {
     showLabelSwitchHint,
   } = useLabelDisplaySettings(labelById);
 
+  const { message: transientMessage, showMessage } = useTransientMessage();
   const {
     applyProjectTemplate,
     clearProjectTemplate,
@@ -308,6 +309,7 @@ function App() {
     setCurrentLabelId,
     setError,
     setIsLabelDirty,
+    showMessage,
     setLabels,
     setSavedLabels,
     setSelectedTemplateId,
@@ -315,7 +317,6 @@ function App() {
     updateAnnotation,
   });
 
-  const { message: transientMessage, showMessage } = useTransientMessage();
   const {
     cancelActivePluginExport,
     createProjectFromExternalYolo,

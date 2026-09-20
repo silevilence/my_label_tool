@@ -1,3 +1,5 @@
+import type { LabelConfig } from "../../types/annotation";
+
 export interface ImageLayout {
   width: number;
   height: number;
@@ -12,6 +14,14 @@ export interface DrawingRect {
   currentX: number;
   currentY: number;
 }
+
+// 标注引用的标签不存在时的渲染哨兵：警示色 + 可见名称，替代原先静默套用第一个标签。
+export const MISSING_ANNOTATION_LABEL: LabelConfig = {
+  id: "",
+  name: "标签缺失",
+  color: "#f59e0b",
+  shapeType: "any",
+};
 
 export interface CanvasContextMenu {
   x: number;

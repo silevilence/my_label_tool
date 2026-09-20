@@ -4,6 +4,7 @@ import { confirmAction, saveLabelConfigs, saveLabelTemplates } from "../lib/taur
 import {
   analyzeLabelTemplateChange,
   applyLabelTemplateChange,
+  findDanglingDraftLabels,
   formatLabelTemplateChange,
   hasDanglingLabels,
 } from "../lib/label-template-sync";
@@ -11,7 +12,9 @@ import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annot
 import { isLabelCompatibleWithShape } from "../types/annotation";
 import type { ProjectConfig } from "../lib/importers";
 
-interface UseLabelActionsParams {
+export type LabelActions = ReturnType<typeof useLabelActions>;
+
+export interface UseLabelActionsParams {
   activeProjectConfig: ProjectConfig | null;
   activeProjectConfigPath: string;
   annotationsByImage: Record<string, AnnotationShape[]>;
@@ -32,6 +35,7 @@ interface UseLabelActionsParams {
   setCurrentLabelId: (labelId: string) => void;
   setError: (message: string) => void;
   setIsLabelDirty: (isDirty: boolean) => void;
+  showMessage: (message: string) => void;
   setLabels: (labels: LabelConfig[]) => void;
   setSavedLabels: (labels: LabelConfig[]) => void;
   setSelectedTemplateId: (templateId: string) => void;
@@ -66,6 +70,7 @@ export function useLabelActions({
   setCurrentLabelId,
   setError,
   setIsLabelDirty,
+  showMessage,
   setLabels,
   setSavedLabels,
   setSelectedTemplateId,
@@ -78,6 +83,9 @@ export function useLabelActions({
 
   function selectCurrentLabel(labelId: string) {
     const label = labels.find((item) => item.id === labelId);
+    if (label && !savedLabels.some((item) => item.id === labelId)) {
+      showMessage(`标签「${label.name}」尚未保存，保存模板后才会生效`);
+    }
     setCurrentLabelId(labelId);
     const selectedAnnotation = (annotationsByImage[selectedPath] ?? []).find(
       (annotation) => annotation.id === selectedShapeId,
@@ -169,13 +177,60 @@ export function useLabelActions({
     await saveProjectLabels(labels, true);
   }
 
-  function cancelLabelChanges() {
+  async function cancelLabelChanges() {
+    const danglingDraftLabels = findDanglingDraftLabels(labels, savedLabels, usedLabelIds);
+    let keptDraftLabels: LabelConfig[] = [];
+    if (danglingDraftLabels.length > 0) {
+      const names = danglingDraftLabels.map((label) => `「${label.name}」`).join("、");
+      const usageCount = Object.values(annotationsByImage).reduce(
+        (sum, items) =>
+          sum +
+          items.filter((annotation) =>
+            danglingDraftLabels.some((label) => label.id === annotation.labelId),
+          ).length,
+        0,
+      );
+      const removeAnnotations = await confirmAction(
+        `取消修改将移除未保存标签 ${names}，${usageCount} 个标注正在使用。\n\n确定：移除这些标注；取消：保留这些标签继续编辑（其余修改仍放弃）。`,
+      );
+      if (removeAnnotations) {
+        const safeIds = new Set(savedLabels.map((label) => label.id));
+        replaceAnnotations(
+          Object.fromEntries(
+            Object.entries(annotationsByImage).map(([path, items]) => [
+              path,
+              items.filter((annotation) => safeIds.has(annotation.labelId)),
+            ]),
+          ),
+        );
+      } else {
+        keptDraftLabels = danglingDraftLabels;
+      }
+    }
+
     if (selectedTemplateId === projectTemplateId && activeProjectConfig) {
       applyProjectTemplate(activeProjectConfig.template, savedLabels);
+      if (keptDraftLabels.length > 0) {
+        setLabels([...savedLabels, ...keptDraftLabels]);
+        setIsLabelDirty(true);
+      }
       return;
     }
 
-    applySavedLabels(savedLabels);
+    const merged =
+      keptDraftLabels.length > 0 ? [...savedLabels, ...keptDraftLabels] : savedLabels;
+    replaceMissingAnnotationLabels(merged);
+    setLabels(merged);
+    setSavedLabels(savedLabels);
+    setCurrentLabelId(
+      merged.some((label) => label.id === currentLabelId)
+        ? currentLabelId
+        : (merged[0]?.id ?? DEFAULT_LABELS[0].id),
+    );
+    setIsLabelDirty(keptDraftLabels.length > 0);
+    if (keptDraftLabels.length === 0) {
+      saveLabelConfigs(savedLabels).catch(reportError);
+    }
   }
 
   function saveTemplateAs() {

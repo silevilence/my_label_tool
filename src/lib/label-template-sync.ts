@@ -154,3 +154,13 @@ function countNames(labels: LabelConfig[]): Map<string, number> {
 export function labelNameKey(name: string): string {
   return name.trim().toLowerCase();
 }
+
+// 草稿中被删除（相对已存集合）、但仍有标注引用的标签：取消修改时必须显式处理，不得静默替换。
+export function findDanglingDraftLabels(
+  draftLabels: LabelConfig[],
+  savedLabels: LabelConfig[],
+  usedLabelIds: ReadonlySet<string>,
+): LabelConfig[] {
+  const savedIds = new Set(savedLabels.map((label) => label.id));
+  return draftLabels.filter((label) => !savedIds.has(label.id) && usedLabelIds.has(label.id));
+}
