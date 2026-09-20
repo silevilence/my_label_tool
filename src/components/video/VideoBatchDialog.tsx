@@ -21,6 +21,19 @@ export function VideoBatchDialog({
         <p role="status" className="mt-3 text-sm text-sky-300">
           {text.batchProgress(progress.completed, progress.total, progress.failures.length)}
         </p>
+        {progress.total > 0 && (
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full bg-sky-500 transition-[width]"
+                style={{ width: `${Math.min(100, ((progress.completed + progress.failures.length) / progress.total) * 100)}%` }}
+              />
+            </div>
+            <span className="text-xs tabular-nums text-slate-400">
+              {text.batchRemaining(progress.completed, progress.failures.length, progress.total)}
+            </span>
+          </div>
+        )}
         <p className="mt-2 text-xs text-slate-400">
           {progress.finished
             ? progress.cancelled

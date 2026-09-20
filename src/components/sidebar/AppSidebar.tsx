@@ -155,13 +155,11 @@ export function AppSidebar({
   const [imageMenu, setImageMenu] = useState<{ image: ImageFile; x: number; y: number } | null>(
     null,
   );
-  const selectedImageIndex = images.findIndex((image) => image.path === selectedPath);
   const [videoMenu, setVideoMenu] = useState<{ source: string; x: number; y: number } | null>(null);
-  const currentImageNumber = selectedImageIndex >= 0 ? selectedImageIndex + 1 : 0;
   const annotatedCount = images.filter(
     (image) => (annotationsByImage[image.path] ?? []).length > 0,
   ).length;
-  const progressPercent = images.length > 0 ? (currentImageNumber / images.length) * 100 : 0;
+  const progressPercent = images.length > 0 ? (annotatedCount / images.length) * 100 : 0;
   const compatibleCurrentLabels = labels.filter((label) =>
     isLabelCompatibleWithShape(label, currentShapeType),
   );
@@ -487,8 +485,8 @@ export function AppSidebar({
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
               <div className="h-full bg-sky-500" style={{ width: `${progressPercent}%` }} />
             </div>
-            <span className="w-14 text-right text-xs text-slate-400">
-              {currentImageNumber}/{images.length}
+            <span className="w-16 text-right text-xs text-slate-400" title="已标注 / 素材总数">
+              {annotatedCount}/{images.length}
             </span>
           </div>
         </div>

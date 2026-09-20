@@ -861,10 +861,12 @@ function RuntimeStatusPanel({
               </div>
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-slate-800">
                 <div
-                  className="h-full bg-sky-500 transition-all"
-                  style={{
-                    width: downloadProgress?.total ? `${progressPercent}%` : "12%",
-                  }}
+                  className={`h-full bg-sky-500 transition-all ${
+                    downloadProgress?.total ? "" : "progress-indeterminate w-1/2"
+                  }`}
+                  style={
+                    downloadProgress?.total ? { width: `${progressPercent}%` } : undefined
+                  }
                 />
               </div>
             </div>

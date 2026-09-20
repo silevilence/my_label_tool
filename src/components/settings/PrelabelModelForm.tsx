@@ -219,10 +219,10 @@ export function ModelImportForm({
               </div>
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-slate-800">
                 <div
-                  className="h-full bg-emerald-500 transition-all"
-                  style={{
-                    width: update.progress?.total ? `${progressPercent}%` : "12%",
-                  }}
+                  className={`h-full bg-emerald-500 transition-all ${
+                    update.progress?.total ? "" : "progress-indeterminate w-1/2"
+                  }`}
+                  style={update.progress?.total ? { width: `${progressPercent}%` } : undefined}
                 />
               </div>
             </div>
