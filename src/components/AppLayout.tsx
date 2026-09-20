@@ -103,6 +103,7 @@ interface AppLayoutProps {
   isImageLoading: boolean;
   isLabelDirty: boolean;
   isPanning: boolean;
+  spacePanActive: boolean;
   isSaving: boolean;
   isShortcutSettingsOpen: boolean;
   isPrelabelSettingsOpen: boolean;
@@ -240,6 +241,7 @@ export function AppLayout({
   isImageLoading,
   isLabelDirty,
   isPanning,
+  spacePanActive,
   isSaving,
   isShortcutSettingsOpen,
   isPrelabelSettingsOpen,
@@ -470,7 +472,7 @@ export function AppLayout({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div
             ref={canvasHostRef}
-            className={`relative min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : canvasCursorClass}`}
+            className={`relative min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-950 ${isPanning ? "cursor-grabbing" : spacePanActive ? "cursor-grab" : canvasCursorClass}`}
             onMouseLeave={() => setCanvasPointer(null)}
             onMouseMove={updateCanvasPointer}
           >
@@ -505,6 +507,7 @@ export function AppLayout({
                         isHighlighted: annotation.id === highlightedShapeId,
                         isSelected: annotation.id === selectedShapeId,
                         isPanning,
+                        spacePan: spacePanActive,
                         key: annotation.id,
                         label,
                         showLabel: labelDisplaySettings[interactionMode],

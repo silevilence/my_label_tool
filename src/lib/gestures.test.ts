@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveGesture } from "./gestures";
+import { resolveGesture, shouldPanWithSpace } from "./gestures";
 import { reduceDraft, finishDraft, type Draft } from "./draft-gesture";
 import { createTransform } from "../components/canvas/transform";
 describe("canvas gesture seam", () => {
@@ -11,7 +11,7 @@ describe("canvas gesture seam", () => {
           expect(resolveGesture({ button: 0 }, ctx)).toBe(
             mode === "select" || (mode === "default" && hit) ? "select" : `draw-${shapeType}`,
           );
-          expect(resolveGesture({ button: 1 }, ctx)).toBe("cancel");
+          expect(resolveGesture({ button: 1 }, ctx)).toBe("pan");
           expect(resolveGesture({ button: 2 }, ctx)).toBe(mode === "annotate" ? "pan" : "context");
           expect(resolveGesture({ button: 3 }, ctx)).toBeNull();
           expect(resolveGesture({ button: 0, phase: "drag" }, ctx)).toBe(
@@ -24,6 +24,26 @@ describe("canvas gesture seam", () => {
     expect(resolveGesture({ button: 0, buttons: 4, phase: "drag" }, ctx)).toBeNull();
     expect(resolveGesture({ button: 2, phase: "drag" }, ctx)).toBeNull();
     expect(resolveGesture({ button: 0, buttons: 1, phase: "drag" }, ctx)).toBe("select");
+  });
+  it("resolves space-held left and middle buttons to pan without touching the drag phase", () => {
+    for (const mode of ["default", "select", "annotate"] as const) {
+      const ctx = { mode, shapeType: "rect" as const, hit: false, spacePan: true };
+      expect(resolveGesture({ button: 0 }, ctx)).toBe("pan");
+      expect(resolveGesture({ button: 1 }, ctx)).toBe("pan");
+      expect(resolveGesture({ button: 0, phase: "drag" }, ctx)).toBeNull();
+    }
+  });
+  it("gates space panning on modifiers, overlays, editable targets and busy operations", () => {
+    const base = { key: " ", repeat: false, ctrlKey: false, altKey: false, metaKey: false };
+    const ctx = { editableTarget: false, overlayDepth: 0, operationAvailable: true };
+    expect(shouldPanWithSpace(base, ctx)).toBe(true);
+    expect(shouldPanWithSpace({ ...base, repeat: true }, ctx)).toBe(false);
+    expect(shouldPanWithSpace({ ...base, key: "a" }, ctx)).toBe(false);
+    expect(shouldPanWithSpace({ ...base, ctrlKey: true }, ctx)).toBe(false);
+    expect(shouldPanWithSpace({ ...base, altKey: true }, ctx)).toBe(false);
+    expect(shouldPanWithSpace(base, { ...ctx, editableTarget: true })).toBe(false);
+    expect(shouldPanWithSpace(base, { ...ctx, overlayDepth: 1 })).toBe(false);
+    expect(shouldPanWithSpace(base, { ...ctx, operationAvailable: false })).toBe(false);
   });
   it("commits original-pixel drafts, rejects tiny shapes, and cancels every state", () => {
     const idle: Draft = { kind: "idle" };

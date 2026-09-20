@@ -24,7 +24,9 @@ import {
   type LabelConfig,
 } from "../types/annotation";
 
-interface UseCanvasInteractionsParams {
+export type CanvasInteractions = ReturnType<typeof useCanvasInteractions>;
+
+export interface UseCanvasInteractionsParams {
   gesture: ReturnType<typeof useDraftGesture>;
   annotations: AnnotationShape[];
   annotationToDelete: AnnotationShape | null;
@@ -37,6 +39,7 @@ interface UseCanvasInteractionsParams {
   labels: LabelConfig[];
   loadedImage: HTMLImageElement | null;
   panStateRef: MutableRefObject<PanState | null>;
+  spacePanActive: boolean;
   selectedPath: string;
   selectedRectRef: MutableRefObject<KonvaRect | null>;
   selectedShapeId: string | null;
@@ -66,6 +69,7 @@ export function useCanvasInteractions({
   labels,
   loadedImage,
   panStateRef,
+  spacePanActive,
   selectedPath,
   selectedRectRef,
   selectedShapeId,
@@ -265,23 +269,20 @@ export function useCanvasInteractions({
       return;
     }
 
-    if (
-      imageLayout &&
-      (pointer.x < imageLayout.x ||
-        pointer.y < imageLayout.y ||
-        pointer.x > imageLayout.x + imageLayout.width ||
-        pointer.y > imageLayout.y + imageLayout.height)
-    ) {
-      return;
-    }
-
     if (getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey) === "select") {
       cycleHighlightedCandidate(pointer, event.evt.deltaY > 0 ? 1 : -1);
       return;
     }
 
+    // 全画布均可缩放：锚点夹取到图片矩形内，避免图外滚动把图片甩出视野。
+    const anchor = imageLayout
+      ? {
+          x: Math.min(Math.max(pointer.x, imageLayout.x), imageLayout.x + imageLayout.width),
+          y: Math.min(Math.max(pointer.y, imageLayout.y), imageLayout.y + imageLayout.height),
+        }
+      : pointer;
     const step = event.evt.ctrlKey ? 1.04 : 1.12;
-    zoomAt(pointer, event.evt.deltaY < 0 ? step : 1 / step);
+    zoomAt(anchor, event.evt.deltaY < 0 ? step : 1 / step);
   }
 
   function handleStageMouseDown(event: KonvaEventObject<MouseEvent>) {
@@ -293,12 +294,8 @@ export function useCanvasInteractions({
       mode: getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey),
       shapeType: currentShapeType,
       hit: !isBackground,
+      spacePan: spacePanActive,
     });
-    if (intent === "cancel") {
-      event.evt.preventDefault();
-      gesture.cancel();
-      return;
-    }
     if (intent === "pan") {
       startPanning(event);
       return;
@@ -371,7 +368,8 @@ export function useCanvasInteractions({
   function handleStageMouseUp() {
     if (gesture.state === "pan") {
       panStateRef.current = null;
-      gesture.commit();
+      // 平移不产出标注；中键单击（无位移）由此等效取消草稿。
+      gesture.cancel();
       return;
     }
     if (gesture.state === "rect") commitAnnotation();
@@ -395,12 +393,12 @@ export function useCanvasInteractions({
 
   function startPanning(event: KonvaEventObject<MouseEvent>) {
     event.evt.preventDefault();
-    suppressContextMenuRef.current = true;
     if (!imageLayout) {
       return;
     }
-
+    suppressContextMenuRef.current = true;
     panStateRef.current = {
+      button: event.evt.button,
       startX: event.evt.clientX,
       startY: event.evt.clientY,
       layoutX: imageLayout.x,

@@ -48,7 +48,8 @@ import { usePrelabelModels } from "./hooks/usePrelabelModels";
 import { usePrelabelExecution } from "./hooks/usePrelabelExecution";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
-import { saveProjectConfig } from "./lib/app-utils";
+import { saveProjectConfig, isEditableTarget } from "./lib/app-utils";
+import { shouldPanWithSpace } from "./lib/gestures";
 import {
   loadLabelConfigs,
   loadLabelTemplates,
@@ -98,6 +99,7 @@ function App() {
   const [contextMenu, setContextMenu] = useState<CanvasContextMenu | null>(null);
   const gesture = useDraftGesture();
   const isPanning = gesture.state === "pan";
+  const [spacePanActive, setSpacePanActive] = useState(false);
   const [annotationToDelete, setAnnotationToDelete] = useState<AnnotationShape | null>(null);
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("default");
   const [currentShapeType, setCurrentShapeType] = useState<AnnotationShape["type"]>("rect");
@@ -463,6 +465,7 @@ function App() {
     labels,
     loadedImage,
     panStateRef,
+    spacePanActive,
     gesture,
     selectedPath,
     selectedRectRef,
@@ -632,6 +635,40 @@ function App() {
   }, []);
 
   useEffect(() => {
+    function enablePan(event: KeyboardEvent) {
+      if (
+        !shouldPanWithSpace(event, {
+          editableTarget: isEditableTarget(event.target),
+          overlayDepth: useOverlayStore.getState().depth(),
+          operationAvailable: useOperations.getState().canStart("project-annotations"),
+        })
+      )
+        return;
+      event.preventDefault();
+      setSpacePanActive(true);
+    }
+
+    function disablePan(event: KeyboardEvent) {
+      if (event.key === " ") {
+        setSpacePanActive(false);
+      }
+    }
+
+    function resetPan() {
+      setSpacePanActive(false);
+    }
+
+    window.addEventListener("keydown", enablePan);
+    window.addEventListener("keyup", disablePan);
+    window.addEventListener("blur", resetPan);
+    return () => {
+      window.removeEventListener("keydown", enablePan);
+      window.removeEventListener("keyup", disablePan);
+      window.removeEventListener("blur", resetPan);
+    };
+  }, []);
+
+  useEffect(() => {
     interruptDraft();
     if (interactionMode !== "select") {
       setHighlightedShapeId(null);
@@ -793,6 +830,7 @@ function App() {
         isImageLoading={isImageLoading}
         isLabelDirty={isLabelDirty}
         isPanning={isPanning}
+        spacePanActive={spacePanActive}
         isSaving={isSaving}
         isShortcutSettingsOpen={isShortcutSettingsOpen}
         isPrelabelSettingsOpen={isPrelabelSettingsOpen}

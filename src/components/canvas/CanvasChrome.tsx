@@ -331,6 +331,7 @@ interface AnnotationRectProps {
   interactionMode: InteractionMode;
   isHighlighted: boolean;
   isPanning: boolean;
+  spacePan: boolean;
   isSelected: boolean;
   label: LabelConfig;
   rectRef: MutableRefObject<KonvaRect | null>;
@@ -348,6 +349,7 @@ export function AnnotationRect({
   interactionMode,
   isHighlighted,
   isPanning,
+  spacePan,
   isSelected,
   label,
   rectRef,
@@ -390,7 +392,7 @@ export function AnnotationRect({
         onDragStart={(event) => handleShapeDragStart(event, interactionMode)}
         onDragEnd={(event) => onDragEnd(annotation, event)}
         onMouseDown={(event) =>
-          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
+          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart, spacePan)
         }
         onTransformEnd={() => onTransformEnd(annotation)}
       />
@@ -410,6 +412,7 @@ interface AnnotationPolygonProps {
   interactionMode: InteractionMode;
   isHighlighted: boolean;
   isPanning: boolean;
+  spacePan: boolean;
   isSelected: boolean;
   label: LabelConfig;
   showLabel: boolean;
@@ -429,6 +432,7 @@ export function AnnotationPolygon({
   interactionMode,
   isHighlighted,
   isPanning,
+  spacePan,
   isSelected,
   label,
   showLabel,
@@ -458,7 +462,7 @@ export function AnnotationPolygon({
           onContextMenu(event, annotation.id);
         }}
         onMouseDown={(event) =>
-          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
+          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart, spacePan)
         }
       />
       {isSelected &&
@@ -481,7 +485,7 @@ export function AnnotationPolygon({
               x={x}
               y={points[index * 2 + 1]}
               onMouseDown={(event) =>
-                handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
+                handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart, spacePan)
               }
               onDragStart={(event) => handleShapeDragStart(event, interactionMode)}
               onDragEnd={(event) => onVertexDragEnd(annotation, index, event)}
@@ -503,6 +507,7 @@ interface AnnotationPointProps {
   interactionMode: InteractionMode;
   isHighlighted: boolean;
   isPanning: boolean;
+  spacePan: boolean;
   isSelected: boolean;
   label: LabelConfig;
   showLabel: boolean;
@@ -518,6 +523,7 @@ export function AnnotationPoint({
   interactionMode,
   isHighlighted,
   isPanning,
+  spacePan,
   isSelected,
   label,
   showLabel,
@@ -554,7 +560,7 @@ export function AnnotationPoint({
         onDragStart={(event) => handleShapeDragStart(event, interactionMode)}
         onDragEnd={(event) => onPointDragEnd(annotation, event)}
         onMouseDown={(event) =>
-          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
+          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart, spacePan)
         }
       />
       {showLabel && (
@@ -573,8 +579,9 @@ function handleShapeMouseDown(
   annotationId: string,
   onSelect: (annotationId: string) => void,
   onPanStart: (event: KonvaEventObject<MouseEvent>) => void,
+  spacePan: boolean,
 ) {
-  const ctx = { mode: interactionMode, shapeType: "rect" as const, hit: true };
+  const ctx = { mode: interactionMode, shapeType: "rect" as const, hit: true, spacePan };
   const intent = resolveGesture(event.evt, ctx);
   if (intent === "pan") {
     event.cancelBubble = true;
