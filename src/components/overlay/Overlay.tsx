@@ -11,7 +11,33 @@ const sizes = {
   wide: "max-w-5xl",
 };
 const focusable =
-  ':is(button, input, select, textarea, a[href], [tabindex]):not(:disabled):not([tabindex="-1"])';
+  ':is(button, input:not([type="hidden"]), select, textarea, a[href], summary, [tabindex]):not(:disabled):not([tabindex="-1"])';
+
+function focusTargets(panel: HTMLElement | null): HTMLElement[] {
+  return Array.from(panel?.querySelectorAll<HTMLElement>(focusable) ?? []).filter((element) => {
+    for (
+      let node: HTMLElement | null = element;
+      node && node !== panel;
+      node = node.parentElement
+    ) {
+      const style = getComputedStyle(node);
+      if (
+        node.hidden ||
+        node.hasAttribute("inert") ||
+        style.display === "none" ||
+        style.visibility === "hidden"
+      )
+        return false;
+      if (
+        node instanceof HTMLDetailsElement &&
+        !node.open &&
+        !node.querySelector("summary")?.contains(element)
+      )
+        return false;
+    }
+    return true;
+  });
+}
 
 interface OverlayProps {
   open?: boolean;
@@ -49,13 +75,13 @@ function MountedOverlay({
   const latest = useRef({ onClose, canDismiss, pointerOnly });
   latest.current = { onClose, canDismiss, pointerOnly };
   const stack = useOverlayStore((state) => state.stack);
+  const anchored = anchor !== undefined;
   useLayoutEffect(() => {
     const previous = document.activeElement;
     const store = useOverlayStore.getState();
     store.register({ id, parentId, kind });
     const isTop = () => useOverlayStore.getState().stack.slice(-1)[0]?.id === id;
-    const focusFirst = () =>
-      (panel.current?.querySelector<HTMLElement>(focusable) ?? panel.current)?.focus();
+    const focusFirst = () => (focusTargets(panel.current)[0] ?? panel.current)?.focus();
     if (isTop()) focusFirst();
     function key(event: KeyboardEvent) {
       if (!isTop()) return;
@@ -66,7 +92,7 @@ function MountedOverlay({
         if (event.type === "keydown" && (typeof allowed === "function" ? allowed() : allowed))
           latest.current.onClose();
       } else if (event.key === "Tab" && kind === "blocking" && event.type === "keydown") {
-        const elements = Array.from(panel.current?.querySelectorAll<HTMLElement>(focusable) ?? []);
+        const elements = focusTargets(panel.current);
         const index = elements.indexOf(document.activeElement as HTMLElement);
         event.preventDefault();
         const next =
@@ -87,6 +113,11 @@ function MountedOverlay({
     }
     window.addEventListener("keydown", key, true);
     window.addEventListener("keyup", key, true);
+    function outside(event: PointerEvent) {
+      if (anchored && kind === "light" && isTop() && !panel.current?.contains(event.target as Node))
+        latest.current.onClose();
+    }
+    document.addEventListener("pointerdown", outside);
     document.addEventListener("focusin", focus);
     return () => {
       const wasTop = isTop();
@@ -94,11 +125,11 @@ function MountedOverlay({
       window.removeEventListener("keydown", key, true);
       window.removeEventListener("keyup", key, true);
       document.removeEventListener("focusin", focus);
+      document.removeEventListener("pointerdown", outside);
       if (wasTop && previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, [id, parentId, kind]);
+  }, [id, parentId, kind, anchored]);
 
-  const anchored = anchor !== undefined;
   return createPortal(
     <ParentOverlay.Provider value={id}>
       <div

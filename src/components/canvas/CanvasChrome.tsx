@@ -387,6 +387,7 @@ export function AnnotationRect({
           event.cancelBubble = true;
           onContextMenu(event, annotation.id);
         }}
+        onDragStart={(event) => handleShapeDragStart(event, interactionMode)}
         onDragEnd={(event) => onDragEnd(annotation, event)}
         onMouseDown={(event) =>
           handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
@@ -482,6 +483,7 @@ export function AnnotationPolygon({
               onMouseDown={(event) =>
                 handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
               }
+              onDragStart={(event) => handleShapeDragStart(event, interactionMode)}
               onDragEnd={(event) => onVertexDragEnd(annotation, index, event)}
             />
           ))}
@@ -549,6 +551,7 @@ export function AnnotationPoint({
           event.cancelBubble = true;
           onContextMenu(event, annotation.id);
         }}
+        onDragStart={(event) => handleShapeDragStart(event, interactionMode)}
         onDragEnd={(event) => onPointDragEnd(annotation, event)}
         onMouseDown={(event) =>
           handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
@@ -592,4 +595,20 @@ function handleShapeMouseDown(
     event.cancelBubble = true;
     onSelect(annotationId);
   }
+}
+
+function handleShapeDragStart(event: KonvaEventObject<DragEvent>, mode: InteractionMode) {
+  if (
+    resolveGesture(
+      {
+        button: event.evt.button,
+        buttons: event.evt.buttons,
+        ctrlKey: event.evt.ctrlKey,
+        shiftKey: event.evt.shiftKey,
+        phase: "drag",
+      },
+      { mode, shapeType: "rect", hit: true },
+    ) !== "select"
+  )
+    event.target.stopDrag();
 }

@@ -44,7 +44,7 @@ export function VideoTimeline({
             aria-hidden="true"
             className="absolute -top-0.5 h-3 w-0.5 bg-white"
             style={{
-              left: `${frames.length > 1 ? (currentIndex / (frames.length - 1)) * 100 : 0}%`,
+              left: `calc(${frames.length > 1 ? (currentIndex / (frames.length - 1)) * 100 : 0}% - ${currentIndex ? 2 : 0}px)`,
             }}
           />
         </div>

@@ -603,6 +603,10 @@ function App() {
 
   useEffect(() => {
     function updateMode(event: KeyboardEvent) {
+      if (event.type === "keyup" && !event.ctrlKey && !event.shiftKey) {
+        setInteractionMode("default");
+        return;
+      }
       if (
         useOverlayStore.getState().hasBlocking() ||
         useOverlayStore.getState().hasLight() ||

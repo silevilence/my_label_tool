@@ -21,6 +21,9 @@ describe("canvas gesture seam", () => {
     const ctx = { mode: "default", shapeType: "rect", hit: true } as const;
     expect(resolveGesture({ button: 0, ctrlKey: true, shiftKey: true }, ctx)).toBe("draw-rect");
     expect(resolveGesture({ button: 0, shiftKey: true }, ctx)).toBe("select");
+    expect(resolveGesture({ button: 0, buttons: 4, phase: "drag" }, ctx)).toBeNull();
+    expect(resolveGesture({ button: 2, phase: "drag" }, ctx)).toBeNull();
+    expect(resolveGesture({ button: 0, buttons: 1, phase: "drag" }, ctx)).toBe("select");
   });
   it("commits original-pixel drafts, rejects tiny shapes, and cancels every state", () => {
     const idle: Draft = { kind: "idle" };

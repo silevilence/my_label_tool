@@ -239,7 +239,7 @@ export function usePrelabelExecution({
       setProgress({
         operation: "single",
         isRunning: false,
-        cancelRequested: false,
+        cancelRequested: outcome.cancelled,
         processed: result ? 1 : 0,
         total: 1,
         message: outcome.cancelled
@@ -515,25 +515,31 @@ export function usePrelabelExecution({
     }
   }
 
-  function cancel() {
-    if (!progress.isRunning) {
-      return;
-    }
+  async function cancel() {
+    if (!runningRef.current) return;
+    const owner = operation.current;
     cancelRequestedRef.current = true;
     const taskId = taskIdRef.current;
     const operationId = activePluginOperationIdRef.current;
-    if (operationId) {
-      void cancelPluginPrelabel(operationId).catch((reason: unknown) => {
-        setError(text.pluginCancelFailed(reason));
-      });
-    }
     setProgress((current) => ({
       ...current,
       cancelRequested: true,
       message: current.operation === "single" ? text.cancellingInference : text.batchCancelling,
     }));
-    if (taskId) {
-      cancelPrelabelInference(taskId).catch((reason) => setError(text.inferenceFailed(reason)));
+    try {
+      if (operationId) {
+        const result = await cancelPluginPrelabel(operationId);
+        if (!result.found && activePluginOperationIdRef.current === operationId)
+          throw new Error(text.pluginCancelUnavailable);
+      }
+      if (taskId) await cancelPrelabelInference(taskId);
+    } catch (reason) {
+      if (operation.current === owner && runningRef.current) {
+        cancelRequestedRef.current = false;
+        setProgress((current) => ({ ...current, cancelRequested: false }));
+        setError(text.pluginCancelFailed(reason));
+      }
+      throw reason;
     }
   }
 

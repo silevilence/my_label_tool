@@ -1,3 +1,4 @@
+import { useOperations } from "../../store/useOperations";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -184,4 +185,18 @@ it("releases the lock without downloading when confirmation is declined", async 
   await click(text.updateModel);
   expect(api.downloadPrelabelModel).not.toHaveBeenCalled();
   expect(button(text.removeModel).disabled).toBe(false);
+});
+
+it("keeps cancellation retryable after a host error", async () => {
+  api.cancelPrelabelModelDownload.mockRejectedValueOnce(new Error("IPC failed"));
+  await click(text.updateModel);
+  const operation = useOperations.getState().operations.find((op) => op.status === "running")!;
+  await act(async () => useOperations.getState().cancel(operation.id));
+  expect(
+    useOperations.getState().operations.find((op) => op.id === operation.id)?.cancelRequested,
+  ).toBe(false);
+  await act(async () => useOperations.getState().cancel(operation.id));
+  expect(api.cancelPrelabelModelDownload).toHaveBeenCalledTimes(2);
+  await act(async () => download.resolve(null));
+  expect(useOperations.getState().canStart("model-download")).toBe(true);
 });

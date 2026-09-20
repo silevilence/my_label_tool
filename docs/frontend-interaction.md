@@ -36,7 +36,7 @@ useOverlayStore → { hasBlocking(): boolean; hasLight(): boolean; depth(): numb
 
 - 已具备完整行为、作为行为样板：`DeleteImageDialog.tsx`（捕获阶段按键封锁、焦点陷阱与归还、`role=alertdialog`、高度上限）；其适配器 `VideoReextractDialog.tsx` 保留。
 - 转为 `blocking`：`ProjectSettingsDialog`、`VideoImportDialog`、`VideoBatchDialog`、`PtConversionDialog`（嵌套在 `PrelabelSettings` 之上）、`PrelabelExecutionDialog`、`PluginSettings` 与其 `PermissionDialog`、`LabelSettings` 的管理弹窗、`ShortcutSettings`、`PrelabelSettings`、`DeleteAnnotationDialog`。
-- 转为 `light`：`CanvasContextMenu`、`ImageListContextMenu`、`ImageSearchDialog`（今天菜单开着时画布仍会被快捷键改动）。
+- 转为 `light`：`CanvasContextMenu`、`ImageListContextMenu`、侧栏主菜单、`ImageSearchDialog`（今天菜单开着时画布仍会被快捷键改动）。
 - 删除各文件内的 `fixed inset-0` 背板与散落的 `z-*`（现状为 50/60/65/85/90/95/100 七个值）。
 
 **测试面**：渲染 → `Esc` 只在栈顶生效且 `canDismiss=false` 时不生效；`Tab` 不出面板、关闭后焦点回到触发元素；矮视口下（如 320px 高）面板不超过视口且关闭控件可达；打开 blocking 遮罩时全局快捷键不触发画布改动。

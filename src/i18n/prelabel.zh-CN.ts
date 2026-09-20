@@ -10,6 +10,7 @@ function formatBytes(bytes: number): string {
 }
 
 export const PRELABEL_ZH_CN = {
+  pluginCancelUnavailable: "当前操作未受理取消，请稍后重试。",
   menuLabel: "预打标模型",
   title: "预打标模型库",
   description: "添加标准导出的 YOLO ONNX 模型；切换模型只切换配置，不会提前加载运行时。",

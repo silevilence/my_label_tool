@@ -95,11 +95,20 @@ export function useVideoImport(
     pending.current = true;
     cancelled.current = false;
     try {
-      if (!projectFolder && !(await confirmAction(text.replace))) return;
+      if (!projectFolder && !(await confirmAction(text.replace))) {
+        cancelled.current = true;
+        return;
+      }
       const source = sourcePath || (await selectVideoFile());
-      if (!source || cancelled.current) return;
+      if (!source || cancelled.current) {
+        cancelled.current = true;
+        return;
+      }
       const folder = projectFolder || (await selectExportFolder());
-      if (!folder || cancelled.current) return;
+      if (!folder || cancelled.current) {
+        cancelled.current = true;
+        return;
+      }
       setError("");
       const result = await importVideo(source, folder, interval);
       await onImported(result);

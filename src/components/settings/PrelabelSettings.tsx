@@ -133,7 +133,6 @@ export function PrelabelSettings({
   const [isModelUpdating, setIsModelUpdating] = useState(false);
   const mutationInFlight = useRef(false);
   const cancelledConversions = useRef(new Set<string>());
-  const cancelledDownloads = useRef(new Set<string>());
   const activeDownloadId = useRef<string | null>(null);
   const activeModelDownloadId = useRef<string | null>(null);
 
@@ -157,6 +156,7 @@ export function PrelabelSettings({
       try {
         await loadOnnxDraft(path);
       } catch (reason) {
+        modelOperation.current?.fail(reason);
         setError(text.importFailed(reason));
       }
     });
@@ -180,6 +180,7 @@ export function PrelabelSettings({
       try {
         await loadOnnxDraft(path);
       } catch (reason) {
+        modelOperation.current?.fail(reason);
         setError(text.importFailed(reason));
       }
     });
@@ -242,7 +243,6 @@ export function PrelabelSettings({
       return;
     }
     const downloadId = crypto.randomUUID();
-    cancelledDownloads.current.delete(downloadId);
     activeDownloadId.current = downloadId;
     const operation = tryBeginOperation({ label: operationText.runtime, resource: "onnx-runtime" });
     if (!operation) {
@@ -268,7 +268,7 @@ export function PrelabelSettings({
           });
         }
       });
-      if (cancelledDownloads.current.has(downloadId) || outcome.cancelled) {
+      if (outcome.cancelled) {
         operation.complete(text.runtimeDownloadCancelled, "warning");
         setRuntimeNotice(text.runtimeDownloadCancelled);
       } else {
@@ -293,11 +293,11 @@ export function PrelabelSettings({
     if (!downloadId) {
       return;
     }
-    cancelledDownloads.current.add(downloadId);
     try {
       await cancelOnnxRuntimeDownload(downloadId);
     } catch (reason) {
       setError(text.runtimeOperationFailed(reason));
+      throw reason;
     }
   }
 
@@ -357,6 +357,7 @@ export function PrelabelSettings({
       await cancelPrelabelModelDownload(downloadId);
     } catch (reason) {
       setError(text.modelUpdateFailed(reason));
+      throw reason;
     }
   }
 
@@ -435,6 +436,7 @@ export function PrelabelSettings({
       return;
     }
     modelOperation.current = operation;
+    operation.setCancel(() => cancelPt(session.conversionId));
     mutationInFlight.current = true;
     setError("");
     setPtConversionNotice("");
@@ -463,14 +465,15 @@ export function PrelabelSettings({
       setPtGuidance(null);
       setPtConversionSession(null);
     } catch (reason) {
-      operation.fail(reason);
       if (
         cancelledConversions.current.has(session.conversionId) &&
         isPtConversionCancelledResult(reason)
       ) {
+        operation.complete(text.ptCancelled, "warning");
         setPtConversionSession(null);
         setPtConversionNotice(text.ptCancelled);
       } else {
+        operation.fail(reason);
         setPtConversionSession((current) =>
           current
             ? reducePtConversionSession(current, {
@@ -487,21 +490,18 @@ export function PrelabelSettings({
     }
   }
 
-  async function cancelPt(session: PtConversionSession) {
-    if (session.status !== "running") {
-      return;
-    }
-    cancelledConversions.current.add(session.conversionId);
+  async function cancelPt(conversionId: string) {
+    cancelledConversions.current.add(conversionId);
     setPtConversionSession((current) =>
       current ? reducePtConversionSession(current, { type: "cancel" }) : current,
     );
     try {
-      const result = await cancelPtConversion(session.conversionId);
+      const result = await cancelPtConversion(conversionId);
       if (result.status === "already-completed") {
-        cancelledConversions.current.delete(session.conversionId);
+        cancelledConversions.current.delete(conversionId);
       }
     } catch (reason) {
-      cancelledConversions.current.delete(session.conversionId);
+      cancelledConversions.current.delete(conversionId);
       setPtConversionSession((current) =>
         current
           ? reducePtConversionSession(current, {
@@ -510,6 +510,7 @@ export function PrelabelSettings({
             })
           : current,
       );
+      throw reason;
     }
   }
 
@@ -764,7 +765,10 @@ export function PrelabelSettings({
           path={ptGuidance.path}
           session={ptConversionSession}
           onBack={() => setPtConversionSession(null)}
-          onCancel={() => void cancelPt(ptConversionSession)}
+          onCancel={() => {
+            if (modelOperation.current)
+              void useOperations.getState().cancel(modelOperation.current.id);
+          }}
           onConfirm={() => void convertPt(ptGuidance, ptConversionSession)}
           onParametersChange={(parameters) => {
             const next = { ...ptConversionSession, parameters, plan: null, error: "" };

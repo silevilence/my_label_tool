@@ -1,3 +1,4 @@
+import { useOperations, type OperationHandle } from "../../store/useOperations";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it } from "vitest";
@@ -83,6 +84,16 @@ it("shares sidebar/timeline distribution and navigation through the selection st
     navigation.step(1);
   });
   expect(navigation.canStep(1)).toBe(false);
+  let operation!: OperationHandle;
+  act(() => {
+    operation = useOperations.getState().begin({ label: "save", resource: "project-annotations" });
+  });
+  act(() => {
+    expect(navigation.select(0)).toBe(false);
+  });
+  expect(navigation.currentIndex).toBe(2);
+  expect(navigation.canStep(-1)).toBe(false);
+  act(() => operation.complete());
   act(() => root.unmount());
   container.remove();
 });

@@ -95,3 +95,29 @@ it("light overlays register independently and closed overlays never gate input",
   act(() => root.render(null));
   expect(useOverlayStore.getState().depth()).toBe(0);
 });
+
+it("excludes hidden controls and collapsed details from the focus cycle", () => {
+  act(() =>
+    root.render(
+      <Overlay onClose={() => {}}>
+        <div style={{ display: "none" }}>
+          <button>hidden</button>
+        </div>
+        <input type="hidden" />
+        <button>visible</button>
+        <details>
+          <summary>expand</summary>
+          <button>collapsed</button>
+        </details>
+        <button>last</button>
+      </Overlay>,
+    ),
+  );
+  expect(document.activeElement?.textContent).toBe("visible");
+  key("Tab");
+  expect(document.activeElement?.textContent).toBe("expand");
+  key("Tab");
+  expect(document.activeElement?.textContent).toBe("last");
+  key("Tab");
+  expect(document.activeElement?.textContent).toBe("visible");
+});

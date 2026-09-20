@@ -89,6 +89,11 @@ describe("image deletion entry wiring", () => {
     return found;
   }
   async function click(label: string) {
+    if (![...document.body.querySelectorAll("button")].some((item) => item.textContent === label)) {
+      await act(async () =>
+        document.body.querySelector<HTMLButtonElement>('button[aria-label="打开菜单"]')!.click(),
+      );
+    }
     await act(async () => button(label).click());
   }
   async function key(value: string) {
@@ -102,6 +107,19 @@ describe("image deletion entry wiring", () => {
     await act(async () => root.render(<App />));
     await click("打开项目文件夹");
   }
+  it("gates canvas shortcuts while the main menu is open and returns focus on Escape", async () => {
+    await openFixture();
+    const opener = document.body.querySelector<HTMLButtonElement>('button[aria-label="打开菜单"]')!;
+    await act(async () => {
+      opener.focus();
+      opener.click();
+    });
+    await key("ArrowRight");
+    expect(useAnnotationStore.getState().selectedPath).toBe("C:/fixture/a.png");
+    await key("Escape");
+    expect(document.body.querySelector('[aria-label="主菜单"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
   it("disables project settings without a project file and keeps app settings separate", async () => {
     await openFixture();
     expect(button("项目设置").disabled).toBe(true);

@@ -1,3 +1,6 @@
+import { SHORTCUT_ACTIONS } from "../lib/defaults/shortcuts";
+import { SHORTCUT_ZH_CN as text } from "../i18n/shortcuts.zh-CN";
+import { getInteractionMode } from "../components/canvas/geometry";
 import { useOperations } from "../store/useOperations";
 import { useEffect } from "react";
 import { useShortcut } from "./useShortcut";
@@ -63,8 +66,8 @@ export function useKeyboardShortcuts({
   useShortcut("nextImage", selectedPath ? () => selectAdjacentImage(1) : undefined);
   useShortcut("previousFrame", selectAdjacentFrame ? () => selectAdjacentFrame(-1) : undefined);
   useShortcut("nextFrame", selectAdjacentFrame ? () => selectAdjacentFrame(1) : undefined);
-  useShortcut("zoomIn", () => zoomFromKeyboard(1));
-  useShortcut("zoomOut", () => zoomFromKeyboard(-1));
+  useShortcut("zoomIn", selectedPath ? () => zoomFromKeyboard(1) : undefined);
+  useShortcut("zoomOut", selectedPath ? () => zoomFromKeyboard(-1) : undefined);
   useShortcut("selectRectTool", () => selectShapeType("rect"));
   useShortcut("selectPolygonTool", () => selectShapeType("polygon"));
   useShortcut("selectPointTool", () => selectShapeType("point"));
@@ -81,7 +84,7 @@ export function useKeyboardShortcuts({
         hasLightOverlay: overlay.hasLight(),
         isEditableTarget: isEditableTarget(event.target),
         busy: !useOperations.getState().canStart("project-annotations"),
-        mode: "default",
+        mode: getInteractionMode(event.ctrlKey, event.shiftKey),
         shortcuts,
         labelShortcuts: labels,
         available: [...Object.keys(handlers), ...labels.map((label) => `label:${label.id}`)],
@@ -91,7 +94,13 @@ export function useKeyboardShortcuts({
       const conflict = detectConflicts(shortcuts, labels).find(
         (item) => item.key === eventShortcut(event),
       );
-      if (conflict) onShortcutConflict(conflict.message);
+      if (conflict) {
+        const winner =
+          SHORTCUT_ACTIONS.find((item) => item.id === action)?.label ??
+          labels.find((item) => `label:${item.id}` === action)?.name ??
+          action;
+        onShortcutConflict(`${conflict.message}${text.resolved(winner)}`);
+      }
       if (action.startsWith("label:")) changeCurrentLabel(action.slice(6));
       else handlers[action]?.handler(event);
     }

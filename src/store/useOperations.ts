@@ -105,6 +105,7 @@ export const useOperations = create<Operations>((set, get) => ({
         cancellations.delete(id);
       },
       setCancel: (cancel) => {
+        if (!get().operations.some((op) => op.id === id && op.status === "running")) return;
         if (cancel) cancellations.set(id, cancel);
         else cancellations.delete(id);
         update({ canCancel: !!cancel });

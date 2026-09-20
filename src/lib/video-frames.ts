@@ -57,15 +57,14 @@ export function frameSummaries(
 export function frameNavigation(
   frames: FrameSummary[],
   selectedPath: string,
-  onSelect: (path: string) => void,
+  onSelect: (path: string) => boolean | void,
 ) {
   const currentIndex = frames.findIndex((frame) => frame.path === selectedPath);
   const select = (target: number | string) => {
     const frame =
       typeof target === "number" ? frames[target] : frames.find((item) => item.path === target);
     if (!frame) return false;
-    onSelect(frame.path);
-    return true;
+    return onSelect(frame.path) !== false;
   };
   const canStep = (delta: number) =>
     Number.isInteger(delta) &&

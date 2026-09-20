@@ -1,5 +1,7 @@
+import { Overlay } from "../overlay/Overlay";
+import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
 import { ImageListRow, ScopeBar } from "./ImageListRow";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { ExportPanel } from "../settings/ExportPanel";
 import { ImageListContextMenu } from "./ImageListContextMenu";
 import { LabelSettings } from "../settings/LabelSettings";
@@ -147,7 +149,7 @@ export function AppSidebar({
   updateLabels,
   updateStatus,
 }: AppSidebarProps) {
-  const menuRef = useRef<HTMLDetailsElement | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const [isPluginSettingsOpen, setIsPluginSettingsOpen] = useState(false);
   const [imageMenu, setImageMenu] = useState<{ image: ImageFile; x: number; y: number } | null>(
     null,
@@ -165,7 +167,7 @@ export function AppSidebar({
   const currentToolLabels = compatibleCurrentLabels.length > 0 ? compatibleCurrentLabels : labels;
 
   function closeMenu() {
-    menuRef.current?.removeAttribute("open");
+    setMenuAnchor(null);
   }
 
   return (
@@ -173,118 +175,137 @@ export function AppSidebar({
       <div className="shrink-0 border-b border-slate-800 p-4">
         <div className="flex items-center justify-between gap-2">
           <h1 className="truncate text-lg font-semibold">my_label_tool</h1>
-          <details ref={menuRef} className="group relative">
-            <summary
-              aria-label="打开菜单"
+          <div className="relative">
+            <button
+              type="button"
+              aria-label={interactionText.openMenu}
+              aria-expanded={menuAnchor !== null}
+              onPointerDown={(event) => {
+                if (menuAnchor) event.stopPropagation();
+              }}
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setMenuAnchor(menuAnchor ? null : { x: rect.right - 224, y: rect.bottom + 8 });
+              }}
               className="cursor-pointer list-none rounded border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-800"
               title="菜单"
             >
               ☰
-            </summary>
-            <div className="absolute right-0 z-30 mt-2 w-56 space-y-1 rounded-lg border border-slate-700 bg-slate-950 p-2 shadow-2xl">
-              <button
-                className="w-full rounded bg-sky-500 px-3 py-2 text-left text-sm font-medium text-white hover:bg-sky-400"
-                type="button"
-                onClick={() => {
-                  closeMenu();
-                  openFolder();
-                }}
+            </button>
+            {menuAnchor && (
+              <Overlay
+                kind="light"
+                role="menu"
+                label={interactionText.mainMenu}
+                anchor={menuAnchor}
+                onClose={closeMenu}
               >
-                {videoText.openProject}
-              </button>
-              {addVideo && (
-                <button
-                  type="button"
-                  className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800"
-                  onClick={() => {
-                    closeMenu();
-                    addVideo();
-                  }}
-                >
-                  {videoText.add}
-                </button>
-              )}
-              <div className="border-t border-slate-800 pt-1">
-                <div className="px-2 py-1 text-xs text-slate-500">导入标注</div>
-                <button
-                  className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={images.length === 0}
-                  type="button"
-                  onClick={() => {
-                    closeMenu();
-                    importAnnotations();
-                  }}
-                >
-                  导入本工具项目
-                </button>
-                <button
-                  className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={images.length === 0}
-                  type="button"
-                  onClick={() => {
-                    closeMenu();
-                    createProjectFromExternalYolo();
-                  }}
-                >
-                  从 YOLO 创建项目
-                </button>
-                {["COCO", "VOC", "Custom"].map((format) => (
+                <div className="w-56 space-y-1 rounded-lg border border-slate-700 bg-slate-950 p-2 shadow-2xl">
                   <button
-                    className="w-full rounded px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-800"
-                    key={format}
+                    className="w-full rounded bg-sky-500 px-3 py-2 text-left text-sm font-medium text-white hover:bg-sky-400"
                     type="button"
                     onClick={() => {
                       closeMenu();
-                      window.alert(`${format} 外部项目创建暂未实现`);
+                      openFolder();
                     }}
                   >
-                    从 {format} 创建项目（暂未实现）
+                    {videoText.openProject}
                   </button>
-                ))}
-              </div>
-              <button
-                className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
-                type="button"
-                onClick={() => {
-                  closeMenu();
-                  setIsPrelabelSettingsOpen(true);
-                }}
-              >
-                {PRELABEL_ZH_CN.menuLabel}
-              </button>
-              <button
-                className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
-                type="button"
-                onClick={() => {
-                  closeMenu();
-                  setIsShortcutSettingsOpen(true);
-                }}
-              >
-                设置
-              </button>
-              <button
-                className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
-                type="button"
-                onClick={() => {
-                  closeMenu();
-                  setIsPluginSettingsOpen(true);
-                }}
-              >
-                {PLUGIN_ZH_CN.menuLabel}
-              </button>
-              <button
-                className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
-                disabled={updateStatus === "checking" || updateStatus === "downloading"}
-                type="button"
-                onClick={() => {
-                  closeMenu();
-                  checkForUpdates();
-                }}
-              >
-                检查更新
-              </button>
-            </div>
-          </details>
+                  {addVideo && (
+                    <button
+                      type="button"
+                      className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800"
+                      onClick={() => {
+                        closeMenu();
+                        addVideo();
+                      }}
+                    >
+                      {videoText.add}
+                    </button>
+                  )}
+                  <div className="border-t border-slate-800 pt-1">
+                    <div className="px-2 py-1 text-xs text-slate-500">导入标注</div>
+                    <button
+                      className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={images.length === 0}
+                      type="button"
+                      onClick={() => {
+                        closeMenu();
+                        importAnnotations();
+                      }}
+                    >
+                      导入本工具项目
+                    </button>
+                    <button
+                      className="w-full rounded px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={images.length === 0}
+                      type="button"
+                      onClick={() => {
+                        closeMenu();
+                        createProjectFromExternalYolo();
+                      }}
+                    >
+                      从 YOLO 创建项目
+                    </button>
+                    {["COCO", "VOC", "Custom"].map((format) => (
+                      <button
+                        className="w-full rounded px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-800"
+                        key={format}
+                        type="button"
+                        onClick={() => {
+                          closeMenu();
+                          window.alert(`${format} 外部项目创建暂未实现`);
+                        }}
+                      >
+                        从 {format} 创建项目（暂未实现）
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
+                    type="button"
+                    onClick={() => {
+                      closeMenu();
+                      setIsPrelabelSettingsOpen(true);
+                    }}
+                  >
+                    {PRELABEL_ZH_CN.menuLabel}
+                  </button>
+                  <button
+                    className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
+                    type="button"
+                    onClick={() => {
+                      closeMenu();
+                      setIsShortcutSettingsOpen(true);
+                    }}
+                  >
+                    设置
+                  </button>
+                  <button
+                    className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800"
+                    type="button"
+                    onClick={() => {
+                      closeMenu();
+                      setIsPluginSettingsOpen(true);
+                    }}
+                  >
+                    {PLUGIN_ZH_CN.menuLabel}
+                  </button>
+                  <button
+                    className="w-full rounded border border-slate-700 px-3 py-2 text-left text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
+                    disabled={updateStatus === "checking" || updateStatus === "downloading"}
+                    type="button"
+                    onClick={() => {
+                      closeMenu();
+                      checkForUpdates();
+                    }}
+                  >
+                    检查更新
+                  </button>
+                </div>
+              </Overlay>
+            )}
+          </div>
         </div>
         <p className="mt-3 truncate text-xs text-slate-400" title={folderPath || "请选择目录"}>
           {folderPath || "请选择目录"}

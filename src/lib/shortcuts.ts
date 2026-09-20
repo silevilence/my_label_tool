@@ -97,7 +97,7 @@ export function resolveShortcut(event: ShortcutEvent, ctx: ShortcutContext): str
   if (actions[0]) return actions[0].id;
   if (ctx.hasLightOverlay || ctx.busy) return null;
   const label = ctx.labelShortcuts.find(
-    (item) => item.shortcut === key && ctx.available.includes(`label:${item.id}`),
+    (item) => normalizeShortcutKey(item.shortcut ?? "") === key && ctx.available.includes(`label:${item.id}`),
   );
   return label ? `label:${label.id}` : null;
 }

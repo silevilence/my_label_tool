@@ -60,6 +60,9 @@ it("allows changing cancellation support and ignores unknown ids", async () => {
   await useOperations.getState().cancel(handle.id);
   expect(cancel).not.toHaveBeenCalled();
   handle.fail("failed");
+  handle.setCancel(cancel);
+  await useOperations.getState().cancel(handle.id);
+  expect(cancel).not.toHaveBeenCalled();
   useOperations.getState().dismiss(handle.id);
   expect(handle.cancelRequested).toBe(false);
 });
