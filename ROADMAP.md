@@ -43,48 +43,6 @@
 
 ## 🚧 开发中 (In Progress)
 
-- [x] **前端交互①：遮罩模块与输入门禁**
-  - [x] 按 `docs/frontend-interaction.md` §1 实现 Overlay 模块：组件挂载自注册进栈、z-index 由栈深度推导、仅栈顶响应 Esc、焦点进入与归还、视口高度上限与内部滚动槽（ADR 0008）
-  - [x] 迁移 17 个遮罩：菜单与搜索浮层为轻量级，其余为阻塞级；删除各文件的 `fixed inset-0` 背板与 50/60/65/85/90/95/100 七个 z-index 值
-  - [x] 删除 `App.tsx` 的 9 项门禁与运算，键盘消费者改读 `hasBlocking()` / `hasLight()`
-  - [x] 新增目录与 store 归属同步更新 `AGENTS.md` §4
-  - 验收：320px 高窗口下关闭控件可达；Esc 只关闭栈顶、删除进行中不可关闭；菜单或搜索浮层打开时画布标注不被快捷键改动
-
-- [x] **前端交互②：快捷键动作表与统一解析**
-  - [x] 按 `docs/frontend-interaction.md` §2 建立动作元数据表（id / 名称 / 默认键位 / scope / 是否可改绑）与纯函数 `resolveShortcut(event, ctx)`
-  - [x] 功能模块经 `useShortcut(id, handler)` 注册行为，未注册即「不可用」并在提示浮层置灰
-  - [x] 固定键（`Ctrl+Z/Y/S`、删除标注框的 `Delete`）进表并标记不可改绑，设置面板作为固定行展示
-  - [x] 冲突判定收敛为一份 `detectConflicts`，供设置面板、标签编辑器与运行时共用；`mergeShortcuts` 的新默认键例外由表推导
-  - 验收：四层优先级（blocking / light / canvas / global）与冲突裁决可纯函数验证；新增动作不再修改 `App.tsx` 与 `AppLayout.tsx`
-
-- [x] **前端交互③：操作注册表与按资源互斥**
-  - [x] 按 `docs/frontend-interaction.md` §3 实现注册表：`begin` / `progress` / `complete` / `fail` / `canStart(resource)`，操作声明占用资源与取消句柄（ADR 0010）
-  - [x] 迁移预打标、插件导出、视频导入与抽帧、模型与运行时下载、保存、图片删除到注册表，界面退化为薄适配器
-  - [x] 消息按操作归属并带类型，成功不再借用错误通道；更新下载补上取消入口
-  - [x] 删除 `workspaceDisabled`、键盘门禁与 `canDeleteImage` 中的重复与运算，以及写三遍的视频导入锁表达式
-  - 验收：并发操作各自呈现进度与取消、消息不互相覆盖；占用同一资源的操作无法同时启动
-
-- [x] **前端交互④：选择与作用域归属 store**
-  - [x] 按 `docs/frontend-interaction.md` §4 在 `useAnnotationStore` 增加选择切片：`select` / `pushScope` / `popScope` / `selectAdjacent` / `selectUnannotated` / `removeImages`（ADR 0009）
-  - [x] 删除与接续、标注清理、历史裁剪合并为一次原子更新，修掉删除当前图片后选择被清空（画布变白）的路径
-  - [x] 侧栏增加常驻可见、可退出的作用域条；删除 `ProjectMediaList` 的 `remembered` 影子游标与搜索对话框的私有游标
-  - [x] 列表行模块自行注册滚入视口，替换 App 的 `selectedImageButtonRef` 约定
-  - [x] 修订 `AGENTS.md` §6 的分层措辞（瞬时交互态与当前编辑对象的边界）
-  - 验收：搜索确认后「下一张」留在结果集内；删除任意一张（含末张、含当前未在列表中的路径）后选择停在邻图；作用域切换可见可退出
-
-- [x] **前端交互⑤：画布手势意图与草稿状态机**
-  - [x] 按 `docs/frontend-interaction.md` §5 实现纯函数 `resolveGesture`，Stage 统一分类，Konva 保留拖拽与 Transformer
-  - [x] 三个图形渲染器删除各自的按钮 / 模式守卫，改为向同一解析器查询
-  - [x] 草稿状态机 `idle | rect | polygon | point | pan` 统一提交与取消，矩形绘制中支持 Esc 取消
-  - [x] 坐标转换收成 `createTransform(layout)` adapter，替换画布交互、缩放、多边形草稿与插值预览中各自重推的反向变换
-  - 验收：分类矩阵（按钮 × 模式 × 命中/背景）与草稿转移可纯函数验证；矩形与多边形的取消行为一致
-
-- [x] **前端交互⑥：视频帧模型与导航接缝**
-  - [x] 按 `docs/frontend-interaction.md` §6 实现纯模型 `lib/video-frames.ts`：帧序、每帧是否已标注、关键帧集合、帧 ↔ 路径映射
-  - [x] 提供 `useVideoFrameNavigation`（当前帧 / 步进 / 跳转 / 边界），时间轴、侧栏帧列表与键盘步进共用
-  - [x] `VideoTimeline` 渲染标注密度、关键帧标记与播放头，回调仅保留 `onSelectFrame`
-  - 验收：时间轴与侧栏显示一致的标注分布；帧步进与跳转在首尾边界行为一致；删除以字符串名字互相翻译的两个索引空间
-
 ## ✅ 已完成 (Completed)
 
 - [x] **接入 Konva 画布展示图片**
@@ -701,3 +659,45 @@
   - [x] 增加按默认设置对项目中所有未抽帧视频进行抽帧的功能
   - [x] 在文件列表中，对视频右键时，可以对此视频重新抽帧，此时原来已抽帧的图片和标注会删除，需要复用删除提醒进行警告
   - [x] 增加YOLO txt导出支持，按对抽帧的图片进行标注文件导出
+
+- [x] **前端交互①：遮罩模块与输入门禁**
+  - [x] 按 `docs/frontend-interaction.md` §1 实现 Overlay 模块：组件挂载自注册进栈、z-index 由栈深度推导、仅栈顶响应 Esc、焦点进入与归还、视口高度上限与内部滚动槽（ADR 0008）
+  - [x] 迁移 17 个遮罩：菜单与搜索浮层为轻量级，其余为阻塞级；删除各文件的 `fixed inset-0` 背板与 50/60/65/85/90/95/100 七个 z-index 值
+  - [x] 删除 `App.tsx` 的 9 项门禁与运算，键盘消费者改读 `hasBlocking()` / `hasLight()`
+  - [x] 新增目录与 store 归属同步更新 `AGENTS.md` §4
+  - 验收：320px 高窗口下关闭控件可达；Esc 只关闭栈顶、删除进行中不可关闭；菜单或搜索浮层打开时画布标注不被快捷键改动
+
+- [x] **前端交互②：快捷键动作表与统一解析**
+  - [x] 按 `docs/frontend-interaction.md` §2 建立动作元数据表（id / 名称 / 默认键位 / scope / 是否可改绑）与纯函数 `resolveShortcut(event, ctx)`
+  - [x] 功能模块经 `useShortcut(id, handler)` 注册行为，未注册即「不可用」并在提示浮层置灰
+  - [x] 固定键（`Ctrl+Z/Y/S`、删除标注框的 `Delete`）进表并标记不可改绑，设置面板作为固定行展示
+  - [x] 冲突判定收敛为一份 `detectConflicts`，供设置面板、标签编辑器与运行时共用；`mergeShortcuts` 的新默认键例外由表推导
+  - 验收：四层优先级（blocking / light / canvas / global）与冲突裁决可纯函数验证；新增动作不再修改 `App.tsx` 与 `AppLayout.tsx`
+
+- [x] **前端交互③：操作注册表与按资源互斥**
+  - [x] 按 `docs/frontend-interaction.md` §3 实现注册表：`begin` / `progress` / `complete` / `fail` / `canStart(resource)`，操作声明占用资源与取消句柄（ADR 0010）
+  - [x] 迁移预打标、插件导出、视频导入与抽帧、模型与运行时下载、保存、图片删除到注册表，界面退化为薄适配器
+  - [x] 消息按操作归属并带类型，成功不再借用错误通道；更新下载补上取消入口
+  - [x] 删除 `workspaceDisabled`、键盘门禁与 `canDeleteImage` 中的重复与运算，以及写三遍的视频导入锁表达式
+  - 验收：并发操作各自呈现进度与取消、消息不互相覆盖；占用同一资源的操作无法同时启动
+
+- [x] **前端交互④：选择与作用域归属 store**
+  - [x] 按 `docs/frontend-interaction.md` §4 在 `useAnnotationStore` 增加选择切片：`select` / `pushScope` / `popScope` / `selectAdjacent` / `selectUnannotated` / `removeImages`（ADR 0009）
+  - [x] 删除与接续、标注清理、历史裁剪合并为一次原子更新，修掉删除当前图片后选择被清空（画布变白）的路径
+  - [x] 侧栏增加常驻可见、可退出的作用域条；删除 `ProjectMediaList` 的 `remembered` 影子游标与搜索对话框的私有游标
+  - [x] 列表行模块自行注册滚入视口，替换 App 的 `selectedImageButtonRef` 约定
+  - [x] 修订 `AGENTS.md` §6 的分层措辞（瞬时交互态与当前编辑对象的边界）
+  - 验收：搜索确认后「下一张」留在结果集内；删除任意一张（含末张、含当前未在列表中的路径）后选择停在邻图；作用域切换可见可退出
+
+- [x] **前端交互⑤：画布手势意图与草稿状态机**
+  - [x] 按 `docs/frontend-interaction.md` §5 实现纯函数 `resolveGesture`，Stage 统一分类，Konva 保留拖拽与 Transformer
+  - [x] 三个图形渲染器删除各自的按钮 / 模式守卫，改为向同一解析器查询
+  - [x] 草稿状态机 `idle | rect | polygon | point | pan` 统一提交与取消，矩形绘制中支持 Esc 取消
+  - [x] 坐标转换收成 `createTransform(layout)` adapter，替换画布交互、缩放、多边形草稿与插值预览中各自重推的反向变换
+  - 验收：分类矩阵（按钮 × 模式 × 命中/背景）与草稿转移可纯函数验证；矩形与多边形的取消行为一致
+
+- [x] **前端交互⑥：视频帧模型与导航接缝**
+  - [x] 按 `docs/frontend-interaction.md` §6 实现纯模型 `lib/video-frames.ts`：帧序、每帧是否已标注、关键帧集合、帧 ↔ 路径映射
+  - [x] 提供 `useVideoFrameNavigation`（当前帧 / 步进 / 跳转 / 边界），时间轴、侧栏帧列表与键盘步进共用
+  - [x] `VideoTimeline` 渲染标注密度、关键帧标记与播放头，回调仅保留 `onSelectFrame`
+  - 验收：时间轴与侧栏显示一致的标注分布；帧步进与跳转在首尾边界行为一致；删除以字符串名字互相翻译的两个索引空间
