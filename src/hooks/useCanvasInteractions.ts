@@ -304,7 +304,8 @@ export function useCanvasInteractions({
       return;
     }
     if (intent === "context" || intent === null) return;
-    // Annotation handlers own real hits; Transformer anchors must retain their selected node.
+    // In default mode, shape handlers own hits and Transformer anchors retain selection.
+    // Shift selection continues through the Stage picking branch below.
     if (!isBackground && getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey) === "default")
       return;
 

@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { timelinePlayheadStyle } from "../../lib/timeline-playhead";
 import type { FrameSummary } from "../../lib/video-frames";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
 export function VideoTimeline({
@@ -43,13 +43,8 @@ export function VideoTimeline({
           ))}
           <span
             aria-hidden="true"
-            className="absolute inset-y-0 w-0.5 bg-white"
-            style={
-              {
-                "--playhead-position": `${((currentIndex + 0.5) / frames.length) * 100}%`,
-                left: "clamp(0px, calc(var(--playhead-position) - 1px), calc(100% - 2px))",
-              } as CSSProperties
-            }
+            className="absolute inset-y-0 bg-white"
+            style={timelinePlayheadStyle(currentIndex, frames.length)}
           />
         </div>
         <input

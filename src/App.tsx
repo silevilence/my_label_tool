@@ -586,12 +586,14 @@ function App() {
   }, [currentLabelId, labelById, labels]);
 
   useEffect(() => {
-    if (!loadedImage || canvasSize.width === 0 || canvasSize.height === 0) {
-      setImageView(null);
-      return;
-    }
+    setImageView(null);
+  }, [loadedImage]);
 
-    setImageView(fitImageLayout(loadedImage, canvasSize));
+  useEffect(() => {
+    if (!loadedImage || canvasSize.width === 0 || canvasSize.height === 0) return;
+    // Fit each newly loaded image once, including when its host is measured later.
+    // Status cards and window resizing must preserve an existing zoom/pan view.
+    setImageView((current) => current ?? fitImageLayout(loadedImage, canvasSize));
   }, [canvasSize, loadedImage]);
 
   useEffect(() => {

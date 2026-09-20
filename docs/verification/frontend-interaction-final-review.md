@@ -163,9 +163,33 @@
 - 初次全量验证发现 jsdom 丢弃嵌套 clamp 的 style.left，已将分段中心存为 CSS 自定义属性并让逻辑断言读取它；真实 CSS 夹取另由浏览器测量确认。修正后已重跑全量并通过。
 - 浏览器真实 App/React/Konva、临时宿主 I/O：Shift 点击命中关键点；在与关键点重叠的矩形左上控点拖动后，仍选中 rectangle，矩形由 `[100,100,200,100]` 变为约 `[116.28,113.48,183.83,86.70]`。
 - 1000×320 下载态：状态区 top=192、bottom=320；取消按钮 top=218、bottom=238，中心点命中“取消”；右上帮助 bottom=110，与状态区无交集。点击取消后显示取消安装，模拟下载传输结束后正常释放，未执行安装/重启。
-- 300 帧窄时间轴：首帧条边界 x=16..81.40625、播放头 x=16..18；末帧条边界 x=16..144、播放头 x=142..144；两次播放头与条均 y=61..69，首末均未裁切。布局随时间标签宽度略有变化，两种宽度均已验证。
+- 300 帧窄时间轴：选中首帧时，整条密度条边界 x=16..81.40625、播放头 x=16..18；选中末帧时，整条密度条边界 x=16..144、播放头 x=142..144；两次播放头与整条密度条均 y=61..69，首末均未裁切。这里记录的是两种标签宽度下的完整密度条，不是单帧分段边界。
 - 浏览器临时视口已恢复，测试页面已关闭，临时 fixture 已删除。没有运行 Windows 打包应用、真实网络更新/视频抽帧取消；这类原生端到端行为不冒充浏览器验证结果。
 - 构建主 JS chunk 640.09 kB，保留既有 >500 kB 非阻塞提示。无 Rust 逻辑或依赖改动，未重跑 Rust 全量测试。
 - 此轮变更仅涉及宿主 UI、内部控制流、测试与记录；未改 ProjectConfig/核心数据结构、插件 Schema、Tauri API、Rust、插件 ID 或各层版本号，不引入对外契约变化。
 
 最终复核：两项 Important 已闭环，其余反馈按上述决策处理；无已知遗留阻塞项。
+
+## 三审反馈修复（基于 6f22d02）
+
+二审的 Shift 拾取与取消入口遮挡已闭环；三审指出状态区占位会间接触发重新适配，此项替代上一节关于 R2 无遗留阻塞的结论。此次逐条核实 1 项 Important、4 项 Minor 修改建议及 1 项无需修改的观察；5 项修改建议分别采纳，另 1 项按报告建议保持现状。
+
+| 编号 | 等级 | 决策 | 核实、改动与验证依据 |
+|---|---|---|---|
+| S1 | 🟠 Important | 完全采纳 | [App.tsx](../../src/App.tsx#L588) 原 effect 在每次 canvasSize 变化时覆盖 imageView，状态区增减确会触发。拆为图片变化清空视图、尺寸可用后仅对空视图适配；已有缩放/平移在窗口或状态区尺寸变化时保留，零尺寸也不丢失。新图片、延迟首次测量与手动 resetZoom 仍适配当前宿主。[App.canvas-view.test](../../src/App.canvas-view.test.tsx) 使用真实 App/AppLayout/操作注册表/缩放平移处理函数，覆盖卡片挂载、5 秒收起、resize、图片替换与延迟测量；DOM 尺寸和图片加载由测试桩提供。 |
+| S2 | 🟡 Minor | 完全采纳 | 旧测试只读百分比，不能发现 clamp 丢失。新增 [timeline-playhead](../../src/lib/timeline-playhead.ts) 纯 helper，2px 宽度只编码一次，生成完整夹取表达式并经 CSS 变量引用；helper 与 [VideoTimeline.test](../../src/components/video/VideoTimeline.test.tsx) 都断言最小 0、最大 100%−2px、居中减 1px、实际 width 与 left 引用。删除夹取、修改任一边界或断开变量引用都会失败，不依赖 jsdom 解析嵌套 clamp。 |
+| S3 | 🟡 Minor | 完全采纳 | [OperationStatus.test](../../src/components/operations/OperationStatus.test.tsx) 原 contains 仅覆盖更新内容。现断言更新 article 与操作 status 卡片的直接父节点都是同一 region，另保留取消回调断言。 |
+| S4 | 🟡 Minor | 完全采纳 | [useCanvasInteractions](../../src/hooks/useCanvasInteractions.ts#L307) 注释补上 default 模式限定，并明确 Shift 由 Stage 继续拾取；守卫行为未改动。 |
+| S5 | 🟡 文档项 | 完全采纳 | 上节时间轴坐标明确为“选中首/末帧时的整条密度条边界”，不是单帧分段，原测量数值不变。 |
+| S6 | 🟡 观察项 | 采纳保持现状建议 | [useProjectVideoActions](../../src/hooks/useProjectVideoActions.ts#L139) 与 [useVideoImport](../../src/hooks/useVideoImport.ts#L124) 均优先以取消标志决定终态提示。若真实失败恰落在取消窗口内，原错误可能被“已取消”替代；本轮不扩展后端错误分类或变更取消契约，明确保留这一诊断限制，项目数据一致性与锁释放回归仍通过。 |
+
+### 三审修复验证与边界
+
+- `npm run typecheck`、`npm run lint`、`cargo clippy --manifest-path src-tauri/Cargo.toml`、`npm run build` 通过。
+- `npm run test:coverage -- --maxWorkers=4`：68 文件 / 387 测试全部通过；语句 95.33%、分支 90.72%、函数 99%、行 95.43%（上一轮 95.42%）。新增 helper 100% 覆盖，未修改覆盖率统计规则。
+- 新增 2 个 App 回归与 4 个 helper 参数用例；增强时间轴组件与状态区的既有断言。App 回归观察实际传给布局的 imageLayout，未复制 effect 实现。
+- 复核缩放后的像素变换、切图视图初始化、快捷键与导出相关自动化测试均通过；本轮未重跑真实浏览器、Windows 打包应用或外部标准导出工具手动清单，不将测试桩的尺寸通知等同于浏览器实际布局验证。
+- 构建主 JS chunk 640.17 kB；既有 >500 kB 提示仍属非阻塞。未修改 Rust 逻辑或依赖，未重跑 Rust 全量测试。
+- 宿主 UI 内部调整，无标注/项目/插件契约、Tauri commands、API 版本或 ROADMAP 状态变更。
+
+三审修复结论：1 项阻塞已修复，4 项小改已完成，取消竞争窗口的既有诊断限制已记录，无待用户决策项。

@@ -133,7 +133,11 @@ it("centres the playhead on its density segment for dense timelines and shows an
       ),
     );
     const playhead = container.querySelector<HTMLElement>('[aria-hidden="true"]')!;
-    const percent = parseFloat(playhead.style.getPropertyValue("--playhead-position"));
+    const boundedLeft = playhead.style.getPropertyValue("--playhead-left");
+    expect(playhead.style.left).toBe("var(--playhead-left)");
+    expect(playhead.style.width).toBe("2px");
+    expect(boundedLeft).toMatch(/^clamp\(0px, calc\([\d.]+% - 1px\), calc\(100% - 2px\)\)$/);
+    const percent = Number(boundedLeft.match(/([\d.]+)%/)![1]);
     const centre = (percent / 100) * 640;
     expect(centre).toBeGreaterThan((index / 300) * 640);
     expect(centre).toBeLessThan(((index + 1) / 300) * 640);

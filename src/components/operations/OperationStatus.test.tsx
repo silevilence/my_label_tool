@@ -60,6 +60,9 @@ it("shares the status area with update content and keeps cancellation operationa
     ),
   );
   expect(host.querySelector('[role="region"]')?.contains(host.querySelector("article"))).toBe(true);
+  const region = host.querySelector('[role="region"]');
+  expect(host.querySelector("article")?.parentElement).toBe(region);
+  expect(host.querySelector('[role="status"]')?.parentElement).toBe(region);
   await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
   expect(cancel).toHaveBeenCalledOnce();
   expect(operation.cancelRequested).toBe(true);
