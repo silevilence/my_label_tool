@@ -96,6 +96,56 @@ export function LabelShortcutOverlay({
 
 export type OverlayCorner = "bottom-left" | "bottom-right" | "top-left" | "top-right";
 
+const FIT_SCALE_EPSILON = 0.001;
+
+export function isFitScale(scale: number, fitScale: number): boolean {
+  return Math.abs(scale - fitScale) < FIT_SCALE_EPSILON;
+}
+
+// 顶中常驻：四个角落被模式提示与标签浮层的默认/让位态占用，顶中在任何浮层状态下都不重叠。
+export function ZoomIndicator({
+  fit,
+  onReset,
+  onZoomIn,
+  onZoomOut,
+  scale,
+}: {
+  fit: boolean;
+  onReset: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  scale: number | null;
+}) {
+  return (
+    <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center overflow-hidden rounded-lg border border-slate-700/70 bg-slate-950/75 text-xs text-slate-200 shadow-lg">
+      <button
+        aria-label="缩小画布"
+        className="px-2 py-1 leading-5 hover:bg-slate-800"
+        onClick={onZoomOut}
+        type="button"
+      >
+        −
+      </button>
+      <button
+        className="min-w-[3.5rem] px-2 py-1 text-center font-medium leading-5 hover:bg-slate-800"
+        onClick={onReset}
+        title="恢复适应画布"
+        type="button"
+      >
+        {fit || scale === null ? "适应" : `${Math.round(scale * 100)}%`}
+      </button>
+      <button
+        aria-label="放大画布"
+        className="px-2 py-1 leading-5 hover:bg-slate-800"
+        onClick={onZoomIn}
+        type="button"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 const OVERLAY_CORNER_CLASS: Record<OverlayCorner, string> = {
   "bottom-left": "canvas-floating-panel-bottom left-3",
   "bottom-right": "canvas-floating-panel-bottom right-3",

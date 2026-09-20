@@ -2,7 +2,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import type { KonvaEventObject } from "konva/lib/Node";
 import { expect, it, vi } from "vitest";
-import { AnnotationRect } from "./CanvasChrome";
+import { AnnotationRect, ZoomIndicator, isFitScale } from "./CanvasChrome";
 const handlers = vi.hoisted(() => ({
   drag: null as null | ((event: KonvaEventObject<DragEvent>) => void),
   mouseDown: null as null | ((event: KonvaEventObject<MouseEvent>) => void),
@@ -93,4 +93,41 @@ it("starts panning from shapes on middle button and space-held left button", () 
   expect(props.onPanStart).toHaveBeenCalledTimes(2);
   expect(props.onSelect).toHaveBeenCalledTimes(1);
   act(() => root.unmount());
+});
+
+it("renders fit state or percentage and routes indicator actions", () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const onReset = vi.fn();
+  const onZoomIn = vi.fn();
+  const onZoomOut = vi.fn();
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  const props: ComponentProps<typeof ZoomIndicator> = {
+    fit: true,
+    onReset,
+    onZoomIn,
+    onZoomOut,
+    scale: null,
+  };
+  act(() => root.render(<ZoomIndicator {...props} />));
+  expect(document.body.textContent).toContain("适应");
+  const buttons = () => Array.from(host.querySelectorAll("button"));
+  act(() => buttons()[1]!.click());
+  expect(onReset).toHaveBeenCalledTimes(1);
+  act(() => root.render(<ZoomIndicator {...props} fit={false} scale={1.27} />));
+  expect(document.body.textContent).toContain("127%");
+  expect(document.body.textContent).not.toContain("适应");
+  act(() => buttons()[0]!.click());
+  expect(onZoomOut).toHaveBeenCalledTimes(1);
+  act(() => buttons()[2]!.click());
+  expect(onZoomIn).toHaveBeenCalledTimes(1);
+  act(() => root.unmount());
+  host.remove();
+});
+
+it("treats near-equal scales as fit within tolerance", () => {
+  expect(isFitScale(0.5, 0.5)).toBe(true);
+  expect(isFitScale(0.5000005, 0.5)).toBe(true);
+  expect(isFitScale(0.502, 0.5)).toBe(false);
 });

@@ -23,9 +23,11 @@ import {
   DeleteAnnotationDialog,
   LabelShortcutOverlay,
   ModeHelpOverlay,
+  ZoomIndicator,
+  isFitScale,
   type OverlayCorner,
 } from "./canvas/CanvasChrome";
-import { isLargeImage, isPointNearAnnotation, type CanvasRect } from "./canvas/geometry";
+import { getFitScale, isLargeImage, isPointNearAnnotation, type CanvasRect } from "./canvas/geometry";
 import type { CanvasContextMenu as CanvasContextMenuState, ImageLayout } from "./canvas/types";
 import type { InteractionMode } from "./canvas/types";
 import {
@@ -603,8 +605,15 @@ export function AppLayout({
                     labels={labels}
                   />
                 )}
+                <ZoomIndicator
+                  fit={isFitScale(imageLayout.scale, getFitScale(loadedImage, canvasSize))}
+                  onReset={resetZoom}
+                  onZoomIn={() => zoomFromKeyboard(1)}
+                  onZoomOut={() => zoomFromKeyboard(-1)}
+                  scale={imageLayout.scale}
+                />
                 {labelSwitchHint && (
-                  <div className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700/80 bg-slate-950/85 px-4 py-2 text-sm text-slate-100 shadow-xl">
+                  <div className="pointer-events-none absolute left-1/2 top-14 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700/80 bg-slate-950/85 px-4 py-2 text-sm text-slate-100 shadow-xl">
                     <span
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: labelSwitchHint.color }}
