@@ -181,12 +181,16 @@ export function LabelSettings({
               <button
                 className="rounded bg-sky-500 px-3 py-1 text-sm font-medium text-white hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700"
                 type="button"
-                disabled={!isDirty && canSaveTemplate}
-                title={canSaveTemplate ? undefined : "内置模板会自动另存为新模板"}
+                disabled={!isDirty}
                 onClick={onSaveTemplate}
               >
                 保存
               </button>
+              {!canSaveTemplate && (
+                <p className="col-span-2 text-xs leading-relaxed text-amber-300">
+                  内置模板不可覆盖：未修改时无需保存；有修改时"保存"会另存为新模板。
+                </p>
+              )}
               {selectedTemplateId === PROJECT_TEMPLATE_ID && (
                 <button
                   className="rounded bg-emerald-500 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
@@ -213,7 +217,7 @@ export function LabelSettings({
                 另存为
               </button>
               <button
-                className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
+                className="rounded border border-red-500/40 bg-transparent px-3 py-1 text-sm text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
                 type="button"
                 disabled={!canDeleteTemplate}
                 title={canDeleteTemplate ? undefined : "内置模板不能删除"}

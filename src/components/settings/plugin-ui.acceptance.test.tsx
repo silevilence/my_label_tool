@@ -16,7 +16,6 @@ import { PrelabelSettings } from "./PrelabelSettings";
 const tauriMocks = vi.hoisted(() => ({
   authorizePlugin: vi.fn(),
   clearPluginFailures: vi.fn(),
-  confirmAction: vi.fn(),
   getOnnxRuntimeStatus: vi.fn(),
   getPluginRuntimeLogs: vi.fn(),
   getPluginRuntimeSettings: vi.fn(),
@@ -27,7 +26,9 @@ const tauriMocks = vi.hoisted(() => ({
   setPluginSafeMode: vi.fn(),
   uninstallPlugin: vi.fn(),
 }));
+const promptsMocks = vi.hoisted(() => ({ confirmAction: vi.fn().mockResolvedValue(true) }));
 
+vi.mock("../../lib/prompts", () => promptsMocks);
 vi.mock("../../lib/tauri-api", () => tauriMocks);
 
 const capabilities: PluginCapabilities = {
@@ -120,6 +121,7 @@ describe("plugin UI acceptance", () => {
 
     expect(tauriMocks.setPluginSafeMode).toHaveBeenCalledWith(true);
     expect(onPluginsChanged).toHaveBeenCalledOnce();
+    expect(promptsMocks.confirmAction).toHaveBeenCalled();
     expect(document.body.textContent).toContain(pluginText.safeModeRuntimeBlocked);
     const exporterCard = Array.from(document.body.querySelectorAll("article")).find((card) =>
       card.textContent?.includes("导出插件"),

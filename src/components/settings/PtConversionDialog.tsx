@@ -92,6 +92,9 @@ export function PtConversionDialog({
                   {text.ptConversionFailed(session.error)}
                 </p>
               )}
+              <p className="mt-4 rounded border border-slate-700/60 bg-slate-950/60 p-3 text-xs leading-relaxed text-slate-300">
+                {text.ptConsequences}
+              </p>
             </>
           ) : (
             <div

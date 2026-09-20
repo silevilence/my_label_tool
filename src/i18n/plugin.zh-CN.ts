@@ -98,6 +98,12 @@ export const PLUGIN_ZH_CN = {
   installedAt: (value: string) => `安装于 ${value}`,
   safeMode: "安全模式（禁止安装和运行代码型插件）",
   safeModeRuntimeBlocked: "安全模式已阻止此代码型插件运行。",
+  safeModeEnableConfirm:
+    "开启安全模式后将立即停止运行全部代码型插件（数据型插件保留），已授予的权限不变，可随时关闭恢复。确定开启？",
+  pluginDisableConfirm: (name: string) =>
+    `停用「${name}」后，其提供的导出、预打标等能力将立即不可用，可随时重新启用。确定停用？`,
+  clearFailuresConfirm: (name: string) =>
+    `清除「${name}」的失败记录后，连续失败自动禁用的计数将重新累计。确定清除？`,
   prelabelImageOutsideProject: "图片不在当前项目目录内",
   prelabelRelativePathInvalid: "图片项目相对路径无效",
   prelabelUnknownImagePath: "插件返回了未知图片路径",

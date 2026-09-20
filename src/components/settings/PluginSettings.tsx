@@ -134,19 +134,34 @@ export function PluginSettings({
   }
 
   async function togglePlugin(plugin: PluginRegistryEntry) {
+    if (
+      plugin.state === "enabled" &&
+      !(await confirmAction(text.pluginDisableConfirm(plugin.name), { danger: true, confirmLabel: text.disable }))
+    ) {
+      return;
+    }
     await runPluginOperation(plugin.id, async () => {
       await setPluginEnabled(plugin.id, plugin.state !== "enabled");
     });
   }
 
   async function removePlugin(plugin: PluginRegistryEntry) {
-    if (!(await confirmAction(text.uninstallConfirm(plugin.name)))) return;
+    if (
+      !(await confirmAction(text.uninstallConfirm(plugin.name), {
+        danger: true,
+        confirmLabel: text.uninstall,
+      }))
+    )
+      return;
     await runPluginOperation(plugin.id, async () => {
       await uninstallPlugin(plugin.id);
     });
   }
 
   async function resetFailures(plugin: PluginRegistryEntry) {
+    if (!(await confirmAction(text.clearFailuresConfirm(plugin.name)))) {
+      return;
+    }
     await runPluginOperation(plugin.id, async () => {
       await clearPluginFailures(plugin.id);
     });
@@ -189,6 +204,9 @@ export function PluginSettings({
   }
 
   async function toggleSafeMode() {
+    if (!safeMode && !(await confirmAction(text.safeModeEnableConfirm))) {
+      return;
+    }
     setIsChangingSafeMode(true);
     setError(null);
     try {

@@ -31,6 +31,8 @@ export const PRELABEL_ZH_CN = {
   ptDialogTitle: "确认 .pt 转换参数",
   ptImgSize: "输入尺寸 imgsz（32 的倍数）",
   ptSimplify: "简化 ONNX 计算图（simplify）",
+  ptConsequences:
+    "转换将由外部进程在本机执行（yolo CLI 或 Python ultralytics），通常需要数十秒到数分钟；失败或中途取消不会修改源 .pt 模型文件，转换完成的 ONNX 与源文件并存。",
   ptUvxFirstRunNotice:
     "当前将使用 uvx。首次转换会联网下载 ultralytics 依赖；命中 uv 缓存后不会重复下载。",
   ptCommandPreview: "完整命令",
