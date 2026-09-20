@@ -97,7 +97,7 @@ afterEach(async () => {
 });
 
 function button(label: string): HTMLButtonElement {
-  const match = [...container.querySelectorAll("button")].find(
+  const match = [...document.body.querySelectorAll("button")].find(
     (candidate) => candidate.textContent === label,
   );
   if (!match) throw new Error(`Missing button: ${label}`);
@@ -128,10 +128,11 @@ it("locks library edits and closing from confirmation through persistence", asyn
 
   await act(async () => confirmation.resolve(true));
   expect(button(text.runtimeCancelDownload).disabled).toBe(false);
-  expect(container.querySelector("fieldset")?.disabled).toBe(true);
+  expect(document.body.querySelector("fieldset")?.disabled).toBe(true);
   expect(
-    container.querySelector<HTMLInputElement>(`input[placeholder="${text.sourceUrlPlaceholder}"]`)
-      ?.disabled,
+    document.body.querySelector<HTMLInputElement>(
+      `input[placeholder="${text.sourceUrlPlaceholder}"]`,
+    )?.disabled,
   ).toBe(true);
   await act(async () => download.resolve(result));
   expect(button(text.removeModel).disabled).toBe(true);
@@ -153,8 +154,8 @@ it.each(["accepted", "already-completed", "failed"])(
     expect(api.cancelPrelabelModelDownload).toHaveBeenCalledOnce();
     await act(async () => download.resolve(result));
     expect(saved.models[0].path).toBe(result.path);
-    expect(container.textContent).toContain(text.modelUpdateCompleted(model.name));
-    expect(container.textContent).not.toContain(text.modelUpdateCancelled);
+    expect(document.body.textContent).toContain(text.modelUpdateCompleted(model.name));
+    expect(document.body.textContent).not.toContain(text.modelUpdateCancelled);
   },
 );
 
@@ -164,7 +165,7 @@ it("keeps the current model and unlocks the form when the backend cancels", asyn
   await act(async () => download.resolve(null));
   expect(api.savePrelabelModelLibrary).not.toHaveBeenCalled();
   expect(saved.models[0].path).toBe(model.path);
-  expect(container.textContent).toContain(text.modelUpdateCancelled);
+  expect(document.body.textContent).toContain(text.modelUpdateCancelled);
   expect(button(text.updateModel).disabled).toBe(false);
 });
 
@@ -173,8 +174,8 @@ it("keeps the current config and allows retry after a save failure", async () =>
   await click(text.updateModel);
   await act(async () => download.resolve(result));
   expect(saved.models[0].path).toBe(model.path);
-  expect(container.textContent).toContain("disk full");
-  expect(container.textContent).not.toContain(text.modelUpdateCompleted(model.name));
+  expect(document.body.textContent).toContain("disk full");
+  expect(document.body.textContent).not.toContain(text.modelUpdateCompleted(model.name));
   expect(button(text.updateModel).disabled).toBe(false);
 });
 

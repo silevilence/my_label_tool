@@ -1,3 +1,4 @@
+import { Overlay } from "../overlay/Overlay";
 import { useEffect, useRef } from "react";
 import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
 import {
@@ -37,12 +38,8 @@ export function PtConversionDialog({
   }, [session.output]);
 
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/80 px-4 py-6">
-      <section
-        aria-modal="true"
-        className="flex max-h-full w-full max-w-3xl flex-col rounded-xl border border-slate-600 bg-slate-900 shadow-2xl"
-        role="dialog"
-      >
+    <Overlay onClose={onBack} canDismiss={!isActive} label={text.ptDialogTitle} size="xl">
+      <section className="flex max-h-full w-full max-w-3xl flex-col rounded-xl border border-slate-600 bg-slate-900 shadow-2xl">
         <header className="border-b border-slate-800 px-5 py-4">
           <h3 className="font-semibold text-slate-100">{text.ptDialogTitle}</h3>
           <p className="mt-1 break-all text-xs text-slate-500">{path}</p>
@@ -168,6 +165,6 @@ export function PtConversionDialog({
           )}
         </footer>
       </section>
-    </div>
+    </Overlay>
   );
 }

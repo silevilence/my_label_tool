@@ -1,3 +1,5 @@
+import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
+import { Overlay } from "../overlay/Overlay";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { AnnotationShape, LabelConfig } from "../../types/annotation";
 import {
@@ -140,7 +142,7 @@ export function ImageSearchDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[65] flex items-start justify-center bg-slate-950/60 px-4 pt-20">
+    <Overlay onClose={onClose} kind="light" label={interactionText.search} size="xl">
       <section className="grid w-full max-w-3xl grid-cols-[1fr_220px] gap-4 rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -172,10 +174,6 @@ export function ImageSearchDialog({
                 }}
                 onClick={(event) => updateCursor(event.currentTarget)}
                 onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    onClose();
-                    return;
-                  }
                   if (suggestions.length > 0 && event.key === "ArrowDown") {
                     event.preventDefault();
                     setActiveSuggestionIndex((index) => (index + 1) % suggestions.length);
@@ -330,7 +328,7 @@ export function ImageSearchDialog({
           )}
         </aside>
       </section>
-    </div>
+    </Overlay>
   );
 }
 

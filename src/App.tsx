@@ -1,3 +1,4 @@
+import { useOverlayStore } from "./store/useOverlayStore";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
@@ -615,6 +616,7 @@ function App() {
 
   useEffect(() => {
     function updateMode(event: KeyboardEvent) {
+      if (useOverlayStore.getState().hasBlocking() || useOverlayStore.getState().hasLight()) return;
       setInteractionMode(getInteractionMode(event.ctrlKey, event.shiftKey));
     }
 
@@ -658,14 +660,7 @@ function App() {
 
   useEffect(() => {
     function finishPolygonFromKeyboard(event: KeyboardEvent) {
-      if (
-        videoImport.busy ||
-        videoImportSource !== null ||
-        videoImport.batch !== null ||
-        videoImport.replacement !== null ||
-        isProjectSettingsOpen
-      )
-        return;
+      if (useOverlayStore.getState().hasBlocking() || useOverlayStore.getState().hasLight()) return;
       if (isEditableTarget(event.target) || currentShapeType !== "polygon") {
         return;
       }
@@ -700,17 +695,6 @@ function App() {
           if (index >= 0 && next) setSelectedPath(next.path);
         }
       : undefined,
-    enabled:
-      !videoImport.busy &&
-      videoImportSource === null &&
-      videoImport.batch === null &&
-      videoImport.replacement === null &&
-      !imageDeletion.target &&
-      !isShortcutSettingsOpen &&
-      !isProjectSettingsOpen &&
-      !isPrelabelSettingsOpen &&
-      !isPrelabelExecutionOpen &&
-      !annotationToDelete,
     deleteCurrentImage: () => requestDeleteImage(selectedPath),
     labels,
     selectedPath,

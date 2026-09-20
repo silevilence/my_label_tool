@@ -1,3 +1,5 @@
+import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
+import { Overlay } from "../overlay/Overlay";
 import { useState } from "react";
 import { DEFAULT_LABEL_COLORS } from "../../lib/defaults/labels";
 import { PROJECT_TEMPLATE_ID } from "../../lib/importers";
@@ -140,7 +142,7 @@ export function LabelSettings({
       </div>
 
       {isManageOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4">
+        <Overlay onClose={() => setIsManageOpen(false)} label={interactionText.labels} size="wide">
           <section className="scrollbar-dark max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-slate-100">管理模板和标签</h2>
@@ -283,7 +285,7 @@ export function LabelSettings({
               </button>
             </div>
           </section>
-        </div>
+        </Overlay>
       )}
     </section>
   );

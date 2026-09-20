@@ -1,0 +1,17 @@
+前端交互①：开发 / 快速审核 / 修复记录
+范围：docs/frontend-interaction.md §1、ADR 0008；全部既有遮罩及 VideoReextractDialog 复用适配器。
+需求、质量、规范：通过。Overlay 自注册、深度分层、栈顶 Esc、焦点陷阱和归还、轻量门禁、视口滚动已接入。
+Q1（Important）：共享滚动槽裁切横向菜单。完全采纳，子菜单改为可聚焦展开的内联滚动内容。
+Q2（Important）：焦点候选选择器分组返回顺序不稳定。完全采纳，统一 :is 选择器，回归验证 Tab 顺序。
+浏览器验收：1000×320 视口，标签管理 panel top=16 / height=288 / bottom=304，overflowY=auto，关闭按钮可见；实际点击后 Esc 关闭并焦点归还“管理模板和标签”。
+测试：npm run typecheck、npm run lint、cargo clippy --manifest-path src-tauri/Cargo.toml 通过。
+覆盖率：npm run test:coverage -- --maxWorkers=4，50 文件 / 335 测试通过；lines 94.73%。
+插件正式审查（AGENTS.md §10、ADR 0003–0006）：
+- 契约与 Schema：通过，仅宿主遮罩适配，无外部契约变更。
+- ID 与版本分层：通过，无 ID 或版本改动。
+- 能力声明：通过，握手与能力未改动。
+- 向后兼容：通过，安装/授权调用及参数不变。
+- 权限与隔离：通过，无权限扩展，授权确认仍由原有界面处理。
+- 目录与工程约定：通过，共享模块位于 components/overlay 和 store，新增文案集中 i18n。
+- 测试：通过，插件 UI 原有验收及新增 Overlay 回归均通过。
+结论：阻断 0 / 严重 0；可原地勾选并提交。Rust 与插件协议实现未改动。

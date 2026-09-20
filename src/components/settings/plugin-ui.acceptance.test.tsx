@@ -105,11 +105,11 @@ describe("plugin UI acceptance", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain(pluginText.stateEnabled);
-    expect(container.textContent).toContain(pluginText.stateAutoDisabled);
-    expect(container.textContent).toContain(pluginText.clearFailures);
-    const safeMode = Array.from(container.querySelectorAll("input")).find(
-      (input) => input.parentElement?.textContent?.includes(pluginText.safeMode),
+    expect(document.body.textContent).toContain(pluginText.stateEnabled);
+    expect(document.body.textContent).toContain(pluginText.stateAutoDisabled);
+    expect(document.body.textContent).toContain(pluginText.clearFailures);
+    const safeMode = Array.from(document.body.querySelectorAll("input")).find((input) =>
+      input.parentElement?.textContent?.includes(pluginText.safeMode),
     );
     expect(safeMode).toBeDefined();
 
@@ -120,11 +120,11 @@ describe("plugin UI acceptance", () => {
 
     expect(tauriMocks.setPluginSafeMode).toHaveBeenCalledWith(true);
     expect(onPluginsChanged).toHaveBeenCalledOnce();
-    expect(container.textContent).toContain(pluginText.safeModeRuntimeBlocked);
-    const exporterCard = Array.from(container.querySelectorAll("article")).find((card) =>
+    expect(document.body.textContent).toContain(pluginText.safeModeRuntimeBlocked);
+    const exporterCard = Array.from(document.body.querySelectorAll("article")).find((card) =>
       card.textContent?.includes("导出插件"),
     );
-    const labelCard = Array.from(container.querySelectorAll("article")).find((card) =>
+    const labelCard = Array.from(document.body.querySelectorAll("article")).find((card) =>
       card.textContent?.includes("标签插件"),
     );
     expect(exporterCard?.querySelector("button")?.disabled).toBe(true);
@@ -173,11 +173,11 @@ describe("plugin UI acceptance", () => {
       );
     });
 
-    expect(container.textContent).toContain("安全模式已阻止");
-    expect(container.textContent).toContain("47%");
-    const selectedOption = container.querySelector(`option[value="${format.selectionId}"]`);
+    expect(document.body.textContent).toContain("安全模式已阻止");
+    expect(document.body.textContent).toContain("47%");
+    const selectedOption = document.body.querySelector(`option[value="${format.selectionId}"]`);
     expect((selectedOption as HTMLOptionElement).disabled).toBe(true);
-    const cancel = Array.from(container.querySelectorAll("button")).find(
+    const cancel = Array.from(document.body.querySelectorAll("button")).find(
       (button) => button.textContent === pluginText.exportCancel,
     );
     await act(async () => cancel?.click());
@@ -240,14 +240,14 @@ describe("plugin UI acceptance", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain(prelabelText.pluginSourcesTitle);
-    expect(container.textContent).toContain(prelabelText.pluginSourceReady);
-    expect(container.textContent).toContain("等待配置迁移");
-    const ready = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("可用预打标"),
+    expect(document.body.textContent).toContain(prelabelText.pluginSourcesTitle);
+    expect(document.body.textContent).toContain(prelabelText.pluginSourceReady);
+    expect(document.body.textContent).toContain("等待配置迁移");
+    const ready = Array.from(document.body.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("可用预打标"),
     );
     await act(async () => ready?.click());
-    expect(container.textContent).toContain("可用预打标");
-    expect(container.textContent).toContain("person");
+    expect(document.body.textContent).toContain("可用预打标");
+    expect(document.body.textContent).toContain("person");
   });
 });

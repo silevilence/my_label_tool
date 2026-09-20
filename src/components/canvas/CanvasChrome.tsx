@@ -1,3 +1,5 @@
+import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
+import { Overlay } from "../overlay/Overlay";
 import type { MutableRefObject, ReactNode } from "react";
 import { IMAGE_DELETION_ZH_CN as imageDeletionText } from "../../i18n/image-deletion.zh-CN";
 import { Circle, Label as KonvaLabel, Line, Rect, Tag, Text } from "react-konva";
@@ -118,7 +120,7 @@ export function DeleteAnnotationDialog({
   onConfirm,
 }: DeleteAnnotationDialogProps) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4">
+    <Overlay onClose={onCancel} label={interactionText.deleteAnnotation} size="sm">
       <section className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
         <h2 className="text-base font-semibold text-slate-100">确认删除标注？</h2>
         <p className="mt-2 text-sm text-slate-400">将删除「{labelName}」标注，可用 Ctrl+Z 撤销。</p>
@@ -139,11 +141,12 @@ export function DeleteAnnotationDialog({
           </button>
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }
 
 interface CanvasContextMenuProps {
+  onClose?: () => void;
   canDeleteImage: boolean;
   onDeleteImage: () => void;
   annotation: AnnotationShape | null;
@@ -169,6 +172,7 @@ interface CanvasContextMenuProps {
 }
 
 export function CanvasContextMenu({
+  onClose = () => {},
   canDeleteImage,
   onDeleteImage,
   annotation,
@@ -192,80 +196,80 @@ export function CanvasContextMenu({
   onZoomIn,
   onZoomOut,
 }: CanvasContextMenuProps) {
-  const openSubmenusUp = y > window.innerHeight / 2;
   const matchingLabels = annotation
     ? labels.filter((label) => isLabelCompatibleWithShape(label, annotation.type))
     : labels;
   const compatibleLabels = matchingLabels.length > 0 ? matchingLabels : labels;
 
   return (
-    <div
-      className="fixed z-50 max-h-[calc(100vh-1rem)] w-44 overflow-visible rounded-lg border border-slate-700 bg-slate-900 py-1 text-sm text-slate-100 shadow-2xl"
-      data-context-menu="true"
-      style={{ left: x, top: y }}
-    >
-      <ContextMenuGroup title="缩放操作">
-        <ContextMenuButton onClick={onZoomIn}>放大</ContextMenuButton>
-        <ContextMenuButton onClick={onZoomOut}>缩小</ContextMenuButton>
-        <ContextSubMenu label="更多缩放" openUp={openSubmenusUp}>
-          <ContextMenuButton onClick={onFitWidth}>适应宽度</ContextMenuButton>
-          <ContextMenuButton onClick={onFitHeight}>适应高度</ContextMenuButton>
-          <ContextMenuButton onClick={onOriginalSize}>原图大小</ContextMenuButton>
-          <ContextMenuButton onClick={onResetZoom}>重置缩放</ContextMenuButton>
-        </ContextSubMenu>
-      </ContextMenuGroup>
-
-      <ContextMenuGroup title="图片操作">
-        <ContextMenuButton danger disabled={!canDeleteImage} onClick={onDeleteImage}>
-          {imageDeletionText.deleteCurrentImage}
-        </ContextMenuButton>
-        <ContextSubMenu label="跳转" openUp={openSubmenusUp}>
-          <ContextMenuButton disabled={!canPreviousImage} onClick={onPreviousImage}>
-            上一张
-          </ContextMenuButton>
-          <ContextMenuButton disabled={!canNextImage} onClick={onNextImage}>
-            下一张
-          </ContextMenuButton>
-          <ContextMenuButton
-            disabled={!canPreviousUnannotatedImage}
-            onClick={onPreviousUnannotatedImage}
-          >
-            上个未标注
-          </ContextMenuButton>
-          <ContextMenuButton disabled={!canNextUnannotatedImage} onClick={onNextUnannotatedImage}>
-            下个未标注
-          </ContextMenuButton>
-        </ContextSubMenu>
-      </ContextMenuGroup>
-
-      {annotation && (
-        <ContextMenuGroup title="标签操作">
-          <ContextSubMenu label="修改" openUp={openSubmenusUp}>
-            <div className="max-h-72 overflow-y-auto py-1">
-              {compatibleLabels.map((label) => (
-                <button
-                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800 ${
-                    label.id === annotation.labelId ? "text-sky-300" : ""
-                  }`}
-                  key={label.id}
-                  type="button"
-                  onClick={() => onChangeLabel(annotation.id, label.id)}
-                >
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: label.color }}
-                  />
-                  <span className="truncate">{label.name}</span>
-                </button>
-              ))}
-            </div>
+    <Overlay onClose={onClose} kind="light" label={interactionText.canvasMenu} anchor={{ x, y }}>
+      <div
+        className="w-44 rounded-lg border border-slate-700 bg-slate-900 py-1 text-sm text-slate-100 shadow-2xl"
+        data-context-menu="true"
+      >
+        <ContextMenuGroup title="缩放操作">
+          <ContextMenuButton onClick={onZoomIn}>放大</ContextMenuButton>
+          <ContextMenuButton onClick={onZoomOut}>缩小</ContextMenuButton>
+          <ContextSubMenu label="更多缩放">
+            <ContextMenuButton onClick={onFitWidth}>适应宽度</ContextMenuButton>
+            <ContextMenuButton onClick={onFitHeight}>适应高度</ContextMenuButton>
+            <ContextMenuButton onClick={onOriginalSize}>原图大小</ContextMenuButton>
+            <ContextMenuButton onClick={onResetZoom}>重置缩放</ContextMenuButton>
           </ContextSubMenu>
-          <ContextMenuButton danger onClick={() => onDeleteAnnotation(annotation)}>
-            删除
-          </ContextMenuButton>
         </ContextMenuGroup>
-      )}
-    </div>
+
+        <ContextMenuGroup title="图片操作">
+          <ContextMenuButton danger disabled={!canDeleteImage} onClick={onDeleteImage}>
+            {imageDeletionText.deleteCurrentImage}
+          </ContextMenuButton>
+          <ContextSubMenu label="跳转">
+            <ContextMenuButton disabled={!canPreviousImage} onClick={onPreviousImage}>
+              上一张
+            </ContextMenuButton>
+            <ContextMenuButton disabled={!canNextImage} onClick={onNextImage}>
+              下一张
+            </ContextMenuButton>
+            <ContextMenuButton
+              disabled={!canPreviousUnannotatedImage}
+              onClick={onPreviousUnannotatedImage}
+            >
+              上个未标注
+            </ContextMenuButton>
+            <ContextMenuButton disabled={!canNextUnannotatedImage} onClick={onNextUnannotatedImage}>
+              下个未标注
+            </ContextMenuButton>
+          </ContextSubMenu>
+        </ContextMenuGroup>
+
+        {annotation && (
+          <ContextMenuGroup title="标签操作">
+            <ContextSubMenu label="修改">
+              <div className="max-h-72 overflow-y-auto py-1">
+                {compatibleLabels.map((label) => (
+                  <button
+                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800 ${
+                      label.id === annotation.labelId ? "text-sky-300" : ""
+                    }`}
+                    key={label.id}
+                    type="button"
+                    onClick={() => onChangeLabel(annotation.id, label.id)}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: label.color }}
+                    />
+                    <span className="truncate">{label.name}</span>
+                  </button>
+                ))}
+              </div>
+            </ContextSubMenu>
+            <ContextMenuButton danger onClick={() => onDeleteAnnotation(annotation)}>
+              删除
+            </ContextMenuButton>
+          </ContextMenuGroup>
+        )}
+      </div>
+    </Overlay>
   );
 }
 
@@ -277,10 +281,9 @@ interface ContextMenuGroupProps {
 interface ContextSubMenuProps {
   children: ReactNode;
   label: string;
-  openUp: boolean;
 }
 
-function ContextSubMenu({ children, label, openUp }: ContextSubMenuProps) {
+function ContextSubMenu({ children, label }: ContextSubMenuProps) {
   return (
     <div className="group relative">
       <button
@@ -290,11 +293,7 @@ function ContextSubMenu({ children, label, openUp }: ContextSubMenuProps) {
         <span>{label}</span>
         <span className="text-slate-500">›</span>
       </button>
-      <div
-        className={`invisible absolute left-full w-40 rounded-lg border border-slate-700 bg-slate-900 py-1 opacity-0 shadow-2xl group-hover:visible group-hover:opacity-100 ${
-          openUp ? "bottom-0" : "top-0"
-        }`}
-      >
+      <div className="hidden border-y border-slate-700 bg-slate-950 py-1 group-hover:block group-focus-within:block">
         {children}
       </div>
     </div>

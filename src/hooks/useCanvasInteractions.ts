@@ -58,11 +58,7 @@ interface UseCanvasInteractionsParams {
   setPolygonCursorPoint: (point: { x: number; y: number } | null) => void;
   setPolygonPoints: (points: number[] | null) => void;
   undoPolygonDraftPoint: () => boolean;
-  updateAnnotation: (
-    path: string,
-    annotationId: string,
-    patch: Partial<AnnotationShape>,
-  ) => void;
+  updateAnnotation: (path: string, annotationId: string, patch: Partial<AnnotationShape>) => void;
   zoomAt: (pointer: { x: number; y: number }, scaleBy: number) => void;
 }
 
@@ -125,17 +121,9 @@ export function useCanvasInteractions({
       setContextMenu(null);
     }
 
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setContextMenu(null);
-      }
-    }
-
     window.addEventListener("mousedown", closeOnMouseDown);
-    window.addEventListener("keydown", closeOnEscape);
     return () => {
       window.removeEventListener("mousedown", closeOnMouseDown);
-      window.removeEventListener("keydown", closeOnEscape);
     };
   }, [contextMenu, setContextMenu]);
 

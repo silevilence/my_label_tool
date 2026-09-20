@@ -1,3 +1,4 @@
+import { useOverlayStore } from "../store/useOverlayStore";
 import { useEffect } from "react";
 import { formatShortcut, normalizeShortcutKey } from "../lib/shortcut-utils";
 import { isEditableTarget } from "../lib/app-utils";
@@ -49,7 +50,7 @@ export function useKeyboardShortcuts({
         !enabled ||
         event.defaultPrevented ||
         isEditableTarget(event.target) ||
-        document.querySelector('[aria-modal="true"]')
+        useOverlayStore.getState().hasBlocking()
       ) {
         return;
       }
@@ -58,11 +59,13 @@ export function useKeyboardShortcuts({
       if ((event.ctrlKey || event.metaKey) && !event.altKey) {
         if (key === "z") {
           event.preventDefault();
+          if (useOverlayStore.getState().hasLight()) return;
           undo();
           return;
         }
         if (key === "y") {
           event.preventDefault();
+          if (useOverlayStore.getState().hasLight()) return;
           redo();
           return;
         }
@@ -76,6 +79,13 @@ export function useKeyboardShortcuts({
       if (event.ctrlKey || event.altKey || event.metaKey) {
         return;
       }
+
+      if (
+        useOverlayStore.getState().hasLight() &&
+        key !== shortcuts.zoomIn &&
+        key !== shortcuts.zoomOut
+      )
+        return;
 
       if (key === "Delete" && selectedPath && selectedShapeId) {
         event.preventDefault();

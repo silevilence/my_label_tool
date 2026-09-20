@@ -1,3 +1,4 @@
+import { Overlay } from "./overlay/Overlay";
 import { useEffect, useRef, useState } from "react";
 import type { ImageDeletionTarget } from "../hooks/useImageDeletion";
 import { IMAGE_DELETION_ZH_CN as text } from "../i18n/image-deletion.zh-CN";
@@ -24,50 +25,22 @@ export function DeleteImageDialog({
   const [remaining, setRemaining] = useState(3);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
-  const callbacks = useRef({ onCancel, isDeleting, allowCancelWhileBusy });
-  callbacks.current = { onCancel, isDeleting, allowCancelWhileBusy };
-
   useEffect(() => {
-    const previousFocus = document.activeElement;
-    cancelRef.current?.focus();
     const timer = window.setInterval(() => {
       setRemaining(Math.max(0, Math.ceil((target.readyAt - Date.now()) / 1000)));
     }, 100);
-    function blockKeys(event: KeyboardEvent) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (
-        event.type !== "keydown" ||
-        (callbacks.current.isDeleting && !callbacks.current.allowCancelWhileBusy)
-      )
-        return;
-      if (event.key === "Escape") callbacks.current.onCancel();
-      if (event.key === "Tab") {
-        const next =
-          document.activeElement === cancelRef.current && !confirmRef.current?.disabled
-            ? confirmRef.current
-            : cancelRef.current;
-        next?.focus();
-      }
-    }
-    window.addEventListener("keydown", blockKeys, true);
-    window.addEventListener("keyup", blockKeys, true);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("keydown", blockKeys, true);
-      window.removeEventListener("keyup", blockKeys, true);
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
-    };
+    return () => window.clearInterval(timer);
   }, [target.readyAt]);
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4"
-      onContextMenu={(event) => event.preventDefault()}
+    <Overlay
+      onClose={onCancel}
+      canDismiss={!isDeleting || allowCancelWhileBusy}
+      pointerOnly
+      role="alertdialog"
+      labelledBy="delete-image-title"
     >
       <section
-        role="alertdialog"
-        aria-modal="true"
         aria-labelledby="delete-image-title"
         aria-describedby="delete-image-description"
         aria-busy={isDeleting}
@@ -120,6 +93,6 @@ export function DeleteImageDialog({
           </button>
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }

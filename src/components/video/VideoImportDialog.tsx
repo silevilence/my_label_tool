@@ -1,3 +1,4 @@
+import { Overlay } from "../overlay/Overlay";
 import type { VideoExtractionSettings } from "../../types/project-settings";
 import { validExtraction } from "../../lib/project-settings";
 import { VideoExtractionFields } from "./VideoExtractionFields";
@@ -22,32 +23,8 @@ export function VideoImportDialog({
 }) {
   const [interval, setInterval] = useState(defaultSettings);
   return (
-    <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-6"
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.key === "Escape" && !busy) onClose();
-        if (event.key === "Tab") {
-          const elements = [
-            ...event.currentTarget.querySelectorAll<HTMLElement>(
-              ":is(button, input, select):not(:disabled)",
-            ),
-          ];
-          const first = elements[0];
-          const last = elements[elements.length - 1];
-          if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last?.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first?.focus();
-          }
-        }
-      }}
-    >
+    <Overlay onClose={onClose} canDismiss={!busy} label={text.add}>
       <section
-        role="dialog"
-        aria-modal="true"
         aria-label={text.add}
         className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100 shadow-2xl"
       >
@@ -78,6 +55,6 @@ export function VideoImportDialog({
           </button>
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }

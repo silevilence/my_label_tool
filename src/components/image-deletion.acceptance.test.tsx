@@ -107,7 +107,7 @@ describe("image deletion confirmation and state", () => {
     });
   }
   function confirmButton() {
-    return container.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')[1];
+    return document.body.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')[1];
   }
   async function clickConfirm(detail = 1) {
     await act(async () => {
@@ -121,9 +121,9 @@ describe("image deletion confirmation and state", () => {
   it("shows filename, annotation count and consequences; enforces 3 full seconds", async () => {
     await render();
     await key("F8");
-    expect(container.textContent).toContain(text.annotationCount(1));
-    expect(container.textContent).toContain(text.consequence);
-    expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain("b.png");
+    expect(document.body.textContent).toContain(text.annotationCount(1));
+    expect(document.body.textContent).toContain(text.consequence);
+    expect(document.body.querySelector('[role="alertdialog"]')?.textContent).toContain("b.png");
     expect(confirmButton().disabled).toBe(true);
     await clickConfirm();
     await act(async () => controls.confirm());
@@ -152,7 +152,7 @@ describe("image deletion confirmation and state", () => {
     expect(shortcutAction).not.toHaveBeenCalled();
     expect(recycleImageFile).not.toHaveBeenCalled();
     await key("Tab");
-    expect(document.activeElement).toBe(container.querySelector('[role="alertdialog"] button'));
+    expect(document.activeElement).toBe(document.body.querySelector('[role="alertdialog"] button'));
     await key("Escape");
     expect(controls.target).toBeNull();
     expect(useAnnotationStore.getState().annotationsByImage[initialImages[1].path]).toEqual([rect]);
@@ -166,10 +166,10 @@ describe("image deletion confirmation and state", () => {
     await ready();
     const before = useAnnotationStore.getState();
     await act(async () =>
-      container.querySelector<HTMLButtonElement>('[role="alertdialog"] button')?.click(),
+      document.body.querySelector<HTMLButtonElement>('[role="alertdialog"] button')?.click(),
     );
     expect(useAnnotationStore.getState()).toBe(before);
-    expect(container.querySelector("[data-images]")?.textContent).toBe("a.png,b.png,c.png");
+    expect(document.body.querySelector("[data-images]")?.textContent).toBe("a.png,b.png,c.png");
     await key("F8");
     expect(confirmButton().disabled).toBe(true);
     expect(recycleImageFile).not.toHaveBeenCalled();
@@ -184,8 +184,12 @@ describe("image deletion confirmation and state", () => {
     await key("F8");
     await ready();
     await clickConfirm();
-    expect(container.querySelector("[data-selected]")?.textContent).toBe(`C:/images/${next}.png`);
-    expect(container.querySelector("[data-images]")?.textContent).not.toContain(`${selected}.png`);
+    expect(document.body.querySelector("[data-selected]")?.textContent).toBe(
+      `C:/images/${next}.png`,
+    );
+    expect(document.body.querySelector("[data-images]")?.textContent).not.toContain(
+      `${selected}.png`,
+    );
   });
 
   it("preserves current image and its selection when deleting another, then handles empty list", async () => {
@@ -194,15 +198,15 @@ describe("image deletion confirmation and state", () => {
     await act(async () => controls.request(initialImages[0].path));
     await ready();
     await clickConfirm();
-    expect(container.querySelector("[data-selected]")?.textContent).toBe(initialImages[1].path);
+    expect(document.body.querySelector("[data-selected]")?.textContent).toBe(initialImages[1].path);
     expect(useAnnotationStore.getState().selectedShapeId).toBe(rect.id);
     for (let i = 0; i < 2; i++) {
       await key("F8");
       await ready();
       await clickConfirm();
     }
-    expect(container.querySelector("[data-images]")?.textContent).toBe("");
-    expect(container.querySelector("[data-selected]")?.textContent).toBe("");
+    expect(document.body.querySelector("[data-images]")?.textContent).toBe("");
+    expect(document.body.querySelector("[data-selected]")?.textContent).toBe("");
     await key("F8");
     expect(controls.target).toBeNull();
   });
@@ -214,10 +218,10 @@ describe("image deletion confirmation and state", () => {
     await key("F8");
     await ready();
     await clickConfirm();
-    expect(container.textContent).toContain("access denied");
+    expect(document.body.textContent).toContain("access denied");
     expect(useAnnotationStore.getState()).toBe(before);
-    expect(container.querySelector("[data-images]")?.textContent).toBe("a.png,b.png,c.png");
-    expect(container.querySelector("[data-selected]")?.textContent).toBe(initialImages[1].path);
+    expect(document.body.querySelector("[data-images]")?.textContent).toBe("a.png,b.png,c.png");
+    expect(document.body.querySelector("[data-selected]")?.textContent).toBe(initialImages[1].path);
     await clickConfirm();
     expect(controls.target).toBeNull();
   });
@@ -241,7 +245,7 @@ describe("image deletion confirmation and state", () => {
     });
     expect(recycleImageFile).toHaveBeenCalledTimes(1);
     expect(controls.target).not.toBeNull();
-    expect(container.querySelector("[data-images]")?.textContent).toContain("b.png");
+    expect(document.body.querySelector("[data-images]")?.textContent).toContain("b.png");
     await act(async () => resolve());
     expect(controls.target).toBeNull();
     expect(useAnnotationStore.getState().annotationsByImage).not.toHaveProperty(
@@ -259,7 +263,7 @@ describe("image deletion confirmation and state", () => {
   it("honors rebinding, ignores editable fields, keeps Delete for shapes", async () => {
     await render({ shortcut: "F9" });
     await key("F8");
-    await key("F9", {}, container.querySelector("input")!);
+    await key("F9", {}, document.body.querySelector("input")!);
     expect(controls.target).toBeNull();
     await key("Delete");
     expect(shortcutAction).toHaveBeenCalledOnce();
@@ -271,7 +275,7 @@ describe("image deletion confirmation and state", () => {
     await render({ busy: true });
     await key("F8");
     expect(controls.target).toBeNull();
-    expect(container.textContent).toContain(text.busy);
+    expect(document.body.textContent).toContain(text.busy);
     expect(recycleImageFile).not.toHaveBeenCalled();
   });
 });

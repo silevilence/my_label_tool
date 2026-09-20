@@ -1,3 +1,4 @@
+import { Overlay } from "../overlay/Overlay";
 import type { VideoBatchProgress } from "../../lib/video-import-queue";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
 
@@ -11,17 +12,8 @@ export function VideoBatchDialog({
   onClose: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-6"
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.key === "Tab") event.preventDefault();
-        if (event.key === "Escape" && progress.finished) onClose();
-      }}
-    >
+    <Overlay onClose={onClose} canDismiss={progress.finished} label={text.batchPrepare}>
       <section
-        role="dialog"
-        aria-modal="true"
         aria-label={text.batchPrepare}
         className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100 shadow-2xl"
       >
@@ -56,6 +48,6 @@ export function VideoBatchDialog({
           </button>
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }

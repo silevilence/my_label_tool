@@ -1,3 +1,5 @@
+import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
+import { Overlay } from "../overlay/Overlay";
 import { useEffect, useMemo, useState } from "react";
 import {
   SHORTCUT_ACTIONS,
@@ -86,7 +88,7 @@ export function ShortcutSettings({
   }, [labelShortcutSet, onChangeShortcut, recordingActionId, shortcuts]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
+    <Overlay onClose={onClose} label={interactionText.shortcuts} size="lg">
       <section className="scrollbar-dark max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -223,7 +225,7 @@ export function ShortcutSettings({
           ))}
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }
 

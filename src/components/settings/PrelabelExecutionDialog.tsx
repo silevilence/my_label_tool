@@ -1,3 +1,4 @@
+import { Overlay } from "../overlay/Overlay";
 import { useState } from "react";
 import type { PrelabelExecutionControls } from "../../hooks/usePrelabelExecution";
 import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
@@ -17,7 +18,7 @@ export function PrelabelExecutionDialog({
     progress.percent ?? (progress.total > 0 ? (progress.processed / progress.total) * 100 : 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 py-6">
+    <Overlay onClose={onClose} canDismiss={!progress.isRunning} label={text.executionTitle}>
       <section
         aria-label={text.executionTitle}
         className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
@@ -45,7 +46,11 @@ export function PrelabelExecutionDialog({
               onChange={(event) => execution.selectSource(event.target.value)}
             >
               {execution.sources.map((source) => (
-                <option disabled={!source.enabled} key={source.selectionId} value={source.selectionId}>
+                <option
+                  disabled={!source.enabled}
+                  key={source.selectionId}
+                  value={source.selectionId}
+                >
                   {source.kind === "builtin"
                     ? text.sourceBuiltinOption(source.name)
                     : text.sourcePluginOption(source.name)}
@@ -56,7 +61,7 @@ export function PrelabelExecutionDialog({
           </label>
           <p className={`text-xs ${currentSource?.enabled ? "text-slate-400" : "text-amber-300"}`}>
             {currentSource
-              ? currentSource.disabledReason ?? text.executionSource(currentSource.name)
+              ? (currentSource.disabledReason ?? text.executionSource(currentSource.name))
               : text.executionNoModel}
           </p>
           {execution.unmatchedClassCount > 0 && (
@@ -123,6 +128,6 @@ export function PrelabelExecutionDialog({
           )}
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }

@@ -1,3 +1,4 @@
+import { Overlay } from "../overlay/Overlay";
 import { useCallback, useEffect, useState } from "react";
 import { PLUGIN_ZH_CN as text } from "../../i18n/plugin.zh-CN";
 import {
@@ -202,7 +203,12 @@ export function PluginSettings({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <Overlay
+      onClose={onClose}
+      canDismiss={preview === null && !isInstalling}
+      label={text.settingsTitle}
+      size="wide"
+    >
       <section
         aria-label={text.settingsTitle}
         className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
@@ -225,7 +231,9 @@ export function PluginSettings({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-5 py-3">
           <div className="min-w-0 flex-1">
             {warning && <p className="text-sm text-amber-300">{warning || text.registryWarning}</p>}
-            {error && <p className="break-words text-sm text-red-300">{text.operationFailed(error)}</p>}
+            {error && (
+              <p className="break-words text-sm text-red-300">{text.operationFailed(error)}</p>
+            )}
           </div>
           <label className="flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-100">
             <input
@@ -263,19 +271,26 @@ export function PluginSettings({
                 plugin.state !== "auto-disabled" &&
                 plugin.state !== "pending-migration";
               return (
-                <article className="rounded-lg border border-slate-700 bg-slate-950/60 p-4" key={plugin.id}>
+                <article
+                  className="rounded-lg border border-slate-700 bg-slate-950/60 p-4"
+                  key={plugin.id}
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-medium text-slate-100">{plugin.name}</h3>
-                        <span className={`rounded border px-2 py-0.5 text-xs ${STATE_STYLES[plugin.state]}`}>
+                        <span
+                          className={`rounded border px-2 py-0.5 text-xs ${STATE_STYLES[plugin.state]}`}
+                        >
                           {STATE_LABELS[plugin.state]}
                         </span>
                       </div>
                       <p className="mt-1 break-all text-xs text-slate-400">
                         {plugin.id} · v{plugin.version} · {EXTENSION_LABELS[plugin.extensionKind]}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">{text.installedAt(plugin.installedAt)}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {text.installedAt(plugin.installedAt)}
+                      </p>
                       {safeMode && plugin.extensionKind !== "label-preset" && (
                         <p className="mt-2 text-xs text-amber-300">{text.safeModeRuntimeBlocked}</p>
                       )}
@@ -310,7 +325,9 @@ export function PluginSettings({
                   {(plugin.state === "auto-disabled" || plugin.failureCount > 0) && (
                     <div className="mt-3 flex flex-wrap items-center gap-3 rounded border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-200">
                       <span>{text.failureCount(plugin.failureCount)}</span>
-                      {plugin.lastError && <span className="min-w-0 flex-1 break-words">{plugin.lastError}</span>}
+                      {plugin.lastError && (
+                        <span className="min-w-0 flex-1 break-words">{plugin.lastError}</span>
+                      )}
                       <button
                         className="rounded border border-red-400/60 px-2 py-1 text-xs hover:bg-red-500/20 disabled:opacity-50"
                         disabled={isBusy}
@@ -370,7 +387,7 @@ export function PluginSettings({
           }
         />
       )}
-    </div>
+    </Overlay>
   );
 }
 
@@ -393,7 +410,7 @@ function PermissionDialog({
 }: PermissionDialogProps) {
   const allConfirmed = confirmed.size === preview.permissions.length;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
+    <Overlay onClose={onCancel} canDismiss={!isBusy} label={text.permissionTitle} size="lg">
       <section className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-600 bg-slate-900 p-5 shadow-2xl">
         <h3 className="text-lg font-semibold text-slate-100">{text.permissionTitle}</h3>
         <p className="mt-1 text-sm text-slate-300">
@@ -404,10 +421,15 @@ function PermissionDialog({
         {preview.warning && <p className="mt-2 text-sm text-amber-300">{preview.warning}</p>}
         <div className="mt-4 space-y-2">
           {preview.permissions.length === 0 ? (
-            <p className="rounded border border-slate-700 p-3 text-sm text-slate-400">{text.noPermissions}</p>
+            <p className="rounded border border-slate-700 p-3 text-sm text-slate-400">
+              {text.noPermissions}
+            </p>
           ) : (
             preview.permissions.map((grant, index) => (
-              <label className="flex cursor-pointer gap-3 rounded border border-slate-700 p-3 text-sm text-slate-200" key={permissionKey(grant)}>
+              <label
+                className="flex cursor-pointer gap-3 rounded border border-slate-700 p-3 text-sm text-slate-200"
+                key={permissionKey(grant)}
+              >
                 <input
                   checked={confirmed.has(index)}
                   className="mt-0.5"
@@ -439,14 +461,16 @@ function PermissionDialog({
           </button>
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }
 
 function permissionLabel(grant: PluginPermissionGrant): string {
   if (grant.permission === "network") return text.permissionNetwork;
   const target = grant.target ?? "";
-  return grant.permission === "fs.read" ? text.permissionRead(target) : text.permissionWrite(target);
+  return grant.permission === "fs.read"
+    ? text.permissionRead(target)
+    : text.permissionWrite(target);
 }
 
 function permissionKey(grant: PluginPermissionGrant): string {

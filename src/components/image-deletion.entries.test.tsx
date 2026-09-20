@@ -82,7 +82,7 @@ describe("image deletion entry wiring", () => {
     vi.unstubAllGlobals();
   });
   function button(label: string) {
-    const found = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+    const found = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
       (item) => item.textContent === label,
     );
     if (!found) throw new Error(`missing button ${label}`);
@@ -105,9 +105,9 @@ describe("image deletion entry wiring", () => {
   it("disables project settings without a project file and keeps app settings separate", async () => {
     await openFixture();
     expect(button("项目设置").disabled).toBe(true);
-    expect(container.textContent).not.toContain("批量抽取未准备视频");
+    expect(document.body.textContent).not.toContain("批量抽取未准备视频");
     await click("设置");
-    expect(container.textContent).not.toContain("抽帧方式");
+    expect(document.body.textContent).not.toContain("抽帧方式");
   });
   it("list context menu targets the clicked file without changing the selected image; F8 targets current", async () => {
     await openFixture();
@@ -123,11 +123,11 @@ describe("image deletion entry wiring", () => {
       );
     });
     await click(text.deleteImage);
-    expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain("b.png");
+    expect(document.body.querySelector('[role="alertdialog"]')?.textContent).toContain("b.png");
     expect(button("a.png").className).toContain("bg-sky-500");
     await key("Escape");
     await key("F8");
-    expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain("a.png");
+    expect(document.body.querySelector('[role="alertdialog"]')?.textContent).toContain("a.png");
     await act(async () => vi.advanceTimersByTime(3000));
     await act(async () => {
       button(text.confirm).dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
@@ -158,8 +158,8 @@ describe("image deletion entry wiring", () => {
       })),
     );
     await openFixture();
-    expect(container.querySelector('[aria-label="视频时间轴"]')).toBeNull();
-    expect(container.querySelector("main")?.firstElementChild?.tagName).toBe("DIV");
+    expect(document.body.querySelector('[aria-label="视频时间轴"]')).toBeNull();
+    expect(document.body.querySelector("main")?.firstElementChild?.tagName).toBe("DIV");
     const clickVideo = async (name: string) => {
       await act(async () =>
         container
@@ -169,15 +169,15 @@ describe("image deletion entry wiring", () => {
     };
     await clickVideo("one");
     await key("PageUp");
-    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+    expect(document.body.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
       "源帧 1 / 4",
     );
     await key("PageDown");
     await key("PageDown");
-    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+    expect(document.body.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
       "源帧 4 / 4",
     );
-    const timeline = container.querySelector('section[aria-label="视频时间轴"]')!;
+    const timeline = document.body.querySelector('section[aria-label="视频时间轴"]')!;
     expect(timeline.closest("aside")).toBeNull();
     expect(timeline.parentElement?.parentElement?.className).toContain("flex-col");
     await act(async () =>
@@ -189,18 +189,18 @@ describe("image deletion entry wiring", () => {
       }),
     );
     await clickVideo("two");
-    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+    expect(document.body.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
       "源帧 1 / 4",
     );
     await clickVideo("one");
-    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+    expect(document.body.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
       "源帧 4 / 4",
     );
     await click("设置");
     await act(async () => {
       await import("./settings/ShortcutSettings");
     });
-    const previousFrameRow = [...container.querySelectorAll("p")]
+    const previousFrameRow = [...document.body.querySelectorAll("p")]
       .find((element) => element.textContent === "上一帧")!
       .closest("div.grid")!;
     await act(async () => previousFrameRow.querySelector<HTMLButtonElement>("button")!.click());
@@ -210,11 +210,11 @@ describe("image deletion entry wiring", () => {
     );
     await click("关闭");
     await key("PageUp");
-    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+    expect(document.body.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
       "源帧 4 / 4",
     );
     await key("[");
-    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+    expect(document.body.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
       "源帧 1 / 4",
     );
     const input = document.createElement("input");
@@ -222,16 +222,16 @@ describe("image deletion entry wiring", () => {
     await act(async () =>
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown", bubbles: true })),
     );
-    expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
+    expect(document.body.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
       "源帧 1 / 4",
     );
     input.remove();
     await click("a.png");
     await key("PageDown");
     expect(button("a.png").className).toContain("bg-sky-500");
-    expect(container.querySelector('[aria-label="视频时间轴"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="视频时间轴"]')).toBeNull();
     await click("添加视频到项目");
-    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("按 FPS 抽帧");
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("按 FPS 抽帧");
     vi.mocked(api.importVideo).mockResolvedValueOnce({
       folderPath: "C:/fixture/added",
       video: video("added"),
@@ -242,8 +242,8 @@ describe("image deletion entry wiring", () => {
       "C:/fixture",
       DEFAULT_PROJECT_SETTINGS.videoExtraction,
     );
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
-    expect(container.textContent).toContain("2 张图片 · 3 个视频");
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.textContent).toContain("2 张图片 · 3 个视频");
     expect(
       useAnnotationStore.getState().annotationsByImage["C:/fixture/one/frame-000001.png"][0],
     ).toMatchObject({ id: "kept", frameIndex: 3 });
@@ -293,9 +293,9 @@ describe("image deletion entry wiring", () => {
     await openFixture();
     await click("项目设置");
     expect(
-      container.querySelector('[aria-label="项目设置"]')?.closest(".pointer-events-none"),
+      document.body.querySelector('[aria-label="项目设置"]')?.closest(".pointer-events-none"),
     ).toBeNull();
-    const fpsInput = container.querySelector<HTMLInputElement>(
+    const fpsInput = document.body.querySelector<HTMLInputElement>(
       'input[aria-label="抽帧帧率（FPS）"]',
     )!;
     expect(fpsInput.value).toBe("5");
@@ -313,9 +313,9 @@ describe("image deletion entry wiring", () => {
       "C:/fixture",
       DEFAULT_PROJECT_SETTINGS.videoExtraction,
     );
-    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("完成 2 / 2");
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("完成 2 / 2");
     await click("关闭");
-    expect(container.textContent).toContain("2 张图片 · 2 个视频");
+    expect(document.body.textContent).toContain("2 张图片 · 2 个视频");
     await click("项目设置");
     expect(button("批量抽取未准备视频").disabled).toBe(true);
   });
@@ -350,7 +350,7 @@ describe("image deletion entry wiring", () => {
         .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     });
     await click("重新抽帧");
-    expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain(
+    expect(document.body.querySelector('[role="alertdialog"]')?.textContent).toContain(
       "原 1 张帧图片移入回收站",
     );
     expect(api.reextractVideo).not.toHaveBeenCalled();
@@ -369,8 +369,8 @@ describe("image deletion entry wiring", () => {
       "C:/fixture/old",
       DEFAULT_PROJECT_SETTINGS.videoExtraction,
     );
-    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
-    expect(container.textContent).toContain("2 张图片 · 1 个视频");
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.body.textContent).toContain("2 张图片 · 1 个视频");
     expect(
       useAnnotationStore.getState().annotationsByImage["C:/fixture/old/frame-000000.png"],
     ).toBeUndefined();
@@ -422,7 +422,7 @@ describe("image deletion entry wiring", () => {
     await act(async () => {
       await import("./settings/ShortcutSettings");
     });
-    const description = [...container.querySelectorAll("p")].find(
+    const description = [...document.body.querySelectorAll("p")].find(
       (node) => node.textContent === text.deleteCurrentImage,
     )!;
     const record =
@@ -439,9 +439,9 @@ describe("image deletion entry wiring", () => {
     expect(api.saveShortcuts).toHaveBeenCalledWith(expect.objectContaining({ deleteImage: "F9" }));
     await click("关闭");
     await key("F8");
-    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
     await key("F9");
-    expect(container.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
     alert.mockRestore();
   });
 });

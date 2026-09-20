@@ -81,7 +81,7 @@ const shape = (frame: number) => ({
   attributes: { videoTrackId: "track", videoKeyframe: true },
 });
 async function click(label: string) {
-  const button = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+  const button = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
     (node) => node.textContent === label,
   );
   if (!button) throw new Error(`Missing ${label}`);
@@ -91,7 +91,7 @@ async function openVideo() {
   await act(async () => root.render(<App />));
   await click("打开项目文件夹");
   await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[title="C:/movie.mp4"]')!.click(),
+    document.body.querySelector<HTMLButtonElement>('button[title="C:/movie.mp4"]')!.click(),
   );
   await act(async () => {
     useAnnotationStore.getState().replaceAnnotations({ [path(0)]: [shape(0)] });
@@ -108,7 +108,7 @@ async function preparePreview() {
   await click(text.preview);
 }
 function overlay() {
-  return container.querySelector(`svg[aria-label="${text.previewOverlay}"]`);
+  return document.body.querySelector(`svg[aria-label="${text.previewOverlay}"]`);
 }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -139,9 +139,9 @@ afterEach(async () => {
 it("automatically dismisses the real interpolation error instead of leaving it on the canvas", async () => {
   await openVideo();
   await click(text.preview);
-  expect(container.querySelector('[role="alert"]')?.textContent).toContain(text.needKeyframes);
+  expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(text.needKeyframes);
   await act(async () => vi.advanceTimersByTime(6000));
-  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(document.body.querySelector('[role="alert"]')).toBeNull();
 });
 
 it("shows an unapplied interpolation directly on its frame and clears the preceding error", async () => {
@@ -153,8 +153,8 @@ it("shows an unapplied interpolation directly on its frame and clears the preced
       .insertAnnotationsBatch([{ imagePath: path(2), annotations: [shape(2)] }], "replace"),
   );
   await click(text.preview);
-  expect.soft(container.querySelector('[role="alert"]')).toBeNull();
-  expect(container.querySelector('svg[aria-label="插值预览（尚未应用）"] rect')).not.toBeNull();
+  expect.soft(document.body.querySelector('[role="alert"]')).toBeNull();
+  expect(document.body.querySelector('svg[aria-label="插值预览（尚未应用）"] rect')).not.toBeNull();
   expect(useAnnotationStore.getState().annotationsByImage[path(1)]).toBeUndefined();
 });
 
@@ -162,16 +162,16 @@ it("allows closing an error and gives a repeated error its own full display dura
   await openVideo();
   await click(text.preview);
   await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[aria-label="关闭错误提示"]')!.click(),
+    document.body.querySelector<HTMLButtonElement>('button[aria-label="关闭错误提示"]')!.click(),
   );
-  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(document.body.querySelector('[role="alert"]')).toBeNull();
   await click(text.preview);
   await act(async () => vi.advanceTimersByTime(4000));
   await click(text.preview);
   await act(async () => vi.advanceTimersByTime(1500));
-  expect(container.querySelector('[role="alert"]')?.textContent).toContain(text.needKeyframes);
+  expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(text.needKeyframes);
   await act(async () => vi.advanceTimersByTime(3500));
-  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(document.body.querySelector('[role="alert"]')).toBeNull();
 });
 
 it("cancels without changing annotations or history, and applies only on confirmation", async () => {
@@ -185,7 +185,7 @@ it("cancels without changing annotations or history, and applies only on confirm
     "30",
   ]);
   expect(
-    [...container.querySelectorAll('button[aria-current="true"]')].map(
+    [...document.body.querySelectorAll('button[aria-current="true"]')].map(
       (button) => button.textContent,
     ),
   ).toContain(text.viewFrame(2));
@@ -212,8 +212,9 @@ it("removes stale ghosts after editing a keyframe and recomputes before applying
   );
   expect(overlay()).toBeNull();
   expect(
-    [...container.querySelectorAll("button")].find((button) => button.textContent === text.apply)
-      ?.disabled,
+    [...document.body.querySelectorAll("button")].find(
+      (button) => button.textContent === text.apply,
+    )?.disabled,
   ).toBe(true);
   await click(text.preview);
   expect(overlay()!.querySelector("rect")?.getAttribute("x")).toBe("12");
@@ -230,11 +231,11 @@ it("shows the ghost only on generated frames and clears it when switching to a p
   );
   expect(overlay()).not.toBeNull();
   await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[title="C:/project/photo.png"]')!.click(),
+    document.body.querySelector<HTMLButtonElement>('button[title="C:/project/photo.png"]')!.click(),
   );
   expect(overlay()).toBeNull();
   await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[title="C:/movie.mp4"]')!.click(),
+    document.body.querySelector<HTMLButtonElement>('button[title="C:/movie.mp4"]')!.click(),
   );
   expect(overlay()).toBeNull();
 });

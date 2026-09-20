@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { Overlay } from "../overlay/Overlay";
 import { ProjectVideoSettings } from "./ProjectVideoSettings";
 import type { useProjectSettings } from "../../hooks/useProjectSettings";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
@@ -16,43 +16,10 @@ export function ProjectSettingsDialog({
   onBatch?: () => void;
   onClose: () => void;
 }) {
-  const panel = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const previous = document.activeElement;
-    panel.current?.focus();
-    return () => {
-      if (previous instanceof HTMLElement) previous.focus();
-    };
-  }, []);
   return (
-    <div
-      className="fixed inset-0 z-[85] flex items-center justify-center bg-black/60 p-6"
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.key === "Escape" && !model.saving) onClose();
-        if (event.key === "Tab") {
-          const elements = [
-            ...event.currentTarget.querySelectorAll<HTMLElement>(
-              ":is(button, input, select):not(:disabled)",
-            ),
-          ];
-          const index = elements.indexOf(document.activeElement as HTMLElement);
-          event.preventDefault();
-          const next =
-            index < 0
-              ? event.shiftKey
-                ? elements.length - 1
-                : 0
-              : (index + (event.shiftKey ? elements.length - 1 : 1)) % elements.length;
-          elements[next]?.focus();
-        }
-      }}
-    >
+    <Overlay onClose={onClose} canDismiss={!model.saving} label={text.projectSettings}>
       <section
-        ref={panel}
         tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
         aria-label={text.projectSettings}
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100 shadow-2xl"
       >
@@ -82,6 +49,6 @@ export function ProjectSettingsDialog({
           </button>
         </section>
       </section>
-    </div>
+    </Overlay>
   );
 }

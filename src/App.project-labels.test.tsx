@@ -173,7 +173,7 @@ describe("App project labels", () => {
     });
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>("[data-testid='open-folder']")?.click();
+      document.body.querySelector<HTMLButtonElement>("[data-testid='open-folder']")?.click();
       await flushMicrotasks();
     });
   }
@@ -189,11 +189,11 @@ describe("App project labels", () => {
 
     await renderAndOpenFolder();
 
-    expect(container.querySelector("[data-testid='selected-template']")).toHaveProperty(
+    expect(document.body.querySelector("[data-testid='selected-template']")).toHaveProperty(
       "value",
       "project-config",
     );
-    expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("猫,狗");
+    expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("猫,狗");
   });
 
   it("keeps project labels when startup initialization finishes after opening the folder", async () => {
@@ -213,7 +213,7 @@ describe("App project labels", () => {
       await Promise.resolve();
     });
 
-    expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("猫,狗");
+    expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("猫,狗");
   });
 
   it("prefers the project config file and never asks to import YOLO annotations", async () => {
@@ -237,7 +237,7 @@ describe("App project labels", () => {
     await renderAndOpenFolder();
 
     expect(tauriMocks.confirmAction).not.toHaveBeenCalled();
-    expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("猫,狗");
+    expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("猫,狗");
   });
 });
 
@@ -303,7 +303,7 @@ describe("App YOLO folder auto load", () => {
     });
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>("[data-testid='open-folder']")?.click();
+      document.body.querySelector<HTMLButtonElement>("[data-testid='open-folder']")?.click();
       await flushMicrotasks();
     });
   }
@@ -315,13 +315,15 @@ describe("App YOLO folder auto load", () => {
   }
 
   function templateValue(): string {
-    const select = container.querySelector<HTMLSelectElement>("[data-testid='selected-template']");
+    const select = document.body.querySelector<HTMLSelectElement>(
+      "[data-testid='selected-template']",
+    );
     return select?.value ?? "";
   }
 
   async function clickAction(testId: string) {
     await act(async () => {
-      container.querySelector<HTMLButtonElement>(`[data-testid='${testId}']`)?.click();
+      document.body.querySelector<HTMLButtonElement>(`[data-testid='${testId}']`)?.click();
       await flushMicrotasks();
     });
   }
@@ -388,11 +390,15 @@ describe("App YOLO folder auto load", () => {
 
     expect(templateValue()).toBe("common-detection");
     expect(
-      container.querySelector("[data-testid='selected-template'] option[value='project-config']"),
+      document.body.querySelector(
+        "[data-testid='selected-template'] option[value='project-config']",
+      ),
     ).toBeNull();
-    expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
-    expect(container.querySelector("[data-testid='active-project']")?.textContent).toBe("none");
-    expect(container.querySelector("[data-testid='message']")?.textContent).toBe("write denied");
+    expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
+    expect(document.body.querySelector("[data-testid='active-project']")?.textContent).toBe("none");
+    expect(document.body.querySelector("[data-testid='message']")?.textContent).toBe(
+      "write denied",
+    );
     expect(useAnnotationStore.getState().annotationsByImage).toEqual({});
   });
 
@@ -435,7 +441,9 @@ describe("App YOLO folder auto load", () => {
     await clickAction("import-yolo");
 
     expect(tauriMocks.selectExportFolder).toHaveBeenCalledTimes(1);
-    expect(container.querySelector("[data-testid='message']")?.textContent).toBe("write denied");
+    expect(document.body.querySelector("[data-testid='message']")?.textContent).toBe(
+      "write denied",
+    );
     expect(templateValue()).toBe("common-detection");
     expect(useAnnotationStore.getState().annotationsByImage["C:\\project\\cat.jpg"]).toEqual([
       annotation,
@@ -451,7 +459,7 @@ describe("App YOLO folder auto load", () => {
     await renderAndOpenFolder();
 
     expect(tauriMocks.confirmAction).toHaveBeenCalledTimes(1);
-    expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("cat,dog");
+    expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("cat,dog");
     expect(templateValue()).toBe("project-config");
 
     const savedCall =
@@ -474,7 +482,7 @@ describe("App YOLO folder auto load", () => {
 
     expect(tauriMocks.confirmAction).toHaveBeenCalledTimes(1);
     expect(tauriMocks.exportAnnotationsJson).not.toHaveBeenCalled();
-    expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
+    expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
     expect(templateValue()).toBe("common-detection");
   });
 
@@ -489,7 +497,7 @@ describe("App YOLO folder auto load", () => {
 
     expect(tauriMocks.confirmAction).not.toHaveBeenCalled();
     expect(tauriMocks.exportAnnotationsJson).not.toHaveBeenCalled();
-    expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
+    expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
   });
 
   it("falls back to the default labels and reports the error when loading fails", async () => {
@@ -499,7 +507,7 @@ describe("App YOLO folder auto load", () => {
 
     expect(tauriMocks.confirmAction).toHaveBeenCalledTimes(1);
     expect(tauriMocks.exportAnnotationsJson).not.toHaveBeenCalled();
-    expect(container.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
+    expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
     expect(templateValue()).toBe("common-detection");
   });
 });

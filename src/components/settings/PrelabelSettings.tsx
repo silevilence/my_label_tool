@@ -1,3 +1,4 @@
+import { Overlay } from "../overlay/Overlay";
 // This settings workspace keeps model-library, runtime, and PT-conversion orchestration together
 // because they share one guarded mutation lifecycle and active selection. The import form
 // (PrelabelModelForm) and class-mapping panel (PrelabelClassMapping) live in their own modules.
@@ -460,7 +461,12 @@ export function PrelabelSettings({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 py-6">
+    <Overlay
+      onClose={onClose}
+      canDismiss={!isBusy && !isRuntimeBusy}
+      label={text.title}
+      size="wide"
+    >
       <section className="flex max-h-full w-full max-w-5xl flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
         <header className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <div>
@@ -708,7 +714,7 @@ export function PrelabelSettings({
           }}
         />
       )}
-    </div>
+    </Overlay>
   );
 }
 

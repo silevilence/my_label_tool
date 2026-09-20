@@ -1,3 +1,4 @@
+import { useOverlayStore } from "../store/useOverlayStore";
 import {
   lazy,
   Suspense,
@@ -347,6 +348,7 @@ export function AppLayout({
   useEffect(() => {
     function openSearch(event: KeyboardEvent) {
       if (
+        !useOverlayStore.getState().hasBlocking() &&
         (event.ctrlKey || event.metaKey) &&
         !event.altKey &&
         event.key.toLowerCase() === "f" &&
@@ -820,6 +822,7 @@ export function AppLayout({
 
         {contextMenu && (
           <CanvasContextMenu
+            onClose={() => setContextMenu(null)}
             canDeleteImage={
               canDeleteImage &&
               Boolean(selectedImage) &&
