@@ -284,6 +284,7 @@ export function LabelSettings({
 
             <div className="mt-3 flex gap-2">
               <input
+                aria-label="新标签名称"
                 className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
                 placeholder="新标签名称"
                 value={newLabelName}

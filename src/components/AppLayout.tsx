@@ -127,7 +127,6 @@ interface AppLayoutProps {
   selectedTemplateId: string;
   showSaveSuccess: boolean;
   transientMessage: string;
-  showMessage: (message: string) => void;
   shortcuts: ShortcutMap;
   templates: LabelTemplate[];
   pluginTemplateIds: ReadonlySet<string>;
@@ -267,7 +266,6 @@ export function AppLayout({
   selectedTemplateId,
   showSaveSuccess,
   transientMessage,
-  showMessage,
   shortcuts,
   templates,
   pluginTemplateIds,
@@ -418,7 +416,6 @@ export function AppLayout({
         <AppSidebar
           reextractVideo={reextractVideo}
           openProjectSettings={openProjectSettings}
-          showMessage={showMessage}
           videos={videos}
           addVideo={addVideo}
           canDeleteImage={canDeleteImage}

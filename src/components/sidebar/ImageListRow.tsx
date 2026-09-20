@@ -25,6 +25,7 @@ export function ScopeBar() {
   return (
     <div
       aria-label={text.scope}
+      aria-live="polite"
       className="sticky top-0 z-10 mb-2 flex items-center gap-2 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-sky-200"
     >
       <span

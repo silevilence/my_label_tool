@@ -28,7 +28,6 @@ import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 interface AppSidebarProps {
   reextractVideo?: (source: string) => void;
   openProjectSettings?: () => void;
-  showMessage: (message: string) => void;
   videos?: LoadedProjectVideo[];
   addVideo?: (source?: string) => void;
   canDeleteImage: boolean;
@@ -92,7 +91,6 @@ interface AppSidebarProps {
 export function AppSidebar({
   reextractVideo,
   openProjectSettings,
-  showMessage,
   videos = [],
   addVideo,
   canDeleteImage,
@@ -249,13 +247,10 @@ export function AppSidebar({
                     </button>
                     {["COCO", "VOC", "Custom"].map((format) => (
                       <button
-                        className="w-full rounded px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-800"
+                        className="w-full cursor-not-allowed rounded px-3 py-2 text-left text-sm text-slate-500"
+                        disabled
                         key={format}
-                        type="button"
-                        onClick={() => {
-                          closeMenu();
-                          showMessage(`${format} 外部项目创建暂未实现`);
-                        }}
+                        title="外部项目创建暂未实现"
                       >
                         从 {format} 创建项目（暂未实现）
                       </button>
@@ -485,7 +480,15 @@ export function AppSidebar({
             </div>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+            <div
+              aria-label="标注进度"
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={Math.round(progressPercent)}
+              aria-valuetext={`已标注 ${annotatedCount} / ${images.length}`}
+              className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800"
+              role="progressbar"
+            >
               <div className="h-full bg-sky-500" style={{ width: `${progressPercent}%` }} />
             </div>
             <span className="w-16 text-right text-xs text-slate-400" title="已标注 / 素材总数">

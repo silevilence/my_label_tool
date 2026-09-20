@@ -234,7 +234,6 @@ export function PluginSettings({
         <header className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-100">{text.settingsTitle}</h2>
-            <p className="mt-1 text-xs text-slate-400">{text.permissionDescription}</p>
           </div>
           <button
             className="rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50"

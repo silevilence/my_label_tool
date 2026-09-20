@@ -23,7 +23,19 @@ export function VideoBatchDialog({
         </p>
         {progress.total > 0 && (
           <div className="mt-3 flex items-center gap-2">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+            <div
+              aria-label={text.batchPrepare}
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={Math.min(
+                100,
+                Math.round(
+                  ((progress.completed + progress.failures.length) / progress.total) * 100,
+                ),
+              )}
+              className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800"
+              role="progressbar"
+            >
               <div
                 className="h-full bg-sky-500 transition-[width]"
                 style={{ width: `${Math.min(100, ((progress.completed + progress.failures.length) / progress.total) * 100)}%` }}

@@ -536,10 +536,18 @@ describe("image deletion entry wiring", () => {
     await key("F9");
     expect(recordError()).toBe("");
     expect(api.saveShortcuts).toHaveBeenCalledWith(expect.objectContaining({ deleteImage: "F9" }));
+    const restore = document.body.querySelector<HTMLButtonElement>(
+      'button[aria-label="恢复默认快捷键：删除当前图片"]',
+    )!;
+    await act(async () => restore.click());
+    expect(api.saveShortcuts).toHaveBeenLastCalledWith(expect.objectContaining({ deleteImage: "F8" }));
+    expect(document.body.querySelector('button[aria-label="恢复默认快捷键：删除当前图片"]')).toBeNull();
     await click("关闭");
     await key("F8");
-    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
-    await key("F9");
+    // 恢复默认后 F8 重新绑定到删除动作，应再次打开确认对话框。
     expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
+    await key("Escape");
+    // 恢复默认后 F9 不再绑定删除动作。
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
   });
 });

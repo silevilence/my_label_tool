@@ -860,7 +860,6 @@ function App() {
         selectedTemplateId={selectedTemplateId}
         showSaveSuccess={showSaveSuccess}
         transientMessage={transientMessage}
-        showMessage={showMessage}
         shortcuts={shortcuts}
         templates={templates}
         pluginExportFormats={pluginExportFormats}

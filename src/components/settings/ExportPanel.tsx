@@ -94,6 +94,7 @@ export function ExportPanel({
       </p>
       {selectedFormatId === "custom" && (
         <textarea
+          aria-label="自定义导出映射（JSON）"
           className="mt-3 h-32 w-full resize-none rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-xs text-slate-100"
           spellCheck={false}
           value={customMappingText}

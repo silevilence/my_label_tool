@@ -1,11 +1,14 @@
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
 import { Overlay } from "../overlay/Overlay";
+import { confirmAction } from "../../lib/prompts";
 import { useEffect, useState } from "react";
 import {
   SHORTCUT_ACTIONS,
   type ShortcutActionId,
   type ShortcutMap,
 } from "../../lib/defaults/shortcuts";
+
+type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
 import type { InteractionMode } from "../canvas/types";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../../lib/defaults/display";
 import { formatShortcut, normalizeShortcutKey } from "../../lib/shortcut-utils";
@@ -77,6 +80,38 @@ export function ShortcutSettings({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [labelShortcuts, onChangeShortcut, recordingActionId, shortcuts]);
+
+  async function restoreDefault(action: ShortcutAction) {
+    const current = formatShortcut(shortcutKey(action, shortcuts));
+    const fallback = formatShortcut(action.defaultKey);
+    if (current === fallback) return;
+    if (
+      !(await confirmAction(`将「${action.label}」从 ${current} 恢复为默认快捷键 ${fallback}？`, {
+        confirmLabel: shortcutText.restoreDefault,
+      }))
+    )
+      return;
+    onChangeShortcut(action.id, action.defaultKey);
+  }
+
+  async function restoreAllDefaults() {
+    const rebindable = SHORTCUT_ACTIONS.filter(
+      (action) => action.rebindable && shortcutKey(action, shortcuts) !== action.defaultKey,
+    );
+    if (rebindable.length === 0) return;
+    if (
+      !(await confirmAction(
+        `将 ${rebindable.length} 个已改绑的快捷键全部恢复为默认值？`,
+        { confirmLabel: shortcutText.restoreAllDefaults },
+      ))
+    )
+      return;
+    rebindable.forEach((action) => onChangeShortcut(action.id, action.defaultKey));
+  }
+
+  const hasCustomized = SHORTCUT_ACTIONS.some(
+    (action) => action.rebindable && shortcutKey(action, shortcuts) !== action.defaultKey,
+  );
 
   return (
     <Overlay
@@ -200,7 +235,18 @@ export function ShortcutSettings({
         </div>
 
         <div className="mt-4 divide-y divide-slate-800 rounded border border-slate-800">
-          <h3 className="px-3 py-2 text-sm font-medium text-slate-100">快捷键</h3>
+          <div className="flex items-center justify-between gap-3 px-3 py-2">
+            <h3 className="text-sm font-medium text-slate-100">快捷键</h3>
+            {hasCustomized && (
+              <button
+                className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+                type="button"
+                onClick={() => void restoreAllDefaults()}
+              >
+                {shortcutText.restoreAllDefaults}
+              </button>
+            )}
+          </div>
           {SHORTCUT_ACTIONS.map((action) => (
             <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 p-3" key={action.id}>
               <div>
@@ -221,11 +267,25 @@ export function ShortcutSettings({
                     </p>
                   ))}
               </div>
-              <kbd className="rounded bg-slate-950 px-2 py-1 text-xs text-slate-200">
-                {recordingActionId === action.id
-                  ? "按键中..."
-                  : formatShortcut(shortcutKey(action, shortcuts))}
-              </kbd>
+              <div className="flex items-center gap-2">
+                <kbd className="rounded bg-slate-950 px-2 py-1 text-xs text-slate-200">
+                  {recordingActionId === action.id
+                    ? "按键中..."
+                    : formatShortcut(shortcutKey(action, shortcuts))}
+                </kbd>
+                {action.rebindable &&
+                  shortcutKey(action, shortcuts) !== action.defaultKey && (
+                    <button
+                      aria-label={`${shortcutText.restoreDefault}：${action.label}`}
+                      className="rounded border border-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+                      title={shortcutText.restoreDefault}
+                      type="button"
+                      onClick={() => void restoreDefault(action)}
+                    >
+                      ↺
+                    </button>
+                  )}
+              </div>
               <button
                 className="rounded bg-sky-500 px-3 py-1 text-sm font-medium text-white hover:bg-sky-400"
                 type="button"

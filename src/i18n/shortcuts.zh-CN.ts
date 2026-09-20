@@ -21,4 +21,6 @@ export const SHORTCUT_ZH_CN = {
     `快捷键 ${key} 同时绑定了「${labels.join("」「")}」，请修改冲突绑定。`,
   singleKey: "暂不支持组合键，请按单个按键。",
   reserved: "此按键用于输入或确认，不能绑定该动作。",
+  restoreDefault: "恢复默认快捷键",
+  restoreAllDefaults: "全部恢复默认",
 };
