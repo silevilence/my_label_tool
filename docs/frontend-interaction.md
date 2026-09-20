@@ -138,7 +138,7 @@ removeImages(paths: string[]): void        // 删除 + 接续 + 标注清理 + �
 
 ```ts
 resolveGesture(event, { mode, shapeType, hit }) →
-  "draw-rect" | "draw-polygon" | "draw-point" | "select" | "pan" | "context"
+  "draw-rect" | "draw-polygon" | "draw-point" | "select" | "pan" | "context" | "cancel" | null
 ```
 
 ```ts
@@ -149,6 +149,7 @@ useDraftGesture() → { state: "idle" | "rect" | "polygon" | "point" | "pan",
 **实现**
 
 - Stage 用 `resolveGesture` 统一分类；Konva 保留拖拽与 `Transformer` 变换（不自实现），三个图形渲染器只向同一解析器询问「当前模式下我能否被拖动 / 被选中」，删除各自的按钮与模式守卫。
+- 解析器把中键归为 cancel，未支持的按钮归为 null；拖拽阶段仅允许默认模式左键命中图形。
 - 草稿状态机统一开始 / 更新 / 提交 / 取消：`Esc` 处处可用（**当前矩形绘制中无法取消**，只能中键；多边形可以），取消语义与中键一致。
 - 屏幕 ↔ 原图坐标转换收成一个 adapter（`createTransform(layout)`），供画布交互、缩放、多边形草稿与插值预览共用（当前反向变换在 5 处各自重推）。
 - 交互状态仍留在组件本地（见 ADR 0009 对 `AGENTS.md §6` 的修订范围）。

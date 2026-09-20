@@ -1,3 +1,4 @@
+import { createTransform } from "./transform";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { DrawingRect, ImageLayout, InteractionMode } from "./types";
 import type { AnnotationShape } from "../../types/annotation";
@@ -19,8 +20,7 @@ export function getImagePoint(
     return null;
   }
 
-  const x = (pointer.x - layout.x) / layout.scale;
-  const y = (pointer.y - layout.y) / layout.scale;
+  const { x, y } = createTransform(layout).toImage(pointer);
   if (x < 0 || y < 0 || x > image.naturalWidth || y > image.naturalHeight) {
     return null;
   }
@@ -37,15 +37,17 @@ export function normalizeRectPoints(rect: DrawingRect): number[] {
 export function toCanvasRect(points: number[], layout: ImageLayout): CanvasRect {
   const [x, y, width, height] = points;
   return {
-    x: layout.x + x * layout.scale,
-    y: layout.y + y * layout.scale,
-    width: width * layout.scale,
-    height: height * layout.scale,
+    ...createTransform(layout).toScreen({ x, y }),
+    width: createTransform(layout).toScreenLength(width),
+    height: createTransform(layout).toScreenLength(height),
   };
 }
 
 export function toCanvasPoints(points: number[], layout: ImageLayout): number[] {
-  return points.map((value, index) => layout[index % 2 === 0 ? "x" : "y"] + value * layout.scale);
+  const transform = createTransform(layout);
+  return Array.from({ length: points.length / 2 }, (_, i) =>
+    transform.toScreen({ x: points[i * 2], y: points[i * 2 + 1] }),
+  ).flatMap((point) => [point.x, point.y]);
 }
 
 export function annotationBounds(annotation: AnnotationShape): CanvasRect {

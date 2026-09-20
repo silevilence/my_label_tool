@@ -1,3 +1,4 @@
+import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
 import { useOperations } from "./store/useOperations";
 import { OperationStatus } from "./components/operations/OperationStatus";
 import { useOverlayStore } from "./store/useOverlayStore";
@@ -20,12 +21,11 @@ import { useImageDeletion } from "./hooks/useImageDeletion";
 import { normalizeShortcutKey } from "./lib/shortcut-utils";
 import type {
   CanvasContextMenu,
-  DrawingRect,
   ImageLayout,
   InteractionMode,
   PanState,
 } from "./components/canvas/types";
-import { fitImageLayout, getInteractionMode } from "./components/canvas/geometry";
+import { fitImageLayout, getInteractionMode, toCanvasPoints } from "./components/canvas/geometry";
 import { useAppUpdate } from "./hooks/useAppUpdate";
 import { useCanvasInteractions } from "./hooks/useCanvasInteractions";
 import { useExportFormatWarning } from "./hooks/useExportFormatWarning";
@@ -35,7 +35,7 @@ import { useLabelDisplaySettings } from "./hooks/useLabelDisplaySettings";
 import { useImageLoader } from "./hooks/useImageLoader";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useOpenFolder } from "./hooks/useOpenFolder";
-import { usePolygonDraft } from "./hooks/usePolygonDraft";
+import { useDraftGesture } from "./hooks/useDraftGesture";
 import { useProjectActions } from "./hooks/useProjectActions";
 import { useSaveFeedback } from "./hooks/useSaveFeedback";
 import { useShortcutsConfig } from "./hooks/useShortcutsConfig";
@@ -48,7 +48,7 @@ import { usePrelabelModels } from "./hooks/usePrelabelModels";
 import { usePrelabelExecution } from "./hooks/usePrelabelExecution";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
-import { isEditableTarget, saveProjectConfig } from "./lib/app-utils";
+import { saveProjectConfig } from "./lib/app-utils";
 import {
   loadLabelConfigs,
   loadLabelTemplates,
@@ -96,9 +96,9 @@ function App() {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [imageView, setImageView] = useState<ImageLayout | null>(null);
   const [contextMenu, setContextMenu] = useState<CanvasContextMenu | null>(null);
-  const [isPanning, setIsPanning] = useState(false);
+  const gesture = useDraftGesture();
+  const isPanning = gesture.state === "pan";
   const [annotationToDelete, setAnnotationToDelete] = useState<AnnotationShape | null>(null);
-  const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("default");
   const [currentShapeType, setCurrentShapeType] = useState<AnnotationShape["type"]>("rect");
   const [highlightedShapeId, setHighlightedShapeId] = useState<string | null>(null);
@@ -171,14 +171,17 @@ function App() {
   const canRedo = useAnnotationStore((state) => state.canRedo);
   const annotations = annotationsByImage[selectedPath] ?? [];
   const selectedShape = annotations.find((annotation) => annotation.id === selectedShapeId) ?? null;
-  const {
-    clearPolygonDraft,
-    draftPolygonPoints,
-    polygonPoints,
-    setPolygonCursorPoint,
-    setPolygonPoints,
-    undoPolygonDraftPoint,
-  } = usePolygonDraft(imageView);
+  const polygonPoints = gesture.draft.kind === "polygon" ? gesture.draft.points : null;
+  const polygonCursor = gesture.draft.kind === "polygon" ? gesture.draft.cursor : null;
+  const draftPolygonPoints =
+    polygonPoints && imageView
+      ? toCanvasPoints(
+          polygonCursor ? [...polygonPoints, polygonCursor.x, polygonCursor.y] : polygonPoints,
+          imageView,
+        )
+      : null;
+  const cancelDraft = gesture.cancel;
+  const interruptDraft = gesture.interrupt;
 
   const labelById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
   const labelShortcuts = useMemo(
@@ -425,7 +428,7 @@ function App() {
     setError,
     openFolder,
   });
-  const { source: videoImportSource, addVideo } = videoImport;
+  const { addVideo } = videoImport;
   const imageLayout = imageView;
   const {
     changeAnnotationLabel,
@@ -453,32 +456,25 @@ function App() {
     contextMenu,
     currentLabel,
     currentShapeType,
-    drawingRect,
     highlightedShapeId,
     imageLayout,
     labelById,
     labels,
     loadedImage,
     panStateRef,
-    polygonPoints,
+    gesture,
     selectedPath,
     selectedRectRef,
     selectedShapeId,
     suppressContextMenuRef,
     addAnnotation,
     clearImageAnnotations,
-    clearPolygonDraft,
     deleteAnnotation,
     selectShape,
     setAnnotationToDelete,
     setContextMenu,
-    setDrawingRect,
     setHighlightedShapeId,
     setImageView,
-    setIsPanning,
-    setPolygonCursorPoint,
-    setPolygonPoints,
-    undoPolygonDraftPoint,
     updateAnnotation,
     zoomAt,
   });
@@ -599,10 +595,9 @@ function App() {
 
   useEffect(() => {
     selectShape(null);
-    setDrawingRect(null);
-    clearPolygonDraft();
+    cancelDraft();
     setHighlightedShapeId(null);
-  }, [clearPolygonDraft, selectShape, selectedPath]);
+  }, [cancelDraft, selectShape, selectedPath]);
 
   useEffect(() => {
     function updateMode(event: KeyboardEvent) {
@@ -630,12 +625,13 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setDrawingRect(null);
-    setPolygonCursorPoint(null);
+    interruptDraft();
     if (interactionMode !== "select") {
       setHighlightedShapeId(null);
     }
-  }, [interactionMode]);
+  }, [interactionMode, interruptDraft]);
+
+  useEffect(() => cancelDraft(), [currentShapeType, cancelDraft]);
 
   useEffect(() => {
     const transformer = transformerRef.current;
@@ -649,39 +645,7 @@ function App() {
     transformer.getLayer()?.batchDraw();
   }, [selectedShape]);
 
-  useEffect(() => {
-    function finishPolygonFromKeyboard(event: KeyboardEvent) {
-      if (
-        useOverlayStore.getState().hasBlocking() ||
-        useOverlayStore.getState().hasLight() ||
-        !useOperations.getState().canStart("project-annotations")
-      )
-        return;
-      if (isEditableTarget(event.target) || currentShapeType !== "polygon") {
-        return;
-      }
-      if (event.key === "Enter") {
-        event.preventDefault();
-        completePolygon();
-      } else if (event.key === "Escape") {
-        clearPolygonDraft();
-      }
-    }
-
-    window.addEventListener("keydown", finishPolygonFromKeyboard);
-    return () => window.removeEventListener("keydown", finishPolygonFromKeyboard);
-  }, [
-    clearPolygonDraft,
-    currentShapeType,
-    polygonPoints,
-    selectedPath,
-    currentLabel,
-    videoImport.busy,
-    videoImport.batch,
-    videoImport.replacement,
-    isProjectSettingsOpen,
-    videoImportSource,
-  ]);
+  useDraftKeyboard(gesture, completePolygon);
 
   useKeyboardShortcuts({
     selectAdjacentFrame: selectedVideo
@@ -715,7 +679,7 @@ function App() {
 
     function stopPanning() {
       panStateRef.current = null;
-      setIsPanning(false);
+      cancelDraft();
       window.setTimeout(() => {
         suppressContextMenuRef.current = false;
       }, 250);
@@ -723,7 +687,7 @@ function App() {
 
     window.addEventListener("mouseup", stopPanning);
     return () => window.removeEventListener("mouseup", stopPanning);
-  }, [isPanning]);
+  }, [isPanning, cancelDraft]);
 
   return (
     <>

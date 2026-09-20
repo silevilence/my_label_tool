@@ -1,3 +1,6 @@
+import { resolveGesture } from "../lib/gestures";
+import { createTransform } from "../components/canvas/transform";
+import type { useDraftGesture } from "./useDraftGesture";
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
@@ -12,12 +15,7 @@ import {
   normalizeRectPoints,
   toCanvasRect,
 } from "../components/canvas/geometry";
-import type {
-  CanvasContextMenu,
-  DrawingRect,
-  ImageLayout,
-  PanState,
-} from "../components/canvas/types";
+import type { CanvasContextMenu, ImageLayout, PanState } from "../components/canvas/types";
 import { confirmAction } from "../lib/tauri-api";
 import { newAnnotationId } from "../lib/app-utils";
 import {
@@ -27,76 +25,71 @@ import {
 } from "../types/annotation";
 
 interface UseCanvasInteractionsParams {
+  gesture: ReturnType<typeof useDraftGesture>;
   annotations: AnnotationShape[];
   annotationToDelete: AnnotationShape | null;
   contextMenu: CanvasContextMenu | null;
   currentLabel: LabelConfig;
   currentShapeType: AnnotationShape["type"];
-  drawingRect: DrawingRect | null;
   highlightedShapeId: string | null;
   imageLayout: ImageLayout | null;
   labelById: Map<string, LabelConfig>;
   labels: LabelConfig[];
   loadedImage: HTMLImageElement | null;
   panStateRef: MutableRefObject<PanState | null>;
-  polygonPoints: number[] | null;
   selectedPath: string;
   selectedRectRef: MutableRefObject<KonvaRect | null>;
   selectedShapeId: string | null;
   suppressContextMenuRef: MutableRefObject<boolean>;
   addAnnotation: (path: string, annotation: AnnotationShape) => void;
   clearImageAnnotations: (path: string) => void;
-  clearPolygonDraft: () => void;
   deleteAnnotation: (path: string, annotationId: string) => void;
   selectShape: (annotationId: string | null) => void;
   setAnnotationToDelete: (annotation: AnnotationShape | null) => void;
   setContextMenu: (contextMenu: CanvasContextMenu | null) => void;
-  setDrawingRect: Dispatch<SetStateAction<DrawingRect | null>>;
   setHighlightedShapeId: Dispatch<SetStateAction<string | null>>;
   setImageView: Dispatch<SetStateAction<ImageLayout | null>>;
-  setIsPanning: (isPanning: boolean) => void;
-  setPolygonCursorPoint: (point: { x: number; y: number } | null) => void;
-  setPolygonPoints: (points: number[] | null) => void;
-  undoPolygonDraftPoint: () => boolean;
   updateAnnotation: (path: string, annotationId: string, patch: Partial<AnnotationShape>) => void;
   zoomAt: (pointer: { x: number; y: number }, scaleBy: number) => void;
 }
 
 export function useCanvasInteractions({
+  gesture,
   annotations,
   annotationToDelete,
   contextMenu,
   currentLabel,
   currentShapeType,
-  drawingRect,
   highlightedShapeId,
   imageLayout,
   labelById,
   labels,
   loadedImage,
   panStateRef,
-  polygonPoints,
   selectedPath,
   selectedRectRef,
   selectedShapeId,
   suppressContextMenuRef,
   addAnnotation,
   clearImageAnnotations,
-  clearPolygonDraft,
   deleteAnnotation,
   selectShape,
   setAnnotationToDelete,
   setContextMenu,
-  setDrawingRect,
   setHighlightedShapeId,
   setImageView,
-  setIsPanning,
-  setPolygonCursorPoint,
-  setPolygonPoints,
-  undoPolygonDraftPoint,
   updateAnnotation,
   zoomAt,
 }: UseCanvasInteractionsParams) {
+  const drawingRect =
+    gesture.draft.kind === "rect"
+      ? {
+          startX: gesture.draft.start.x,
+          startY: gesture.draft.start.y,
+          currentX: gesture.draft.current.x,
+          currentY: gesture.draft.current.y,
+        }
+      : null;
   useEffect(() => {
     if (
       highlightedShapeId &&
@@ -132,7 +125,14 @@ export function useCanvasInteractions({
 
   function openContextMenu(event: KonvaEventObject<MouseEvent>, annotationId?: string) {
     event.evt.preventDefault();
-    if (event.evt.ctrlKey || suppressContextMenuRef.current) {
+    if (
+      resolveGesture(event.evt, {
+        mode: getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey),
+        shapeType: currentShapeType,
+        hit: Boolean(annotationId),
+      }) !== "context" ||
+      suppressContextMenuRef.current
+    ) {
       suppressContextMenuRef.current = false;
       setContextMenu(null);
       return;
@@ -172,8 +172,7 @@ export function useCanvasInteractions({
   function deleteSelectedShape() {
     if (selectedPath && selectedShapeId) {
       deleteAnnotation(selectedPath, selectedShapeId);
-      setDrawingRect(null);
-      clearPolygonDraft();
+      gesture.cancel();
     }
   }
 
@@ -196,8 +195,7 @@ export function useCanvasInteractions({
       (await confirmAction(`清空当前图片的 ${annotations.length} 个标注？可用 Ctrl+Z 撤销。`))
     ) {
       clearImageAnnotations(selectedPath);
-      setDrawingRect(null);
-      clearPolygonDraft();
+      gesture.cancel();
       setContextMenu(null);
     }
   }
@@ -289,28 +287,29 @@ export function useCanvasInteractions({
   function handleStageMouseDown(event: KonvaEventObject<MouseEvent>) {
     setContextMenu(null);
 
-    if (event.evt.button === 1) {
+    const isBackground =
+      event.target === event.target.getStage() || event.target.name() === "image";
+    const intent = resolveGesture(event.evt, {
+      mode: getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey),
+      shapeType: currentShapeType,
+      hit: !isBackground,
+    });
+    if (intent === "cancel") {
       event.evt.preventDefault();
-      setDrawingRect(null);
-      setPolygonCursorPoint(null);
+      gesture.cancel();
       return;
     }
-
-    if (event.evt.button === 2 && event.evt.ctrlKey) {
+    if (intent === "pan") {
       startPanning(event);
       return;
     }
-
-    if (event.evt.button !== 0) {
-      return;
-    }
+    if (intent === "context" || intent === null) return;
 
     if (!imageLayout || !loadedImage || !selectedPath) {
       return;
     }
 
-    const mode = getInteractionMode(event.evt.ctrlKey, event.evt.shiftKey);
-    if (mode === "select") {
+    if (intent === "select") {
       const pointer = event.target.getStage()?.getPointerPosition();
       const candidates = pointer ? findAnnotationCandidatesAtPointer(pointer) : [];
       const nextId =
@@ -319,13 +318,7 @@ export function useCanvasInteractions({
           : (candidates[0] ?? null);
       selectShape(nextId);
       setHighlightedShapeId(nextId);
-      setDrawingRect(null);
-      return;
-    }
-
-    const isBackground =
-      event.target === event.target.getStage() || event.target.name() === "image";
-    if (mode !== "annotate" && !isBackground) {
+      gesture.cancel();
       return;
     }
 
@@ -336,44 +329,21 @@ export function useCanvasInteractions({
     }
 
     selectShape(null);
-    setDrawingRect(null);
-
-    if (currentShapeType === "point") {
-      addAnnotation(selectedPath, {
-        id: newAnnotationId(),
-        type: "point",
-        labelId: currentLabel.id,
-        points: [point.x, point.y],
-        frameIndex: 0,
-      });
+    if (intent === "draw-polygon" && event.evt.detail >= 2) {
+      completePolygon();
       return;
     }
-
-    if (currentShapeType === "polygon") {
-      if (event.evt.detail >= 2) {
-        completePolygon();
-        return;
-      }
-
-      const nextPoints = [...(polygonPoints ?? []), point.x, point.y];
-      setPolygonPoints(nextPoints);
-      setPolygonCursorPoint(point);
-      return;
-    }
-
-    setDrawingRect({ startX: point.x, startY: point.y, currentX: point.x, currentY: point.y });
+    gesture.start(intent, point);
+    if (intent === "draw-point") commitAnnotation();
   }
 
   function undoPolygonPoint() {
-    if (currentShapeType !== "polygon" || !polygonPoints || polygonPoints.length === 0) {
-      return false;
-    }
-    return undoPolygonDraftPoint();
+    return gesture.undoVertex();
   }
 
   function handleStageMouseMove(event: KonvaEventObject<MouseEvent>) {
     const panState = panStateRef.current;
-    if (panState) {
+    if (panState && gesture.state === "pan") {
       const deltaX = event.evt.clientX - panState.startX;
       const deltaY = event.evt.clientY - panState.startY;
       setImageView((layout) =>
@@ -391,62 +361,32 @@ export function useCanvasInteractions({
       return;
     }
 
-    if (drawingRect) {
-      setDrawingRect({ ...drawingRect, currentX: point.x, currentY: point.y });
-    }
-    if (polygonPoints) {
-      setPolygonCursorPoint(point);
-    }
+    gesture.update(point);
   }
 
   function handleStageMouseUp() {
-    if (panStateRef.current) {
+    if (gesture.state === "pan") {
       panStateRef.current = null;
-      setIsPanning(false);
+      gesture.commit();
       return;
     }
+    if (gesture.state === "rect") commitAnnotation();
+  }
 
-    if (!drawingRect || !selectedPath) {
-      return;
-    }
-
-    const points = normalizeRectPoints(drawingRect);
-    setDrawingRect(null);
-
-    if (points[2] < 3 || points[3] < 3) {
-      return;
-    }
-
-    addAnnotation(selectedPath, {
-      id: newAnnotationId(),
-      type: "rect",
-      labelId: currentLabel.id,
-      points,
-      frameIndex: 0,
-    });
+  function commitAnnotation() {
+    if (!selectedPath) return;
+    const result = gesture.commit();
+    if (result)
+      addAnnotation(selectedPath, {
+        id: newAnnotationId(),
+        ...result,
+        labelId: currentLabel.id,
+        frameIndex: 0,
+      });
   }
 
   function completePolygon() {
-    if (!selectedPath || !polygonPoints || polygonPoints.length < 6) {
-      return;
-    }
-
-    addPolygon(polygonPoints);
-  }
-
-  function addPolygon(points: number[]) {
-    if (!selectedPath) {
-      return;
-    }
-
-    addAnnotation(selectedPath, {
-      id: newAnnotationId(),
-      type: "polygon",
-      labelId: currentLabel.id,
-      points,
-      frameIndex: 0,
-    });
-    clearPolygonDraft();
+    if (gesture.state === "polygon") commitAnnotation();
   }
 
   function startPanning(event: KonvaEventObject<MouseEvent>) {
@@ -462,8 +402,7 @@ export function useCanvasInteractions({
       layoutX: imageLayout.x,
       layoutY: imageLayout.y,
     };
-    setDrawingRect(null);
-    setIsPanning(true);
+    gesture.start("pan", { x: event.evt.clientX, y: event.evt.clientY });
   }
 
   function handleDragEnd(annotation: AnnotationShape, event: KonvaEventObject<DragEvent>) {
@@ -475,8 +414,7 @@ export function useCanvasInteractions({
     const [, , width, height] = annotation.points;
     const nextRect = clampRect(
       {
-        x: (node.x() - imageLayout.x) / imageLayout.scale,
-        y: (node.y() - imageLayout.y) / imageLayout.scale,
+        ...createTransform(imageLayout).toImage({ x: node.x(), y: node.y() }),
         width,
         height,
       },
@@ -494,10 +432,7 @@ export function useCanvasInteractions({
     }
 
     const point = clampPoint(
-      {
-        x: (event.target.x() - imageLayout.x) / imageLayout.scale,
-        y: (event.target.y() - imageLayout.y) / imageLayout.scale,
-      },
+      createTransform(imageLayout).toImage({ x: event.target.x(), y: event.target.y() }),
       loadedImage,
     );
     updateAnnotation(selectedPath, annotation.id, { points: [point.x, point.y] });
@@ -513,10 +448,7 @@ export function useCanvasInteractions({
     }
 
     const point = clampPoint(
-      {
-        x: (event.target.x() - imageLayout.x) / imageLayout.scale,
-        y: (event.target.y() - imageLayout.y) / imageLayout.scale,
-      },
+      createTransform(imageLayout).toImage({ x: event.target.x(), y: event.target.y() }),
       loadedImage,
     );
     const points = [...annotation.points];
@@ -533,10 +465,9 @@ export function useCanvasInteractions({
 
     const nextRect = clampRect(
       {
-        x: (node.x() - imageLayout.x) / imageLayout.scale,
-        y: (node.y() - imageLayout.y) / imageLayout.scale,
-        width: (node.width() * node.scaleX()) / imageLayout.scale,
-        height: (node.height() * node.scaleY()) / imageLayout.scale,
+        ...createTransform(imageLayout).toImage({ x: node.x(), y: node.y() }),
+        width: createTransform(imageLayout).toImageLength(node.width() * node.scaleX()),
+        height: createTransform(imageLayout).toImageLength(node.height() * node.scaleY()),
       },
       loadedImage,
     );

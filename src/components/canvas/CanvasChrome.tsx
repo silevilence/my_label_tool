@@ -1,3 +1,4 @@
+import { resolveGesture } from "../../lib/gestures";
 import { useShortcutStore } from "../../store/useShortcutStore";
 import { shortcutKey } from "../../lib/shortcuts";
 import { formatShortcut } from "../../lib/shortcut-utils";
@@ -375,38 +376,21 @@ export function AnnotationRect({
         shadowForStrokeEnabled={false}
         stroke={isHighlighted ? "#facc15" : label.color}
         strokeWidth={isHighlighted || isSelected ? 3 : 2}
-        draggable={!isPanning && interactionMode === "default"}
-        onClick={(event) => {
-          if (interactionMode !== "default" || event.evt.ctrlKey || event.evt.shiftKey) {
-            return;
-          }
-          onSelect(annotation.id);
-        }}
+        draggable={
+          !isPanning &&
+          resolveGesture(
+            { button: 0, phase: "drag" },
+            { mode: interactionMode, shapeType: annotation.type, hit: true },
+          ) === "select"
+        }
         onContextMenu={(event) => {
           event.cancelBubble = true;
           onContextMenu(event, annotation.id);
         }}
         onDragEnd={(event) => onDragEnd(annotation, event)}
-        onMouseDown={(event) => {
-          if (event.evt.button === 1) {
-            event.evt.preventDefault();
-            event.cancelBubble = true;
-            return;
-          }
-          if (event.evt.button === 2 && event.evt.ctrlKey) {
-            event.cancelBubble = true;
-            onPanStart(event);
-            return;
-          }
-          if (event.evt.button !== 0) {
-            return;
-          }
-          if (event.evt.ctrlKey || event.evt.shiftKey) {
-            return;
-          }
-          event.cancelBubble = true;
-          onSelect(annotation.id);
-        }}
+        onMouseDown={(event) =>
+          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
+        }
         onTransformEnd={() => onTransformEnd(annotation)}
       />
       {showLabel && (
@@ -468,12 +452,6 @@ export function AnnotationPolygon({
         shadowColor="#facc15"
         stroke={isHighlighted ? "#facc15" : label.color}
         strokeWidth={isHighlighted || isSelected ? 3 : 2}
-        onClick={(event) => {
-          if (interactionMode !== "default" || event.evt.ctrlKey || event.evt.shiftKey) {
-            return;
-          }
-          onSelect(annotation.id);
-        }}
         onContextMenu={(event) => {
           event.cancelBubble = true;
           onContextMenu(event, annotation.id);
@@ -487,7 +465,13 @@ export function AnnotationPolygon({
           .filter((_, index) => index % 2 === 0)
           .map((x, index) => (
             <Circle
-              draggable={!isPanning && interactionMode === "default"}
+              draggable={
+                !isPanning &&
+                resolveGesture(
+                  { button: 0, phase: "drag" },
+                  { mode: interactionMode, shapeType: annotation.type, hit: true },
+                ) === "select"
+              }
               fill="#ffffff"
               key={`${annotation.id}-${index}`}
               radius={5}
@@ -495,6 +479,9 @@ export function AnnotationPolygon({
               strokeWidth={2}
               x={x}
               y={points[index * 2 + 1]}
+              onMouseDown={(event) =>
+                handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart)
+              }
               onDragEnd={(event) => onVertexDragEnd(annotation, index, event)}
             />
           ))}
@@ -542,7 +529,13 @@ export function AnnotationPoint({
   return (
     <>
       <Circle
-        draggable={!isPanning && interactionMode === "default"}
+        draggable={
+          !isPanning &&
+          resolveGesture(
+            { button: 0, phase: "drag" },
+            { mode: interactionMode, shapeType: annotation.type, hit: true },
+          ) === "select"
+        }
         fill={`${label.color}dd`}
         hitStrokeWidth={12}
         radius={isSelected ? 7 : 5}
@@ -552,12 +545,6 @@ export function AnnotationPoint({
         strokeWidth={isHighlighted || isSelected ? 3 : 2}
         x={x}
         y={y}
-        onClick={(event) => {
-          if (interactionMode !== "default" || event.evt.ctrlKey || event.evt.shiftKey) {
-            return;
-          }
-          onSelect(annotation.id);
-        }}
         onContextMenu={(event) => {
           event.cancelBubble = true;
           onContextMenu(event, annotation.id);
@@ -584,20 +571,24 @@ function handleShapeMouseDown(
   onSelect: (annotationId: string) => void,
   onPanStart: (event: KonvaEventObject<MouseEvent>) => void,
 ) {
-  if (event.evt.button === 1) {
-    event.evt.preventDefault();
-    event.cancelBubble = true;
-    return;
-  }
-  if (event.evt.button === 2 && event.evt.ctrlKey) {
+  const ctx = { mode: interactionMode, shapeType: "rect" as const, hit: true };
+  const intent = resolveGesture(event.evt, ctx);
+  if (intent === "pan") {
     event.cancelBubble = true;
     onPanStart(event);
-    return;
-  }
-  if (event.evt.button !== 0 || event.evt.ctrlKey || event.evt.shiftKey) {
-    return;
-  }
-  if (interactionMode === "default") {
+  } else if (
+    intent === "select" &&
+    resolveGesture(
+      {
+        ...event.evt,
+        button: 0,
+        ctrlKey: event.evt.ctrlKey,
+        shiftKey: event.evt.shiftKey,
+        phase: "drag",
+      },
+      ctx,
+    ) === "select"
+  ) {
     event.cancelBubble = true;
     onSelect(annotationId);
   }

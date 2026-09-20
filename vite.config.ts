@@ -36,6 +36,7 @@ export default defineConfig(async () => ({
       provider: "v8",
       include: [
         "src/components/canvas/geometry.ts",
+        "src/components/canvas/transform.ts",
         "src/lib/**/*.ts",
         "src/store/**/*.ts",
         "src/types/annotation.ts",

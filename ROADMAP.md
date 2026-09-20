@@ -72,11 +72,11 @@
   - [x] 修订 `AGENTS.md` §6 的分层措辞（瞬时交互态与当前编辑对象的边界）
   - 验收：搜索确认后「下一张」留在结果集内；删除任意一张（含末张、含当前未在列表中的路径）后选择停在邻图；作用域切换可见可退出
 
-- [ ] **前端交互⑤：画布手势意图与草稿状态机**
-  - [ ] 按 `docs/frontend-interaction.md` §5 实现纯函数 `resolveGesture`，Stage 统一分类，Konva 保留拖拽与 Transformer
-  - [ ] 三个图形渲染器删除各自的按钮 / 模式守卫，改为向同一解析器查询
-  - [ ] 草稿状态机 `idle | rect | polygon | point | pan` 统一提交与取消，矩形绘制中支持 Esc 取消
-  - [ ] 坐标转换收成 `createTransform(layout)` adapter，替换画布交互、缩放、多边形草稿与插值预览中各自重推的反向变换
+- [x] **前端交互⑤：画布手势意图与草稿状态机**
+  - [x] 按 `docs/frontend-interaction.md` §5 实现纯函数 `resolveGesture`，Stage 统一分类，Konva 保留拖拽与 Transformer
+  - [x] 三个图形渲染器删除各自的按钮 / 模式守卫，改为向同一解析器查询
+  - [x] 草稿状态机 `idle | rect | polygon | point | pan` 统一提交与取消，矩形绘制中支持 Esc 取消
+  - [x] 坐标转换收成 `createTransform(layout)` adapter，替换画布交互、缩放、多边形草稿与插值预览中各自重推的反向变换
   - 验收：分类矩阵（按钮 × 模式 × 命中/背景）与草稿转移可纯函数验证；矩形与多边形的取消行为一致
 
 - [ ] **前端交互⑥：视频帧模型与导航接缝**

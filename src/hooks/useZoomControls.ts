@@ -1,3 +1,4 @@
+import { createTransform } from "../components/canvas/transform";
 import { clamp, fitImageLayout, getFitScale } from "../components/canvas/geometry";
 import type { ImageLayout } from "../components/canvas/types";
 
@@ -66,15 +67,7 @@ export function useZoomControls({
         return layout;
       }
 
-      const imageX = (point.x - layout.x) / layout.scale;
-      const imageY = (point.y - layout.y) / layout.scale;
-      return {
-        scale: nextScale,
-        width: loadedImage.naturalWidth * nextScale,
-        height: loadedImage.naturalHeight * nextScale,
-        x: point.x - imageX * nextScale,
-        y: point.y - imageY * nextScale,
-      };
+      return createTransform(layout).zoomAt(point, nextScale);
     });
   }
 
