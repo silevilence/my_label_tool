@@ -1,3 +1,4 @@
+import { frameSummaries } from "../../lib/video-frames";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
@@ -16,6 +17,11 @@ const video: VideoProject = {
     timestampSeconds: frameIndex / 10,
   })),
 };
+const frames = frameSummaries(
+  video,
+  {},
+  video.frames.map((frame) => ({ name: frame.name, path: `dir/${frame.name}` })),
+);
 let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
@@ -30,7 +36,14 @@ afterEach(async () => {
 });
 it("shows source positions, actual timestamps and sample count", async () => {
   await act(async () =>
-    root.render(<VideoTimeline video={video} selectedName="2.png" onSelect={vi.fn()} />),
+    root.render(
+      <VideoTimeline
+        frames={frames}
+        totalFrames={video.totalFrames}
+        currentIndex={2}
+        onSelectFrame={vi.fn()}
+      />,
+    ),
   );
   expect(container.textContent).toContain("源帧 7 / 10");
   expect(container.textContent).toContain("0.600 秒");
@@ -40,7 +53,14 @@ it("shows source positions, actual timestamps and sample count", async () => {
 it("scrubs to the first and last extracted frame without inventing missing frames", async () => {
   const select = vi.fn();
   await act(async () =>
-    root.render(<VideoTimeline video={video} selectedName="1.png" onSelect={select} />),
+    root.render(
+      <VideoTimeline
+        frames={frames}
+        totalFrames={video.totalFrames}
+        currentIndex={1}
+        onSelectFrame={select}
+      />,
+    ),
   );
   const slider = container.querySelector("input")!;
   for (const value of ["3", "0"]) {
@@ -52,26 +72,42 @@ it("scrubs to the first and last extracted frame without inventing missing frame
       slider.dispatchEvent(new Event("input", { bubbles: true }));
     });
   }
-  expect(select.mock.calls).toEqual([["3.png"], ["0.png"]]);
+  expect(select.mock.calls).toEqual([[3], [0]]);
 });
 it("handles missing selection, one frame, and disabled extraction state", async () => {
   const select = vi.fn();
   await act(async () =>
-    root.render(<VideoTimeline video={video} selectedName="missing" onSelect={select} />),
+    root.render(
+      <VideoTimeline
+        frames={frames}
+        totalFrames={video.totalFrames}
+        currentIndex={-1}
+        onSelectFrame={select}
+      />,
+    ),
   );
   expect(container.querySelector("input")).toBeNull();
   await act(async () =>
     root.render(
       <VideoTimeline
-        video={{ ...video, totalFrames: 1, frames: video.frames.slice(0, 1) }}
-        selectedName="0.png"
-        onSelect={select}
+        frames={frames.slice(0, 1)}
+        totalFrames={1}
+        currentIndex={0}
+        onSelectFrame={select}
       />,
     ),
   );
   expect(container.querySelector("input")?.disabled).toBe(true);
   await act(async () =>
-    root.render(<VideoTimeline video={video} selectedName="0.png" disabled onSelect={select} />),
+    root.render(
+      <VideoTimeline
+        frames={frames}
+        totalFrames={video.totalFrames}
+        currentIndex={0}
+        disabled
+        onSelectFrame={select}
+      />,
+    ),
   );
   expect(container.querySelector("input")?.disabled).toBe(true);
 });

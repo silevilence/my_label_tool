@@ -164,7 +164,7 @@ useDraftGesture() → { state: "idle" | "rect" | "polygon" | "point" | "pan",
 
 ```ts
 // 纯模型（lib/video-frames.ts）
-frameSummaries(video, annotations, framePaths) → Array<{ index, timestampSeconds, name, path, annotated: boolean, keyframe: boolean }>
+frameSummaries(video, annotations, framePaths) → Array<{ index, frameIndex, timestampSeconds, name, path, annotated: boolean, keyframe: boolean }>
 ```
 
 ```ts
@@ -173,6 +173,7 @@ useVideoFrameNavigation(video, images, selectedPath) → { currentIndex, select,
 
 **实现**
 
+- index 是可用抽取帧序号，frameIndex 是源视频解码帧号；缺失路径不进入导航，插值仍拒绝不完整序列。不可变输入快照通过弱引用缓存让各视图共享摘要。
 - 帧 ↔ 路径映射、每帧是否已标注、关键帧集合只算一次，供时间轴、侧栏帧列表、键盘步进与插值浮窗共用；删除以字符串名字互相翻译的两个索引空间（`video.frames.findIndex` 与 `selectedVideo.images.findIndex`）。
 - `VideoTimeline` 保持薄：渲染刻度、标注密度、关键帧标记与播放头，回调只有 `onSelectFrame`。
 - 关键帧语义沿用 `lib/video-interpolation.ts` 的纯函数，不新增第二套判定。

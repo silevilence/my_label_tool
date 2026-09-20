@@ -484,7 +484,6 @@ export function AppSidebar({
               images={images}
               videos={videos}
               selectedPath={selectedPath}
-              annotations={annotationsByImage}
               onSelect={setSelectedPath}
               onPrepare={(source) => addVideo?.(source)}
               onVideoMenu={(source, x, y) => {

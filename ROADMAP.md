@@ -79,10 +79,10 @@
   - [x] 坐标转换收成 `createTransform(layout)` adapter，替换画布交互、缩放、多边形草稿与插值预览中各自重推的反向变换
   - 验收：分类矩阵（按钮 × 模式 × 命中/背景）与草稿转移可纯函数验证；矩形与多边形的取消行为一致
 
-- [ ] **前端交互⑥：视频帧模型与导航接缝**
-  - [ ] 按 `docs/frontend-interaction.md` §6 实现纯模型 `lib/video-frames.ts`：帧序、每帧是否已标注、关键帧集合、帧 ↔ 路径映射
-  - [ ] 提供 `useVideoFrameNavigation`（当前帧 / 步进 / 跳转 / 边界），时间轴、侧栏帧列表与键盘步进共用
-  - [ ] `VideoTimeline` 渲染标注密度、关键帧标记与播放头，回调仅保留 `onSelectFrame`
+- [x] **前端交互⑥：视频帧模型与导航接缝**
+  - [x] 按 `docs/frontend-interaction.md` §6 实现纯模型 `lib/video-frames.ts`：帧序、每帧是否已标注、关键帧集合、帧 ↔ 路径映射
+  - [x] 提供 `useVideoFrameNavigation`（当前帧 / 步进 / 跳转 / 边界），时间轴、侧栏帧列表与键盘步进共用
+  - [x] `VideoTimeline` 渲染标注密度、关键帧标记与播放头，回调仅保留 `onSelectFrame`
   - 验收：时间轴与侧栏显示一致的标注分布；帧步进与跳转在首尾边界行为一致；删除以字符串名字互相翻译的两个索引空间
 
 ## ✅ 已完成 (Completed)

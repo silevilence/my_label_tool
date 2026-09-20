@@ -1,3 +1,4 @@
+import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
 import { useOperations } from "./store/useOperations";
 import { OperationStatus } from "./components/operations/OperationStatus";
@@ -156,6 +157,7 @@ function App() {
   const prelabelModels = usePrelabelModels(setError);
 
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
+  const frameNavigation = useVideoFrameNavigation(video, selectedVideo?.images ?? [], selectedPath);
   const selectedShapeId = useAnnotationStore((state) => state.selectedShapeId);
   const addAnnotation = useAnnotationStore((state) => state.addAnnotation);
   const updateAnnotation = useAnnotationStore((state) => state.updateAnnotation);
@@ -648,13 +650,7 @@ function App() {
   useDraftKeyboard(gesture, completePolygon);
 
   useKeyboardShortcuts({
-    selectAdjacentFrame: selectedVideo
-      ? (delta) => {
-          const index = selectedVideo.images.findIndex((image) => image.path === selectedPath);
-          const next = selectedVideo.images[index + delta];
-          if (index >= 0 && next) setSelectedPath(next.path);
-        }
-      : undefined,
+    selectAdjacentFrame: selectedVideo ? frameNavigation.step : undefined,
     deleteCurrentImage: () => requestDeleteImage(selectedPath),
     labels,
     selectedPath,
@@ -743,13 +739,11 @@ function App() {
           <>
             {video && (
               <VideoTimeline
-                video={video}
-                selectedName={selectedImage?.name ?? ""}
-                disabled={videoImport.busy}
-                onSelect={(name) => {
-                  const frame = images.find((image) => image.name === name);
-                  if (frame) setSelectedPath(frame.path);
-                }}
+                frames={frameNavigation.frames}
+                currentIndex={frameNavigation.currentIndex}
+                totalFrames={video.totalFrames}
+                disabled={imageDeletionBusy}
+                onSelectFrame={frameNavigation.select}
               />
             )}
             {video && (
@@ -760,7 +754,7 @@ function App() {
                 selectedPath={selectedPath}
                 selectedShape={selectedShape}
                 disabled={imageDeletionBusy}
-                onSelect={setSelectedPath}
+                onSelect={frameNavigation.select}
                 onError={setError}
                 onPreviewChange={setInterpolationPreview}
               />

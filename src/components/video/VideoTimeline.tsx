@@ -1,22 +1,19 @@
-import type { VideoProject } from "../../types/video";
-import type { ReactNode } from "react";
+import type { FrameSummary } from "../../lib/video-frames";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
-
 export function VideoTimeline({
-  video,
-  selectedName,
+  frames,
+  currentIndex,
+  totalFrames,
   disabled = false,
-  onSelect,
-  children,
+  onSelectFrame,
 }: {
-  video: VideoProject;
-  selectedName: string;
+  frames: FrameSummary[];
+  currentIndex: number;
+  totalFrames: number;
   disabled?: boolean;
-  onSelect: (name: string) => void;
-  children?: ReactNode;
+  onSelectFrame: (index: number) => void;
 }) {
-  const index = video.frames.findIndex((frame) => frame.name === selectedName);
-  const current = video.frames[index];
+  const current = frames[currentIndex];
   if (!current) return null;
   return (
     <section
@@ -24,26 +21,53 @@ export function VideoTimeline({
       className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-800 bg-slate-900 px-4 py-3 text-xs"
     >
       <span className="shrink-0 tabular-nums">
-        {text.position(current.frameIndex + 1, video.totalFrames)}
+        {text.position(current.frameIndex + 1, totalFrames)}
       </span>
-      <input
-        type="range"
-        aria-label={text.timeline}
-        min={0}
-        max={video.frames.length - 1}
-        step={1}
-        value={index}
-        disabled={disabled || video.frames.length < 2}
-        aria-valuetext={text.position(current.frameIndex + 1, video.totalFrames)}
-        className="min-w-16 flex-1 accent-sky-400"
-        onChange={(event) => {
-          const frame = video.frames[Number(event.target.value)];
-          if (frame && !disabled) onSelect(frame.name);
-        }}
-      />
+      <div className="relative min-w-16 flex-1 pt-3">
+        <div
+          aria-label={text.distribution}
+          className="absolute inset-x-0 top-0 flex h-2 overflow-hidden rounded bg-slate-700"
+        >
+          {frames.map((frame) => (
+            <span
+              key={frame.path}
+              title={text.frameStatus(frame.frameIndex + 1, frame.annotated, frame.keyframe)}
+              data-frame-path={frame.path}
+              data-annotated={frame.annotated}
+              data-keyframe={frame.keyframe}
+              className={`relative min-w-0 flex-1 ${frame.annotated ? "bg-sky-500" : "bg-slate-700"}`}
+            >
+              {frame.keyframe && <span className="absolute inset-y-0 left-1/2 w-1 bg-amber-300" />}
+            </span>
+          ))}
+          <span
+            aria-hidden="true"
+            className="absolute -top-0.5 h-3 w-0.5 bg-white"
+            style={{
+              left: `${frames.length > 1 ? (currentIndex / (frames.length - 1)) * 100 : 0}%`,
+            }}
+          />
+        </div>
+        <input
+          type="range"
+          aria-label={text.timeline}
+          min={0}
+          max={frames.length - 1}
+          step={1}
+          value={currentIndex}
+          disabled={disabled || frames.length < 2}
+          aria-valuetext={text.position(current.frameIndex + 1, totalFrames)}
+          className="block w-full accent-sky-400"
+          onChange={(event) => {
+            const index = Number(event.target.value);
+            if (frames[index] && !disabled) onSelectFrame(index);
+          }}
+        />
+      </div>
       <span className="shrink-0 tabular-nums">{text.time(current.timestampSeconds)}</span>
-      <span className="shrink-0 text-slate-400">{text.frames(video.frames.length)}</span>
-      {children}
+      <span className="shrink-0 text-slate-400">
+        {text.frames(frames.length)} · {text.distributionLegend}
+      </span>
     </section>
   );
 }

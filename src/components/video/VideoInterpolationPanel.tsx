@@ -1,3 +1,4 @@
+import { frameSummaries } from "../../lib/video-frames";
 import { useEffect, useState } from "react";
 import type { AnnotationShape } from "../../types/annotation";
 import type { VideoProject } from "../../types/video";
@@ -6,6 +7,7 @@ import { useAnnotationStore } from "../../store/useAnnotationStore";
 import {
   interpolateVideoTrack,
   markVideoKeyframe,
+  isVideoKeyframe,
   videoTrackId,
   type VideoInterpolationPlan,
 } from "../../lib/video-interpolation";
@@ -39,9 +41,10 @@ export function VideoInterpolationPanel({
   const annotations = useAnnotationStore((state) => state.annotationsByImage);
   const [choice, setChoice] = useState("");
   const [preview, setPreview] = useState<InterpolationPreview | null>(null);
+  const frames = frameSummaries(video, annotations, images);
   const tracks = [
     ...new Set(
-      images.flatMap((image) => (annotations[image.path] ?? []).map(videoTrackId)).filter(Boolean),
+      frames.flatMap((frame) => (annotations[frame.path] ?? []).map(videoTrackId)).filter(Boolean),
     ),
   ];
   const selectedTrack =
@@ -146,7 +149,7 @@ export function VideoInterpolationPanel({
         >
           {text.preview}
         </button>
-        {selectedShape?.attributes?.videoKeyframe === true && <span>{text.keyframe}</span>}
+        {selectedShape && isVideoKeyframe(selectedShape) && <span>{text.keyframe}</span>}
         {selectedShape?.attributes?.videoInterpolated === true && <span>{text.interpolated}</span>}
         {preview && (
           <>

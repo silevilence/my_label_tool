@@ -1,4 +1,9 @@
 export const VIDEO_ZH_CN = {
+  distribution: "帧标注分布",
+  distributionLegend: "蓝：已标注 · 黄：关键帧",
+  frameStatus: (frame: number, annotated: boolean, keyframe: boolean) =>
+    `源帧 ${frame} · ${annotated ? "已标注" : "未标注"}${keyframe ? " · 关键帧" : ""}`,
+
   extractionMode: "抽帧方式",
   fpsMode: "按 FPS 抽帧",
   intervalMode: "固定帧间隔",

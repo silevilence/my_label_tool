@@ -1,13 +1,10 @@
 import type { AnnotationShape } from "../types/annotation";
 import type { VideoProject } from "../types/video";
 import type { ImageFile } from "./tauri-api";
-import { videoImages } from "./video-images";
+import { frameSummaries } from "./video-frames";
+import { isVideoKeyframe, videoTrackId } from "./video-keyframes";
+export { isVideoKeyframe, videoTrackId } from "./video-keyframes";
 import { VIDEO_ZH_CN as text } from "../i18n/video.zh-CN";
-
-/** Tracking stays within the existing extensible attributes contract. */
-export function videoTrackId(shape: AnnotationShape | null): string {
-  return typeof shape?.attributes?.videoTrackId === "string" ? shape.attributes.videoTrackId : "";
-}
 
 export function markVideoKeyframe(
   shape: AnnotationShape,
@@ -41,18 +38,14 @@ export function interpolateVideoTrack(
   trackId: string,
 ): VideoInterpolationPlan {
   if (!trackId) throw new Error(text.invalidTrack);
-  const frames = videoImages(video, images).map((image, index) => ({
-    ...video.frames[index],
-    imagePath: image.path,
-  }));
+  const frames = frameSummaries(video, annotations, images);
+  if (frames.length !== video.frames.length) throw new Error(text.invalid);
   const keys = frames.flatMap((frame, index) => {
-    const shapes = (annotations[frame.imagePath] ?? []).filter(
+    const shapes = (annotations[frame.path] ?? []).filter(
       (shape) => videoTrackId(shape) === trackId,
     );
     if (shapes.length > 1) throw new Error(text.duplicateTrack);
-    return shapes
-      .filter((shape) => shape.attributes?.videoKeyframe === true)
-      .map((shape) => ({ frame, index, shape }));
+    return shapes.filter(isVideoKeyframe).map((shape) => ({ frame, index, shape }));
   });
   if (keys.length < 2) throw new Error(text.needKeyframes);
   const entries: VideoInterpolationPlan["entries"] = [];
@@ -71,7 +64,7 @@ export function interpolateVideoTrack(
       throw new Error(text.incompatibleKeyframes);
     for (let index = start.index + 1; index < end.index; index++) {
       const frame = frames[index];
-      const before = annotations[frame.imagePath] ?? [];
+      const before = annotations[frame.path] ?? [];
       if (
         before.some(
           (shape) =>
@@ -97,7 +90,7 @@ export function interpolateVideoTrack(
         },
       };
       entries.push({
-        imagePath: frame.imagePath,
+        imagePath: frame.path,
         frameIndex: frame.frameIndex,
         generated,
         annotations: [...before.filter((shape) => videoTrackId(shape) !== trackId), generated],
