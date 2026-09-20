@@ -22,6 +22,8 @@ export interface OperationView {
   cancelRequested: boolean;
   startedAt: number;
   finishedAt?: number;
+  /** pushError 聚合同名失败时的累计次数。 */
+  failCount?: number;
 }
 export interface OperationHandle {
   id: string;
@@ -42,6 +44,8 @@ interface Operations {
   canStart(resources: Resources): boolean;
   cancel(id: string): Promise<void>;
   dismiss(id: string): void;
+  /** 与具体操作句柄无关的错误统一入口：常驻可关闭卡片，同名聚合计数。 */
+  pushError(label: string, message: string): void;
 }
 const asResources = (resources: Resources): readonly OperationResource[] =>
   typeof resources === "string" ? [resources] : resources;
@@ -146,6 +150,40 @@ export const useOperations = create<Operations>((set, get) => ({
     set((state) => ({
       operations: state.operations.filter((op) => op.id !== id || op.status === "running"),
     })),
+  pushError: (label, message) => {
+    if (!message) return;
+    const existing = get().operations.find(
+      (op) => op.label === label && op.status === "failed",
+    );
+    if (existing) {
+      const failCount = (existing.failCount ?? 1) + 1;
+      set((state) => ({
+        operations: state.operations.map((op) =>
+          op.id === existing.id ? { ...op, message, failCount, startedAt: Date.now() } : op,
+        ),
+      }));
+      return;
+    }
+    set((state) => ({
+      operations: [
+        ...state.operations,
+        {
+          id: crypto.randomUUID(),
+          label,
+          resources: [],
+          status: "failed",
+          kind: "error",
+          message,
+          percent: null,
+          canCancel: false,
+          cancelRequested: false,
+          startedAt: Date.now(),
+          finishedAt: Date.now(),
+          failCount: 1,
+        },
+      ],
+    }));
+  },
 }));
 
 export function tryBeginOperation(input: OperationInput): OperationHandle | null {

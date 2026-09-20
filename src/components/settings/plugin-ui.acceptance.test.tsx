@@ -157,6 +157,7 @@ describe("plugin UI acceptance", () => {
           customMappingText=""
           disabled={false}
           isSaving={false}
+          exportError={null}
           pluginExportProgress={{
             percent: 47,
             message: "正在生成",

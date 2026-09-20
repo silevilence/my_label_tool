@@ -63,6 +63,7 @@ interface AppSidebarProps {
   createProjectFromExternalYolo: () => void;
   deleteTemplate: () => void;
   exportSelectedFormat: () => void;
+  exportError: string | null;
   importAnnotations: () => void;
   newTemplate: () => void;
   openFolder: () => void;
@@ -126,6 +127,7 @@ export function AppSidebar({
   createProjectFromExternalYolo,
   deleteTemplate,
   exportSelectedFormat,
+  exportError,
   importAnnotations,
   newTemplate,
   openFolder,
@@ -352,6 +354,7 @@ export function AppSidebar({
         selectedFormatId={selectedExportFormatId}
         pluginFormats={pluginExportFormats}
         pluginExportProgress={pluginExportProgress}
+        exportError={exportError}
         onChangeCustomMappingText={setCustomMappingText}
         onCancelPluginExport={cancelPluginExport}
         onChangeFormat={setSelectedExportFormatId}

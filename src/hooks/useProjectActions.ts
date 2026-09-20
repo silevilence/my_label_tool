@@ -114,6 +114,7 @@ export function useProjectActions({
   const projectMigrationGenerationRef = useRef(0);
   const exportOperation = useRef<OperationHandle | null>(null);
   const [activePluginExportId, setActivePluginExportId] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const exportView = useOperations((state) =>
     state.operations.find((op) => op.id === exportOperation.current?.id),
   );
@@ -143,6 +144,7 @@ export function useProjectActions({
       return false;
     }
     exportOperation.current = handle;
+    setExportError(null);
     try {
       const saved = await (save ? saveProjectExportInternal() : exportSelectedFormatInternal());
       handle.complete(
@@ -151,8 +153,9 @@ export function useProjectActions({
       );
       return saved;
     } catch (error) {
+      // 失败只进操作卡片（fail），同时面板内就地展示以便重试。
       handle.fail(error);
-      reportError(error);
+      setExportError(error instanceof Error ? error.message : String(error));
       return false;
     } finally {
       exportOperation.current = null;
@@ -173,7 +176,7 @@ export function useProjectActions({
       return true;
     } catch (caughtError: unknown) {
       exportOperation.current?.fail(caughtError);
-      reportError(caughtError);
+      setExportError(caughtError instanceof Error ? caughtError.message : String(caughtError));
       return false;
     }
   }
@@ -292,7 +295,7 @@ export function useProjectActions({
       return true;
     } catch (caughtError: unknown) {
       exportOperation.current?.fail(caughtError);
-      reportError(caughtError);
+      setExportError(caughtError instanceof Error ? caughtError.message : String(caughtError));
       return false;
     }
   }
@@ -726,6 +729,7 @@ export function useProjectActions({
         await useOperations.getState().cancel(exportOperation.current.id);
     },
     createProjectFromExternalYolo,
+    exportError,
     exportSelectedFormat,
     importAnnotations,
     maybeLoadProjectConfig,

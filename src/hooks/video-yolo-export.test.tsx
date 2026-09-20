@@ -120,6 +120,7 @@ function Harness({
       isSaving={false}
       selectedFormatId={selected}
       pluginFormats={[]}
+      exportError={actions.exportError}
       pluginExportProgress={null}
       canSaveProject
       onChangeCustomMappingText={vi.fn()}
@@ -223,7 +224,9 @@ it("rejects unsupported shapes before choosing a directory or dropping annotatio
   });
   await act(async () => root.render(<Harness format="yolo" />));
   await act(async () => actions.saveProjectExport());
-  expect(error).toHaveBeenCalledWith(expect.stringContaining("YOLO 只支持矩形"));
+  // 失败统一进操作卡片与导出面板就地错误，不再重复打进全局错误条。
+  expect(container.textContent).toContain("YOLO 只支持矩形");
+  expect(error).not.toHaveBeenCalledWith(expect.stringContaining("YOLO 只支持矩形"));
   expect(selectExportFolder).not.toHaveBeenCalled();
   expect(exportTextFiles).not.toHaveBeenCalled();
 });
@@ -248,7 +251,7 @@ it("does not activate an updated project configuration if writing its file fails
     expect(await actions.saveProjectExport()).toBe(false);
   });
   expect(config).not.toHaveBeenCalled();
-  expect(error).toHaveBeenLastCalledWith("disk full");
+  expect(container.textContent).toContain("disk full");
 });
 
 it("uses the dropdown for Save, reuses its destination, and Save As chooses a new directory", async () => {

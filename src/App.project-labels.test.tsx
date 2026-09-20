@@ -6,6 +6,7 @@ import { DEFAULT_LABELS } from "./lib/defaults/labels";
 import { parseProjectConfig, type ProjectConfig } from "./lib/importers";
 import type { TextExportFile } from "./types/export";
 import { useAnnotationStore } from "./store/useAnnotationStore";
+import { useOperations } from "./store/useOperations";
 
 const tauriMocks = vi.hoisted(() => ({
   exportAnnotationsJson: vi.fn(),
@@ -62,7 +63,6 @@ vi.mock("./components/AppLayout", () => ({
     activeProjectConfig,
     createProjectFromExternalYolo,
     transientMessage,
-    error,
     labels,
     openFolder,
     saveProjectExport,
@@ -72,7 +72,6 @@ vi.mock("./components/AppLayout", () => ({
     activeProjectConfig: ProjectConfig | null;
     createProjectFromExternalYolo: () => void;
     transientMessage: string;
-    error: string;
     labels: LabelConfig[];
     openFolder: () => void;
     saveProjectExport: () => void;
@@ -90,7 +89,13 @@ vi.mock("./components/AppLayout", () => ({
         保存
       </button>
       <output data-testid="active-project">{activeProjectConfig?.format ?? "none"}</output>
-      <output data-testid="error">{error}</output>
+      <output data-testid="error">
+        {useOperations
+          .getState()
+          .operations.filter((op) => op.status === "failed")
+          .map((op) => op.message)
+          .join("|")}
+      </output>
       <output data-testid="message">{transientMessage}</output>
       <select
         aria-label="标签模板"

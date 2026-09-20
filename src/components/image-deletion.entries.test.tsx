@@ -74,6 +74,7 @@ describe("image deletion entry wiring", () => {
   let container: HTMLDivElement;
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    useOperations.setState({ operations: [] });
     vi.useFakeTimers();
     vi.clearAllMocks();
     vi.mocked(api.listTextFiles).mockResolvedValue([]);

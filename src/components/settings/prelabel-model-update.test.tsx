@@ -1,4 +1,5 @@
 import { useOperations } from "../../store/useOperations";
+import { OperationStatus } from "../../components/operations/OperationStatus";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -24,7 +25,9 @@ const onClose = vi.fn();
 function Harness() {
   const models = usePrelabelModels(onError);
   return (
-    <PrelabelSettings
+    <>
+      <OperationStatus />
+      <PrelabelSettings
       activeProjectConfig={null}
       isLabelDirty={false}
       isLoaded={models.isLoaded}
@@ -38,6 +41,7 @@ function Harness() {
       onClose={onClose}
       onSaveMappings={async () => {}}
     />
+    </>
   );
 }
 
@@ -69,6 +73,7 @@ let root: Root;
 let container: HTMLDivElement;
 
 beforeEach(async () => {
+    useOperations.setState({ operations: [] });
   vi.clearAllMocks();
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   saved = { schemaVersion: 1, currentModelId: "a", models: [model] };

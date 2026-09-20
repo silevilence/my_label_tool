@@ -155,7 +155,11 @@ function App() {
   const [isShortcutSettingsOpen, setIsShortcutSettingsOpen] = useState(false);
   const [isPrelabelSettingsOpen, setIsPrelabelSettingsOpen] = useState(false);
   const [isPrelabelExecutionOpen, setIsPrelabelExecutionOpen] = useState(false);
-  const { message: error, showMessage: setError } = useTransientMessage(5000);
+  // 画布插值等非操作警告：保留 5 秒可关闭条（既有语义）；各 hook 的操作错误统一走操作卡片。
+  const { message: error, showMessage: setCanvasWarning } = useTransientMessage(5000);
+  const setError = useCallback((message: string) => {
+    useOperations.getState().pushError("操作失败", message);
+  }, []);
 
   const prelabelModels = usePrelabelModels(setError);
 
@@ -324,6 +328,7 @@ function App() {
     cancelActivePluginExport,
     createProjectFromExternalYolo,
     exportSelectedFormat,
+    exportError,
     importAnnotations,
     maybeLoadProjectConfig,
     pluginExportProgress,
@@ -771,7 +776,8 @@ function App() {
                 ?.generated ?? null)
             : null
         }
-        onDismissError={() => setError("")}
+        error={error}
+        onDismissError={() => setCanvasWarning("")}
         openProjectSettings={
           activeProjectConfig && activeProjectConfigPath && !imageDeletionBusy
             ? () => setIsProjectSettingsOpen(true)
@@ -801,7 +807,7 @@ function App() {
                 selectedShape={selectedShape}
                 disabled={imageDeletionBusy}
                 onSelect={frameNavigation.select}
-                onError={setError}
+                onError={setCanvasWarning}
                 onPreviewChange={setInterpolationPreview}
               />
             )}
@@ -824,7 +830,6 @@ function App() {
         customMappingText={customMappingText}
         draftPolygonPoints={draftPolygonPoints}
         draftRect={draftRect}
-        error={error}
         folderPath={folderPath}
         highlightedShapeId={highlightedShapeId}
         helpDisplaySettings={helpDisplaySettings}
@@ -878,6 +883,7 @@ function App() {
         deleteContextAnnotation={deleteContextAnnotation}
         deleteTemplate={deleteTemplate}
         exportSelectedFormat={exportSelectedFormat}
+        exportError={exportError}
         fitImageHeight={fitImageHeight}
         fitImageWidth={fitImageWidth}
         handleDragEnd={handleDragEnd}

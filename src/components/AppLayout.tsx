@@ -95,6 +95,7 @@ interface AppLayoutProps {
   customMappingText: string;
   draftPolygonPoints: number[] | null;
   draftRect: CanvasRect | null;
+  /** 画布插值等非操作类警告：5 秒自动消失、可手动关闭，不进操作卡片。 */
   error: string;
   folderPath: string;
   highlightedShapeId: string | null;
@@ -149,6 +150,7 @@ interface AppLayoutProps {
   deleteContextAnnotation: (annotation: AnnotationShape) => void;
   deleteTemplate: () => void;
   exportSelectedFormat: () => void;
+  exportError: string | null;
   fitImageHeight: () => void;
   fitImageWidth: () => void;
   handleDragEnd: (annotation: AnnotationShape, event: KonvaEventObject<DragEvent>) => void;
@@ -288,6 +290,7 @@ export function AppLayout({
   deleteContextAnnotation,
   deleteTemplate,
   exportSelectedFormat,
+  exportError,
   fitImageHeight,
   fitImageWidth,
   handleDragEnd,
@@ -450,6 +453,7 @@ export function AppLayout({
           createProjectFromExternalYolo={createProjectFromExternalYolo}
           deleteTemplate={deleteTemplate}
           exportSelectedFormat={exportSelectedFormat}
+          exportError={exportError}
           importAnnotations={importAnnotations}
           newTemplate={newTemplate}
           openFolder={openFolder}

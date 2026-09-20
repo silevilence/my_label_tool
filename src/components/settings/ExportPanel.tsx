@@ -16,6 +16,7 @@ interface ExportPanelProps {
   selectedFormatId: ExportFormatId;
   pluginFormats: PluginExportFormatDescriptor[];
   pluginExportProgress: PluginExportProgressState | null;
+  exportError: string | null;
   canSaveProject: boolean;
   onChangeCustomMappingText: (value: string) => void;
   onCancelPluginExport: () => void;
@@ -34,6 +35,7 @@ export function ExportPanel({
   selectedFormatId,
   pluginFormats,
   pluginExportProgress,
+  exportError,
   canSaveProject,
   onChangeCustomMappingText,
   onCancelPluginExport,
@@ -126,6 +128,21 @@ export function ExportPanel({
                 : pluginText.exportCancel}
             </button>
           )}
+        </div>
+      )}
+      {exportError && (
+        <div
+          role="alert"
+          className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200"
+        >
+          <p className="break-words">{exportError}</p>
+          <button
+            className="mt-2 rounded border border-red-400/60 px-3 py-1 text-xs text-red-100 hover:bg-red-500/20"
+            type="button"
+            onClick={onExport}
+          >
+            重试导出
+          </button>
         </div>
       )}
       <div className="mt-3 grid grid-cols-2 gap-2">

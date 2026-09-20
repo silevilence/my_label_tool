@@ -104,7 +104,9 @@ export function PrelabelSettings({
   const [ptGuidance, setPtGuidance] = useState<PtGuidance | null>(null);
   const [ptConversionSession, setPtConversionSession] = useState<PtConversionSession | null>(null);
   const [ptConversionNotice, setPtConversionNotice] = useState("");
-  const [error, setError] = useState("");
+  // 预打标域错误统一进操作卡片：常驻可关闭、同名聚合计数。
+  const setError = (message: string) =>
+    useOperations.getState().pushError("预打标", message);
   const modelOperation = useRef<OperationHandle | null>(null);
   const runtimeOperation = useRef<OperationHandle | null>(null);
   const operations = useOperations((state) => state.operations);
@@ -614,11 +616,6 @@ export function PrelabelSettings({
           </aside>
 
           <main className="overflow-y-auto p-5">
-            {error && (
-              <p className="mb-4 rounded border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-200">
-                {error}
-              </p>
-            )}
             {ptConversionNotice && (
               <p className="mb-4 rounded border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-100">
                 {ptConversionNotice}
