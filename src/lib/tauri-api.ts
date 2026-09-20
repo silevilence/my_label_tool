@@ -1,7 +1,7 @@
 import type { VideoExtractionSettings } from "../types/project-settings";
 import { extractionSettings } from "./project-settings";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type { ProjectVideo, VideoImportResult, VideoProject } from "../types/video";
 import { VIDEO_ZH_CN as videoText } from "../i18n/video.zh-CN";
 
@@ -123,10 +123,6 @@ export async function selectImageFolder(): Promise<string | null> {
 export async function selectPluginPackage(): Promise<string | null> {
   const path = await open({ directory: false, multiple: false });
   return typeof path === "string" ? path : null;
-}
-
-export function confirmAction(message: string): Promise<boolean> {
-  return confirm(message, { title: "请确认", kind: "warning" });
 }
 
 export function listImageFiles(folderPath: string): Promise<ImageFile[]> {

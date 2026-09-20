@@ -28,6 +28,7 @@ import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 interface AppSidebarProps {
   reextractVideo?: (source: string) => void;
   openProjectSettings?: () => void;
+  showMessage: (message: string) => void;
   videos?: LoadedProjectVideo[];
   addVideo?: (source?: string) => void;
   canDeleteImage: boolean;
@@ -90,6 +91,7 @@ interface AppSidebarProps {
 export function AppSidebar({
   reextractVideo,
   openProjectSettings,
+  showMessage,
   videos = [],
   addVideo,
   canDeleteImage,
@@ -252,7 +254,7 @@ export function AppSidebar({
                         type="button"
                         onClick={() => {
                           closeMenu();
-                          window.alert(`${format} 外部项目创建暂未实现`);
+                          showMessage(`${format} 外部项目创建暂未实现`);
                         }}
                       >
                         从 {format} 创建项目（暂未实现）

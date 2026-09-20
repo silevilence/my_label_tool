@@ -1,10 +1,10 @@
 import { Overlay } from "../overlay/Overlay";
+import { confirmAction } from "../../lib/prompts";
 import { useCallback, useEffect, useState } from "react";
 import { PLUGIN_ZH_CN as text } from "../../i18n/plugin.zh-CN";
 import {
   authorizePlugin,
   clearPluginFailures,
-  confirmAction,
   installPlugin,
   getPluginRuntimeSettings,
   getPluginRuntimeLogs,

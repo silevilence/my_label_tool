@@ -5,7 +5,7 @@ import { Overlay } from "../overlay/Overlay";
 import { useState } from "react";
 import { DEFAULT_LABEL_COLORS } from "../../lib/defaults/labels";
 import { PROJECT_TEMPLATE_ID } from "../../lib/importers";
-import { confirmAction } from "../../lib/tauri-api";
+import { confirmAction } from "../../lib/prompts";
 import { PLUGIN_ZH_CN as pluginText } from "../../i18n/plugin.zh-CN";
 import {
   LABEL_SHAPE_TYPES,
@@ -53,6 +53,7 @@ export function LabelSettings({
 }: LabelSettingsProps) {
   const [newLabelName, setNewLabelName] = useState("");
   const [isManageOpen, setIsManageOpen] = useState(false);
+  const [formError, setFormError] = useState("");
 
   function addLabel() {
     const name = newLabelName.trim();
@@ -80,11 +81,12 @@ export function LabelSettings({
     const shortcut = value.trim().toLowerCase();
     if (!shortcut) {
       patchLabel(labelId, { shortcut: undefined });
+      setFormError("");
       return;
     }
 
     if (!/^[a-z0-9]$/.test(shortcut)) {
-      window.alert("快捷键只能是单个数字或字母。");
+      setFormError("快捷键只能是单个数字或字母。");
       return;
     }
 
@@ -93,16 +95,17 @@ export function LabelSettings({
       labels.map((label) => (label.id === labelId ? { ...label, shortcut } : label)),
     ).find((item) => item.ids.includes(`label:${labelId}`));
     if (conflict) {
-      window.alert(conflict.message);
+      setFormError(conflict.message);
       return;
     }
 
+    setFormError("");
     patchLabel(labelId, { shortcut });
   }
 
   async function deleteLabel(label: LabelConfig) {
     if (labels.length === 1) {
-      window.alert("至少需要保留一个标签。");
+      setFormError("至少需要保留一个标签。");
       return;
     }
 
@@ -114,11 +117,17 @@ export function LabelSettings({
     }
 
     onChangeLabels(labels.filter((item) => item.id !== label.id));
+    setFormError("");
   }
 
   return (
     <section className="border-b border-slate-800 p-4">
       <h2 className="text-sm font-medium text-slate-200">标签配置</h2>
+      {formError && (
+        <p role="alert" className="mt-2 text-xs text-red-300">
+          {formError}
+        </p>
+      )}
 
       <div className="mt-3 grid gap-2">
         <select

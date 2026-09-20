@@ -41,6 +41,10 @@ vi.mock("react-konva", () =>
   ),
 );
 vi.mock("../lib/updater", () => ({ checkAppUpdate: vi.fn().mockResolvedValue(null) }));
+vi.mock("../lib/prompts", async (importOriginal) => ({
+  ...(await importOriginal()),
+  confirmAction: vi.fn().mockResolvedValue(true),
+}));
 vi.mock("../lib/tauri-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tauri-api")>()),
   loadLabelConfigs: vi.fn().mockResolvedValue([]),
@@ -102,6 +106,14 @@ describe("image deletion entry wiring", () => {
     );
     if (!found) throw new Error(`missing button ${label}`);
     return found;
+  }
+  // 菜单项带快捷键提示后缀，用包含匹配。
+  async function clickContaining(label: string) {
+    const found = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find((item) =>
+      item.textContent?.includes(label),
+    );
+    if (!found) throw new Error(`missing button ${label}`);
+    await act(async () => found.click());
   }
   async function click(label: string) {
     if (![...document.body.querySelectorAll("button")].some((item) => item.textContent === label)) {
@@ -202,7 +214,7 @@ describe("image deletion entry wiring", () => {
         }),
       );
     });
-    await click(text.deleteImage);
+    await clickContaining(text.deleteImage);
     expect(document.body.querySelector('[role="alertdialog"]')?.textContent).toContain("b.png");
     expect(button("a.png").className).toContain("bg-sky-500");
     await key("Escape");
@@ -510,20 +522,23 @@ describe("image deletion entry wiring", () => {
     const record =
       description.parentElement?.parentElement?.querySelector<HTMLButtonElement>("button");
     expect(record).toBeTruthy();
-    const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const recordError = () =>
+      document.body.querySelector('[role="alert"]')?.textContent ?? "";
     await act(async () => record?.click());
     await key("Delete");
+    expect(recordError()).toContain("同时绑定了");
     await key("1");
+    expect(recordError().length).toBeGreaterThan(0);
     await key("ArrowLeft");
-    expect(alert).toHaveBeenCalledTimes(3);
+    expect(recordError().length).toBeGreaterThan(0);
     expect(api.saveShortcuts).not.toHaveBeenCalled();
     await key("F9");
+    expect(recordError()).toBe("");
     expect(api.saveShortcuts).toHaveBeenCalledWith(expect.objectContaining({ deleteImage: "F9" }));
     await click("关闭");
     await key("F8");
     expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
     await key("F9");
     expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
-    alert.mockRestore();
   });
 });

@@ -2,8 +2,8 @@ import { tryBeginOperation, useOperations, type OperationHandle } from "../store
 import { OPERATION_ZH_CN as operationText } from "../i18n/operations.zh-CN";
 import type { VideoExtractionSettings } from "../types/project-settings";
 import { useRef, useState } from "react";
+import { confirmAction } from "../lib/prompts";
 import {
-  confirmAction,
   importVideo,
   selectVideoFile,
   selectExportFolder,

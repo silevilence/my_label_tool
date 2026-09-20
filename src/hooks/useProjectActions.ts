@@ -31,9 +31,9 @@ import {
   type ProjectConfig,
   type TextImportFile,
 } from "../lib/importers";
+import { confirmAction } from "../lib/prompts";
 import {
   cancelPluginExport,
-  confirmAction,
   exportAnnotationsJson,
   exportTextFiles,
   runPluginExport,
@@ -83,6 +83,7 @@ interface UseProjectActionsParams {
   setActiveProjectConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
   setActiveProjectConfigPath: (path: string) => void;
   setError: (message: string) => void;
+  showMessage: (message: string) => void;
   setProjectTemplateId: (templateId: string) => void;
   setSelectedExportFormatId: (format: ExportFormatId) => void;
 }
@@ -106,6 +107,7 @@ export function useProjectActions({
   setActiveProjectConfig,
   setActiveProjectConfigPath,
   setError,
+  showMessage,
   setProjectTemplateId,
   setSelectedExportFormatId,
 }: UseProjectActionsParams) {
@@ -416,7 +418,7 @@ export function useProjectActions({
     await saveProjectConfig(configPath, config);
     applyImportedAnnotations(importedWithMergedLabels, currentImages, config, configPath);
     if (options.showSummary || hasImportSummaryIssues(summary)) {
-      window.alert(
+      showMessage(
         projectText.yoloImportSummary(
           summary.missingAnnotationFileCount,
           summary.orphanAnnotationFileCount,
@@ -623,7 +625,7 @@ export function useProjectActions({
     setProjectTemplateId(config.template.id);
     setSelectedExportFormatId(config.format);
     if (missingCount > 0) {
-      window.alert(`有 ${missingCount} 个导入图片未匹配到当前图片目录，已跳过。`);
+      showMessage(`有 ${missingCount} 个导入图片未匹配到当前图片目录，已跳过。`);
     }
   }
 

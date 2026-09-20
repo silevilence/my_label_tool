@@ -5,11 +5,11 @@ import { Overlay } from "../overlay/Overlay";
 // because they share one guarded mutation lifecycle and active selection. The import form
 // (PrelabelModelForm) and class-mapping panel (PrelabelClassMapping) live in their own modules.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { confirmAction } from "../../lib/prompts";
 import {
   cancelOnnxRuntimeDownload,
   cancelPrelabelModelDownload,
   cancelPtConversion,
-  confirmAction,
   convertPtToOnnx,
   detectPtConversionEnvironment,
   downloadOnnxRuntime,
@@ -701,9 +701,11 @@ export function PrelabelSettings({
                   onUpdateFromUrl={() => void updateModelFromUrl(editingModel)}
                   onValidate={() => void validateModel(editingModel)}
                   onDelete={() => {
-                    if (window.confirm(text.removeConfirmation(editingModel.name))) {
-                      void runLibraryMutation(() => onDeleteModel(editingModel.id));
-                    }
+                    void (async () => {
+                      if (await confirmAction(text.removeConfirmation(editingModel.name), { danger: true, confirmLabel: "删除" })) {
+                        await runLibraryMutation(() => onDeleteModel(editingModel.id));
+                      }
+                    })();
                   }}
                   onSubmit={() => void runLibraryMutation(() => onUpdateModel(editingModel))}
                 />

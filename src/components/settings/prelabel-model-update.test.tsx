@@ -10,12 +10,13 @@ import type { ModelDownloadResult, PrelabelModelLibrary } from "../../types/prel
 
 const api = vi.hoisted(() => ({
   getOnnxRuntimeStatus: vi.fn(),
-  confirmAction: vi.fn(),
   downloadPrelabelModel: vi.fn(),
   cancelPrelabelModelDownload: vi.fn(),
   loadPrelabelModelLibrary: vi.fn(),
   savePrelabelModelLibrary: vi.fn(),
 }));
+const promptsApi = vi.hoisted(() => ({ confirmAction: vi.fn() }));
+vi.mock("../../lib/prompts", () => promptsApi);
 vi.mock("../../lib/tauri-api", () => api);
 const onError = vi.fn();
 const onClose = vi.fn();
@@ -80,7 +81,7 @@ beforeEach(async () => {
     message: "available",
     runtimeDirectory: "C:/app/runtime",
   });
-  api.confirmAction.mockResolvedValue(true);
+  promptsApi.confirmAction.mockResolvedValue(true);
   api.cancelPrelabelModelDownload.mockResolvedValue({ status: "already-completed" });
   download = deferred<ModelDownloadResult | null>();
   api.downloadPrelabelModel.mockReturnValue(download.promise);
@@ -112,7 +113,7 @@ async function click(label: string) {
 it("locks library edits and closing from confirmation through persistence", async () => {
   const confirmation = deferred<boolean>();
   const persistence = deferred<void>();
-  api.confirmAction.mockReturnValue(confirmation.promise);
+  promptsApi.confirmAction.mockReturnValue(confirmation.promise);
   api.savePrelabelModelLibrary.mockImplementation(async (next: PrelabelModelLibrary) => {
     await persistence.promise;
     saved = next;
@@ -181,7 +182,7 @@ it("keeps the current config and allows retry after a save failure", async () =>
 });
 
 it("releases the lock without downloading when confirmation is declined", async () => {
-  api.confirmAction.mockResolvedValue(false);
+  promptsApi.confirmAction.mockResolvedValue(false);
   await click(text.updateModel);
   expect(api.downloadPrelabelModel).not.toHaveBeenCalled();
   expect(button(text.removeModel).disabled).toBe(false);

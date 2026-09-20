@@ -16,7 +16,7 @@ import {
   toCanvasRect,
 } from "../components/canvas/geometry";
 import type { CanvasContextMenu, ImageLayout, PanState } from "../components/canvas/types";
-import { confirmAction } from "../lib/tauri-api";
+import { confirmAction } from "../lib/prompts";
 import { newAnnotationId } from "../lib/app-utils";
 import {
   isLabelCompatibleWithShape,

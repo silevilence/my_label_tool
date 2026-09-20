@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Overlay } from "../overlay/Overlay";
 import { ProjectVideoSettings } from "./ProjectVideoSettings";
-import { confirmAction } from "../../lib/tauri-api";
+import { confirmAction } from "../../lib/prompts";
 import type { useProjectSettings } from "../../hooks/useProjectSettings";
 import { VIDEO_ZH_CN as text } from "../../i18n/video.zh-CN";
 

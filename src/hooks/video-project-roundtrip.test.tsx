@@ -109,6 +109,7 @@ it.each([false, true])(
         setActiveProjectConfig: setConfig,
         setActiveProjectConfigPath: setConfigPath,
         setError: error,
+        showMessage: vi.fn(),
         setProjectTemplateId: () => {},
         setSelectedExportFormatId: setFormat,
       });

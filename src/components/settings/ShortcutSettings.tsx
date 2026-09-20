@@ -34,6 +34,7 @@ export function ShortcutSettings({
   onClose,
 }: ShortcutSettingsProps) {
   const [recordingActionId, setRecordingActionId] = useState<ShortcutActionId | null>(null);
+  const [recordError, setRecordError] = useState("");
 
   useEffect(() => {
     if (!recordingActionId) {
@@ -46,13 +47,13 @@ export function ShortcutSettings({
       event.preventDefault();
 
       if (event.ctrlKey || event.altKey || event.metaKey || isModifierKey(event.key)) {
-        window.alert(shortcutText.singleKey);
+        setRecordError(shortcutText.singleKey);
         return;
       }
 
       const shortcut = normalizeShortcutKey(event.key);
       if (["Enter", " ", "Tab"].includes(shortcut)) {
-        window.alert(shortcutText.reserved);
+        setRecordError(shortcutText.reserved);
         return;
       }
       const conflict = detectConflicts(
@@ -64,10 +65,11 @@ export function ShortcutSettings({
         })),
       ).find((item) => item.ids.includes(actionId));
       if (conflict) {
-        window.alert(conflict.message);
+        setRecordError(conflict.message);
         return;
       }
 
+      setRecordError("");
       onChangeShortcut(actionId, shortcut);
       setRecordingActionId(null);
     }
@@ -105,6 +107,12 @@ export function ShortcutSettings({
             关闭
           </button>
         </div>
+
+        {recordError && (
+          <p role="alert" className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-300">
+            {recordError}
+          </p>
+        )}
 
         <div className="mt-4 rounded border border-slate-800 p-3">
           <h3 className="text-sm font-medium text-slate-100">画布提示</h3>

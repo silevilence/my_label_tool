@@ -1,6 +1,7 @@
 import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
 import { useScopeEscape } from "./hooks/useScopeEscape";
+import { PromptHost } from "./components/overlay/PromptHost";
 import { useOperations } from "./store/useOperations";
 import { useOverlayStore } from "./store/useOverlayStore";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
@@ -346,6 +347,7 @@ function App() {
     setActiveProjectConfig,
     setActiveProjectConfigPath,
     setError,
+    showMessage,
     setProjectTemplateId,
     setSelectedExportFormatId,
   });
@@ -853,6 +855,7 @@ function App() {
         selectedTemplateId={selectedTemplateId}
         showSaveSuccess={showSaveSuccess}
         transientMessage={transientMessage}
+        showMessage={showMessage}
         shortcuts={shortcuts}
         templates={templates}
         pluginExportFormats={pluginExportFormats}
@@ -931,6 +934,7 @@ function App() {
         zoomFromKeyboard={zoomFromKeyboard}
       />
       <ProjectVideoDialogs actions={videoImport} settings={projectSettings} folder={folderPath} />
+      <PromptHost />
       {imageDeletion.target && (
         <DeleteImageDialog
           target={imageDeletion.target}

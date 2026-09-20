@@ -27,8 +27,12 @@ export function ImageListContextMenu({
   onClose: () => void;
 }) {
   const shortcuts = useShortcutStore((state) => state.shortcuts);
-  const deleteImageAction = SHORTCUT_ACTIONS.find((action) => action.id === "deleteImage");
-  const hint = deleteImageAction ? shortcutKey(deleteImageAction, shortcuts) : "";
+  // 快捷键提示只属于删除动作本身；视频重抽帧等复用菜单不显示删除快捷键。
+  const deleteImageAction = SHORTCUT_ACTIONS.find((item) => item.id === "deleteImage");
+  const hint =
+    actionLabel === text.deleteImage && deleteImageAction
+      ? shortcutKey(deleteImageAction, shortcuts)
+      : "";
   useEffect(() => {
     function outside(event: MouseEvent) {
       if (!(event.target instanceof Element) || !event.target.closest("[data-image-list-menu]"))

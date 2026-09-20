@@ -5,10 +5,10 @@ import { ProjectSettingsDialog } from "./ProjectSettingsDialog";
 import type { ProjectSettingsModel } from "../../hooks/useProjectSettings";
 import type { ProjectSettings } from "../../types/project-settings";
 
-const tauriApi = vi.hoisted(() => ({
+const promptsApi = vi.hoisted(() => ({
   confirmAction: vi.fn(),
 }));
-vi.mock("../../lib/tauri-api", () => tauriApi);
+vi.mock("../../lib/prompts", () => promptsApi);
 
 const settings: ProjectSettings = {
   schemaVersion: 1,
@@ -53,20 +53,20 @@ function fpsInput(): HTMLInputElement {
 }
 
 beforeEach(() => {
-  tauriApi.confirmAction.mockReset();
+  promptsApi.confirmAction.mockReset();
 });
 
 it("closes immediately without confirm when nothing is unsaved", () => {
   const { root, host, props } = renderDialog();
   act(() => button("关闭").click());
-  expect(tauriApi.confirmAction).not.toHaveBeenCalled();
+  expect(promptsApi.confirmAction).not.toHaveBeenCalled();
   expect(props.onClose).toHaveBeenCalledTimes(1);
   act(() => root.unmount());
   host.remove();
 });
 
 it("asks for confirmation when closing discards unsaved interval edits", async () => {
-  tauriApi.confirmAction.mockResolvedValue(true);
+  promptsApi.confirmAction.mockResolvedValue(true);
   const { root, host, props } = renderDialog();
   act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
@@ -77,14 +77,14 @@ it("asks for confirmation when closing discards unsaved interval edits", async (
   });
   expect(document.body.textContent).toContain("抽帧设置有未保存的修改");
   await act(async () => button("关闭").click());
-  expect(tauriApi.confirmAction).toHaveBeenCalledTimes(1);
+  expect(promptsApi.confirmAction).toHaveBeenCalledTimes(1);
   expect(props.onClose).toHaveBeenCalledTimes(1);
   act(() => root.unmount());
   host.remove();
 });
 
 it("keeps the dialog open when the discard confirmation is declined", async () => {
-  tauriApi.confirmAction.mockResolvedValue(false);
+  promptsApi.confirmAction.mockResolvedValue(false);
   const { root, host, props } = renderDialog();
   act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
@@ -94,7 +94,7 @@ it("keeps the dialog open when the discard confirmation is declined", async () =
     fpsInput().dispatchEvent(new Event("input", { bubbles: true }));
   });
   await act(async () => button("关闭").click());
-  expect(tauriApi.confirmAction).toHaveBeenCalledTimes(1);
+  expect(promptsApi.confirmAction).toHaveBeenCalledTimes(1);
   expect(props.onClose).not.toHaveBeenCalled();
   act(() => root.unmount());
   host.remove();

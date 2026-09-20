@@ -8,7 +8,6 @@ import type { TextExportFile } from "./types/export";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 
 const tauriMocks = vi.hoisted(() => ({
-  confirmAction: vi.fn(),
   exportAnnotationsJson: vi.fn(),
   exportTextFiles: vi.fn(),
   listImageFiles: vi.fn(),
@@ -28,6 +27,13 @@ const tauriMocks = vi.hoisted(() => ({
   selectExportFolder: vi.fn(),
 }));
 
+const promptsMocks = vi.hoisted(() => ({
+  confirmAction: vi.fn(),
+}));
+vi.mock("./lib/prompts", async (importOriginal) => ({
+  ...(await importOriginal()),
+  confirmAction: promptsMocks.confirmAction,
+}));
 vi.mock("./lib/tauri-api", () => tauriMocks);
 vi.mock("./lib/app-utils", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./lib/app-utils")>()),
@@ -133,7 +139,7 @@ describe("App project labels", () => {
     vi.clearAllMocks();
     useAnnotationStore.getState().replaceAnnotations({});
 
-    tauriMocks.confirmAction.mockResolvedValue(true);
+    promptsMocks.confirmAction.mockResolvedValue(true);
     tauriMocks.exportAnnotationsJson.mockResolvedValue(undefined);
     tauriMocks.loadLabelTemplates.mockResolvedValue([]);
     tauriMocks.loadPluginLabelPresets.mockResolvedValue({ presets: [], warning: null });
@@ -239,7 +245,7 @@ describe("App project labels", () => {
 
     await renderAndOpenFolder();
 
-    expect(tauriMocks.confirmAction).not.toHaveBeenCalled();
+    expect(promptsMocks.confirmAction).not.toHaveBeenCalled();
     expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("猫,狗");
   });
 });
@@ -256,7 +262,7 @@ describe("App YOLO folder auto load", () => {
     vi.clearAllMocks();
     useAnnotationStore.getState().replaceAnnotations({});
 
-    tauriMocks.confirmAction.mockResolvedValue(true);
+    promptsMocks.confirmAction.mockResolvedValue(true);
     tauriMocks.exportAnnotationsJson.mockResolvedValue(undefined);
     tauriMocks.loadLabelConfigs.mockResolvedValue(DEFAULT_LABELS);
     tauriMocks.exportTextFiles.mockResolvedValue(undefined);
@@ -374,7 +380,7 @@ describe("App YOLO folder auto load", () => {
     );
 
     await clickAction("open-folder");
-    expect(tauriMocks.confirmAction).toHaveBeenCalledTimes(1);
+    expect(promptsMocks.confirmAction).toHaveBeenCalledTimes(1);
     expect(
       useAnnotationStore.getState().annotationsByImage["C:\\project\\cat.jpg"][0].labelId,
     ).toBe("dog");
@@ -428,7 +434,7 @@ describe("App YOLO folder auto load", () => {
   });
 
   it("preserves annotations when creating a project from the menu fails to write", async () => {
-    tauriMocks.confirmAction.mockResolvedValueOnce(false);
+    promptsMocks.confirmAction.mockResolvedValueOnce(false);
     await renderAndOpenFolder();
     const annotation = {
       id: "existing",
@@ -459,7 +465,7 @@ describe("App YOLO folder auto load", () => {
 
     await renderAndOpenFolder();
 
-    expect(tauriMocks.confirmAction).toHaveBeenCalledTimes(1);
+    expect(promptsMocks.confirmAction).toHaveBeenCalledTimes(1);
     expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("cat,dog");
     expect(templateValue()).toBe("project-config");
 
@@ -477,11 +483,11 @@ describe("App YOLO folder auto load", () => {
   });
 
   it("keeps the default labels when the confirmation is declined", async () => {
-    tauriMocks.confirmAction.mockResolvedValue(false);
+    promptsMocks.confirmAction.mockResolvedValue(false);
 
     await renderAndOpenFolder();
 
-    expect(tauriMocks.confirmAction).toHaveBeenCalledTimes(1);
+    expect(promptsMocks.confirmAction).toHaveBeenCalledTimes(1);
     expect(tauriMocks.exportAnnotationsJson).not.toHaveBeenCalled();
     expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
     expect(templateValue()).toBe("common-detection");
@@ -496,7 +502,7 @@ describe("App YOLO folder auto load", () => {
 
     await renderAndOpenFolder();
 
-    expect(tauriMocks.confirmAction).not.toHaveBeenCalled();
+    expect(promptsMocks.confirmAction).not.toHaveBeenCalled();
     expect(tauriMocks.exportAnnotationsJson).not.toHaveBeenCalled();
     expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
   });
@@ -506,7 +512,7 @@ describe("App YOLO folder auto load", () => {
 
     await renderAndOpenFolder();
 
-    expect(tauriMocks.confirmAction).toHaveBeenCalledTimes(1);
+    expect(promptsMocks.confirmAction).toHaveBeenCalledTimes(1);
     expect(tauriMocks.exportAnnotationsJson).not.toHaveBeenCalled();
     expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
     expect(templateValue()).toBe("common-detection");

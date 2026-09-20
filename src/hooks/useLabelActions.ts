@@ -1,6 +1,7 @@
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "../lib/defaults/labels";
 import { newTemplateId, isUserTemplate, saveProjectConfig } from "../lib/app-utils";
-import { confirmAction, saveLabelConfigs, saveLabelTemplates } from "../lib/tauri-api";
+import { confirmAction, promptText } from "../lib/prompts";
+import { saveLabelConfigs, saveLabelTemplates } from "../lib/tauri-api";
 import {
   analyzeLabelTemplateChange,
   applyLabelTemplateChange,
@@ -131,8 +132,8 @@ export function useLabelActions({
     setSelectedTemplateId(template.id);
   }
 
-  function newTemplate() {
-    const name = window.prompt("新模板名称");
+  async function newTemplate() {
+    const name = await promptText("新模板名称");
     if (!name?.trim()) {
       return;
     }
@@ -233,8 +234,8 @@ export function useLabelActions({
     }
   }
 
-  function saveTemplateAs() {
-    const name = window.prompt("另存为模板名称");
+  async function saveTemplateAs() {
+    const name = await promptText("另存为模板名称");
     if (!name?.trim()) {
       return;
     }

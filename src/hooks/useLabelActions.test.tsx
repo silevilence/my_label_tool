@@ -8,8 +8,11 @@ import {
 } from "./useLabelActions";
 import type { AnnotationShape, LabelConfig } from "../types/annotation";
 
-const tauriApi = vi.hoisted(() => ({
+const promptsApi = vi.hoisted(() => ({
   confirmAction: vi.fn(),
+}));
+vi.mock("../lib/prompts", () => promptsApi);
+const tauriApi = vi.hoisted(() => ({
   saveLabelConfigs: vi.fn(async () => {}),
   saveLabelTemplates: vi.fn(async () => {}),
   saveProjectConfig: vi.fn(async () => {}),
@@ -88,7 +91,7 @@ it("cancels cleanly when no annotation references draft-only labels", async () =
     replaceAnnotations,
   });
   await act(() => controls.cancelLabelChanges());
-  expect(tauriApi.confirmAction).not.toHaveBeenCalled();
+  expect(promptsApi.confirmAction).not.toHaveBeenCalled();
   expect(replaceAnnotations).not.toHaveBeenCalled();
   expect(setLabels).toHaveBeenCalledWith([savedA]);
   expect(setIsLabelDirty).toHaveBeenCalledWith(false);
@@ -96,7 +99,7 @@ it("cancels cleanly when no annotation references draft-only labels", async () =
 });
 
 it("removes annotations with dangling references when confirmed", async () => {
-  tauriApi.confirmAction.mockResolvedValue(true);
+  promptsApi.confirmAction.mockResolvedValue(true);
   const replaceAnnotations = vi.fn();
   const setLabels = vi.fn();
   const setIsLabelDirty = vi.fn();
@@ -113,8 +116,8 @@ it("removes annotations with dangling references when confirmed", async () => {
     setIsLabelDirty,
   });
   await act(() => controls.cancelLabelChanges());
-  expect(tauriApi.confirmAction).toHaveBeenCalledTimes(1);
-  expect(String(tauriApi.confirmAction.mock.calls[0][0])).toContain("草稿标签");
+  expect(promptsApi.confirmAction).toHaveBeenCalledTimes(1);
+  expect(String(promptsApi.confirmAction.mock.calls[0][0])).toContain("草稿标签");
   expect(replaceAnnotations).toHaveBeenCalledWith({
     p1: [annotation("s1", "a")],
     p2: [],
@@ -124,7 +127,7 @@ it("removes annotations with dangling references when confirmed", async () => {
 });
 
 it("keeps referenced draft labels dirty when the removal is declined", async () => {
-  tauriApi.confirmAction.mockResolvedValue(false);
+  promptsApi.confirmAction.mockResolvedValue(false);
   const replaceAnnotations = vi.fn();
   const setLabels = vi.fn();
   const setSavedLabels = vi.fn();

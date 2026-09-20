@@ -106,6 +106,7 @@ function Harness({
     },
     setActiveProjectConfigPath: setActivePath,
     setError: error,
+    showMessage: vi.fn(),
     setProjectTemplateId: vi.fn(),
     setSelectedExportFormatId: setSelected,
   });

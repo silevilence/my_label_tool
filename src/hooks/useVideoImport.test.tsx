@@ -5,12 +5,13 @@ import { useVideoImport } from "./useVideoImport";
 import { useOperations } from "../store/useOperations";
 
 const api = vi.hoisted(() => ({
-  confirmAction: vi.fn(),
   importVideo: vi.fn(),
   selectVideoFile: vi.fn(),
   selectExportFolder: vi.fn(),
   cancelVideoImport: vi.fn(),
 }));
+const promptsApi = vi.hoisted(() => ({ confirmAction: vi.fn() }));
+vi.mock("../lib/prompts", () => promptsApi);
 vi.mock("../lib/tauri-api", () => api);
 let root: Root;
 let controls: ReturnType<typeof useVideoImport>;
@@ -24,7 +25,7 @@ beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.resetAllMocks();
   useOperations.setState({ operations: [] });
-  api.confirmAction.mockResolvedValue(true);
+  promptsApi.confirmAction.mockResolvedValue(true);
   api.selectVideoFile.mockResolvedValue("movie.mp4");
   api.selectExportFolder.mockResolvedValue("output");
   api.cancelVideoImport.mockResolvedValue(undefined);
@@ -56,13 +57,13 @@ it("adds a selected video to the existing project without replacement confirmati
   api.importVideo.mockResolvedValue(result);
   await act(async () => controls.start(3, "project", "second.mp4"));
   expect(api.importVideo).toHaveBeenCalledWith("second.mp4", "project", 3);
-  expect(api.confirmAction).not.toHaveBeenCalled();
+  expect(promptsApi.confirmAction).not.toHaveBeenCalled();
   expect(api.selectExportFolder).not.toHaveBeenCalled();
   expect(api.selectVideoFile).not.toHaveBeenCalled();
   expect(imported).toHaveBeenCalledWith(result);
 });
 it("does not import after cancelling either chooser or confirmation", async () => {
-  api.confirmAction.mockResolvedValueOnce(false);
+  promptsApi.confirmAction.mockResolvedValueOnce(false);
   await act(async () => controls.start(1));
   api.selectVideoFile.mockResolvedValueOnce(null);
   await act(async () => controls.start(1));
@@ -72,9 +73,9 @@ it("does not import after cancelling either chooser or confirmation", async () =
 });
 it("rejects invalid intervals and prevents overlapping imports", async () => {
   for (const interval of [0, -1, 1.5, NaN, Infinity, 1_000_001]) await controls.start(interval);
-  expect(api.confirmAction).not.toHaveBeenCalled();
+  expect(promptsApi.confirmAction).not.toHaveBeenCalled();
   let resolve: (value: boolean) => void = () => {};
-  api.confirmAction.mockImplementationOnce(
+  promptsApi.confirmAction.mockImplementationOnce(
     () =>
       new Promise<boolean>((done) => {
         resolve = done;
@@ -82,7 +83,7 @@ it("rejects invalid intervals and prevents overlapping imports", async () => {
   );
   const pending = controls.start(1);
   await controls.start(1);
-  expect(api.confirmAction).toHaveBeenCalledTimes(1);
+  expect(promptsApi.confirmAction).toHaveBeenCalledTimes(1);
   resolve(false);
   await pending;
   await controls.cancel();
