@@ -64,12 +64,12 @@
   - [x] 删除 `workspaceDisabled`、键盘门禁与 `canDeleteImage` 中的重复与运算，以及写三遍的视频导入锁表达式
   - 验收：并发操作各自呈现进度与取消、消息不互相覆盖；占用同一资源的操作无法同时启动
 
-- [ ] **前端交互④：选择与作用域归属 store**
-  - [ ] 按 `docs/frontend-interaction.md` §4 在 `useAnnotationStore` 增加选择切片：`select` / `pushScope` / `popScope` / `selectAdjacent` / `selectUnannotated` / `removeImages`（ADR 0009）
-  - [ ] 删除与接续、标注清理、历史裁剪合并为一次原子更新，修掉删除当前图片后选择被清空（画布变白）的路径
-  - [ ] 侧栏增加常驻可见、可退出的作用域条；删除 `ProjectMediaList` 的 `remembered` 影子游标与搜索对话框的私有游标
-  - [ ] 列表行模块自行注册滚入视口，替换 App 的 `selectedImageButtonRef` 约定
-  - [ ] 修订 `AGENTS.md` §6 的分层措辞（瞬时交互态与当前编辑对象的边界）
+- [x] **前端交互④：选择与作用域归属 store**
+  - [x] 按 `docs/frontend-interaction.md` §4 在 `useAnnotationStore` 增加选择切片：`select` / `pushScope` / `popScope` / `selectAdjacent` / `selectUnannotated` / `removeImages`（ADR 0009）
+  - [x] 删除与接续、标注清理、历史裁剪合并为一次原子更新，修掉删除当前图片后选择被清空（画布变白）的路径
+  - [x] 侧栏增加常驻可见、可退出的作用域条；删除 `ProjectMediaList` 的 `remembered` 影子游标与搜索对话框的私有游标
+  - [x] 列表行模块自行注册滚入视口，替换 App 的 `selectedImageButtonRef` 约定
+  - [x] 修订 `AGENTS.md` §6 的分层措辞（瞬时交互态与当前编辑对象的边界）
   - 验收：搜索确认后「下一张」留在结果集内；删除任意一张（含末张、含当前未在列表中的路径）后选择停在邻图；作用域切换可见可退出
 
 - [ ] **前端交互⑤：画布手势意图与草稿状态机**

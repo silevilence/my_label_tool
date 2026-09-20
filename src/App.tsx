@@ -55,7 +55,6 @@ import {
   loadPluginLabelPresets,
   loadPluginExportFormats,
   loadPluginPrelabelSources,
-  type ImageFile,
 } from "./lib/tauri-api";
 import {
   getSelectedPluginPresetRefreshImpact,
@@ -78,7 +77,6 @@ import "./App.css";
 
 function App() {
   const canvasHostRef = useRef<HTMLDivElement>(null);
-  const selectedImageButtonRef = useRef<HTMLButtonElement | null>(null);
   const selectedRectRef = useRef<KonvaRect | null>(null);
   const transformerRef = useRef<KonvaTransformer | null>(null);
   const panStateRef = useRef<PanState | null>(null);
@@ -88,8 +86,10 @@ function App() {
   const [interpolationPreview, setInterpolationPreview] = useState<InterpolationPreview | null>(
     null,
   );
-  const [images, setImages] = useState<ImageFile[]>([]);
-  const [selectedPath, setSelectedPath] = useState("");
+  const images = useAnnotationStore((state) => state.images);
+  const setImages = useAnnotationStore((state) => state.setImages);
+  const selectedPath = useAnnotationStore((state) => state.selectedPath);
+  const setSelectedPath = useAnnotationStore((state) => state.select);
   const videos = useMemo(() => projectVideos(folderPath, videoEntries), [folderPath, videoEntries]);
   const selectedVideo = videoForImage(videos, selectedPath);
   const video = selectedVideo?.scopedVideo ?? null;
@@ -244,12 +244,7 @@ function App() {
     images,
     selectedPath,
   );
-  const { selectAdjacentImage, selectAdjacentUnannotatedImage } = useImageNavigation({
-    annotationsByImage,
-    images,
-    selectedPath,
-    setSelectedPath,
-  });
+  const { selectAdjacentImage, selectAdjacentUnannotatedImage } = useImageNavigation();
   const { fitImageHeight, fitImageWidth, resetZoom, setImageScale, zoomAt, zoomFromKeyboard } =
     useZoomControls({
       canvasSize,
@@ -364,12 +359,8 @@ function App() {
     (state) => !state.canStart(["project-annotations", "export-dir", "video-frames"]),
   );
   const imageDeletion = useImageDeletion({
-    images,
     folderPath,
-    selectedPath,
     busy: imageDeletionBusy,
-    setImages,
-    setSelectedPath,
     setError,
   });
   function requestDeleteImage(path: string) {
@@ -647,10 +638,6 @@ function App() {
   }, [interactionMode]);
 
   useEffect(() => {
-    selectedImageButtonRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedPath]);
-
-  useEffect(() => {
     const transformer = transformerRef.current;
     if (!transformer) {
       return;
@@ -857,7 +844,6 @@ function App() {
         projectTemplateId={projectTemplateId}
         selectedExportFormatId={selectedExportFormatId}
         selectedImage={selectedImage}
-        selectedImageButtonRef={selectedImageButtonRef}
         selectedPath={selectedPath}
         selectedRectRef={selectedRectRef}
         selectedShapeId={selectedShapeId}

@@ -12,12 +12,8 @@ export interface ImageDeletionTarget {
 }
 
 export function useImageDeletion(options: {
-  images: ImageFile[];
   folderPath: string;
-  selectedPath: string;
   busy: boolean;
-  setImages: (images: ImageFile[]) => void;
-  setSelectedPath: (path: string) => void;
   setError: (message: string) => void;
 }) {
   const latest = useRef(options);
@@ -38,7 +34,7 @@ export function useImageDeletion(options: {
       current.setError(text.busy);
       return;
     }
-    const image = current.images.find((item) => item.path === path);
+    const image = useAnnotationStore.getState().images.find((item) => item.path === path);
     if (!image) return;
     const next = { image, folderPath: current.folderPath, readyAt: Date.now() + 3000 };
     targetRef.current = next;
@@ -63,7 +59,10 @@ export function useImageDeletion(options: {
       setError(text.busy);
       return;
     }
-    if (current.folderPath !== pending.folderPath || !current.images.includes(pending.image)) {
+    if (
+      current.folderPath !== pending.folderPath ||
+      !useAnnotationStore.getState().images.includes(pending.image)
+    ) {
       setError(text.stale);
       return;
     }
@@ -81,15 +80,6 @@ export function useImageDeletion(options: {
     try {
       await recycleImageFile(pending.folderPath, pending.image.path);
       useAnnotationStore.getState().removeImage(pending.image.path);
-      const latestState = latest.current;
-      if (latestState.folderPath === pending.folderPath) {
-        const index = latestState.images.findIndex((image) => image.path === pending.image.path);
-        const remaining = latestState.images.filter((image) => image.path !== pending.image.path);
-        latestState.setImages(remaining);
-        if (latestState.selectedPath === pending.image.path) {
-          latestState.setSelectedPath(remaining[Math.min(index, remaining.length - 1)]?.path ?? "");
-        }
-      }
       operation.complete();
       targetRef.current = null;
       setTarget(null);

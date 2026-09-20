@@ -1,3 +1,5 @@
+import { useAnnotationStore } from "../../store/useAnnotationStore";
+import { SELECTION_ZH_CN as selectionText } from "../../i18n/selection.zh-CN";
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -36,7 +38,6 @@ export function ImageSearchDialog({
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [searchResults, setSearchResults] = useState(images);
   const [searchError, setSearchError] = useState("");
-  const [candidatePath, setCandidatePath] = useState("");
   const [isPreviewError, setIsPreviewError] = useState(false);
   const labelById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
   const classIndexByLabelId = useMemo(
@@ -56,10 +57,7 @@ export function ImageSearchDialog({
     [isRegexSearch, searchText],
   );
   const candidate =
-    searchResults.find((image) => image.path === candidatePath) ??
-    searchResults.find((image) => image.path === selectedPath) ??
-    searchResults[0] ??
-    null;
+    searchResults.find((image) => image.path === selectedPath) ?? searchResults[0] ?? null;
   const searchPlaceholder = isRegexSearch
     ? "按文件名正则搜索，例如：WIN_.*Pro\\.jpg"
     : "搜索图片：@tag(person) -bad @size(>1MB)";
@@ -99,14 +97,21 @@ export function ImageSearchDialog({
 
   useEffect(() => {
     if (candidate) {
-      setCandidatePath(candidate.path);
+      onSelectImage(candidate.path);
     }
-  }, [candidate]);
+  }, [candidate, onSelectImage]);
 
   function confirmCandidate() {
     if (!candidate) {
       return;
     }
+    useAnnotationStore
+      .getState()
+      .pushScope({
+        kind: "search",
+        ids: searchResults.map((image) => image.path),
+        label: selectionText.search(searchText, searchResults.length),
+      });
     onSelectImage(candidate.path);
     onClose();
   }
@@ -138,7 +143,7 @@ export function ImageSearchDialog({
       searchResults.findIndex((image) => image.path === candidate?.path),
     );
     const nextIndex = (currentIndex + delta + searchResults.length) % searchResults.length;
-    setCandidatePath(searchResults[nextIndex].path);
+    onSelectImage(searchResults[nextIndex].path);
   }
 
   return (
@@ -284,11 +289,10 @@ export function ImageSearchDialog({
                   type="button"
                   onClick={() => {
                     if (image.path === candidate?.path) {
-                      onSelectImage(image.path);
-                      onClose();
+                      confirmCandidate();
                       return;
                     }
-                    setCandidatePath(image.path);
+                    onSelectImage(image.path);
                   }}
                 >
                   {image.name}

@@ -1,8 +1,26 @@
+import type { ImageFile } from "../lib/tauri-api";
 import { create } from "zustand";
 import { annotationShapesEqual } from "../lib/annotation-utils";
 import type { AnnotationShape } from "../types/annotation";
 
+export type Scope =
+  { kind: "project" } | { kind: "search" | "video"; ids: string[]; label: string };
+
+export function scopePaths(state: { images: ImageFile[]; scopeStack: Scope[] }): string[] {
+  const scope = state.scopeStack[state.scopeStack.length - 1];
+  return scope.kind === "project" ? state.images.map((image) => image.path) : scope.ids;
+}
+
 interface AnnotationState {
+  images: ImageFile[];
+  selectedPath: string;
+  scopeStack: Scope[];
+  setImages: (images: ImageFile[]) => void;
+  select: (path: string) => void;
+  pushScope: (scope: Exclude<Scope, { kind: "project" }>) => void;
+  popScope: () => void;
+  selectAdjacent: (delta: number) => void;
+  selectUnannotated: (delta: 1 | -1) => void;
   frameIndices: Record<string, number>;
   setFrameIndices: (indices: Record<string, number>) => void;
   annotationsByImage: Record<string, AnnotationShape[]>;
@@ -46,6 +64,79 @@ const HISTORY_LIMIT = 100;
 let nextHistoryGroupId = 1;
 
 export const useAnnotationStore = create<AnnotationState>((set, get) => ({
+  images: [],
+  selectedPath: "",
+  scopeStack: [{ kind: "project" }],
+  setImages: (images) =>
+    set((state) => ({
+      images,
+      scopeStack: [{ kind: "project" }],
+      selectedPath: images.some((image) => image.path === state.selectedPath)
+        ? state.selectedPath
+        : (images[0]?.path ?? ""),
+      selectedShapeId: null,
+    })),
+  select: (path) =>
+    set((state) => {
+      if (!state.images.some((image) => image.path === path)) return state;
+      const scopeStack = [...state.scopeStack];
+      while (scopeStack.length > 1 && !scopePaths({ ...state, scopeStack }).includes(path))
+        scopeStack.pop();
+      return {
+        selectedPath: path,
+        scopeStack,
+        selectedShapeId: path === state.selectedPath ? state.selectedShapeId : null,
+      };
+    }),
+  pushScope: (scope) =>
+    set((state) => {
+      const paths = new Set(state.images.map((image) => image.path));
+      const ids = [...new Set(scope.ids)].filter((id) => paths.has(id));
+      const stack =
+        state.scopeStack[state.scopeStack.length - 1]?.kind === scope.kind
+          ? state.scopeStack.slice(0, -1)
+          : state.scopeStack;
+      const selectedPath = ids.includes(state.selectedPath) ? state.selectedPath : (ids[0] ?? "");
+      return {
+        scopeStack: [...stack, { ...scope, ids }],
+        selectedPath,
+        selectedShapeId: selectedPath === state.selectedPath ? state.selectedShapeId : null,
+      };
+    }),
+  popScope: () =>
+    set((state) => {
+      if (state.scopeStack.length === 1) return state;
+      const scopeStack = state.scopeStack.slice(0, -1);
+      const ids = scopePaths({ ...state, scopeStack });
+      const selectedPath = ids.includes(state.selectedPath) ? state.selectedPath : (ids[0] ?? "");
+      return {
+        scopeStack,
+        selectedPath,
+        selectedShapeId: selectedPath === state.selectedPath ? state.selectedShapeId : null,
+      };
+    }),
+  selectAdjacent: (delta) => {
+    const state = get();
+    const ids = scopePaths(state);
+    const index = ids.indexOf(state.selectedPath);
+    const path = ids[Math.max(0, Math.min(ids.length - 1, index < 0 ? 0 : index + delta))];
+    if (path) state.select(path);
+  },
+  selectUnannotated: (delta) => {
+    const state = get();
+    const ids = scopePaths(state);
+    const current = ids.indexOf(state.selectedPath);
+    for (
+      let i = current < 0 ? (delta > 0 ? 0 : ids.length - 1) : current + delta;
+      i >= 0 && i < ids.length;
+      i += delta
+    ) {
+      if (!state.annotationsByImage[ids[i]]?.length) {
+        state.select(ids[i]);
+        break;
+      }
+    }
+  },
   frameIndices: {},
   setFrameIndices: (frameIndices) =>
     set((state) => ({
@@ -133,11 +224,35 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
                 ? null
                 : entry.selectedAfter,
           }));
+      const images = state.images.filter((image) => !removedPaths.has(image.path));
+      const scopeStack = state.scopeStack.map((scope): Scope =>
+        scope.kind === "project"
+          ? scope
+          : {
+              ...scope,
+              ids: scope.ids.filter((path) => !removedPaths.has(path)),
+            },
+      );
+      while (scopeStack.length > 1 && scopePaths({ images, scopeStack }).length === 0)
+        scopeStack.pop();
+      const ids = scopePaths({ images, scopeStack });
+      const oldIndex = scopePaths(state).indexOf(state.selectedPath);
+      const selectedPath = ids.includes(state.selectedPath)
+        ? state.selectedPath
+        : (ids[Math.max(0, Math.min(oldIndex, ids.length - 1))] ?? "");
+      const frameIndices = Object.fromEntries(
+        Object.entries(state.frameIndices).filter(([path]) => !removedPaths.has(path)),
+      );
       return withHistoryFlags({
         ...state,
+        images,
+        scopeStack,
+        selectedPath,
+        frameIndices,
         annotationsByImage,
         selectedShapeId:
-          state.selectedShapeId && removedIds.has(state.selectedShapeId)
+          selectedPath !== state.selectedPath ||
+          (state.selectedShapeId && removedIds.has(state.selectedShapeId))
             ? null
             : state.selectedShapeId,
         undoStack: prune(state.undoStack),

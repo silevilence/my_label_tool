@@ -1,3 +1,4 @@
+import { scopePaths, useAnnotationStore } from "../store/useAnnotationStore";
 import { useOperations } from "../store/useOperations";
 import { useShortcut } from "../hooks/useShortcut";
 import {
@@ -114,7 +115,6 @@ interface AppLayoutProps {
   projectTemplateId: string;
   selectedExportFormatId: ExportFormatId;
   selectedImage: ImageFile | null;
-  selectedImageButtonRef: MutableRefObject<HTMLButtonElement | null>;
   selectedPath: string;
   selectedRectRef: MutableRefObject<KonvaRect | null>;
   selectedShapeId: string | null;
@@ -252,7 +252,6 @@ export function AppLayout({
   projectTemplateId,
   selectedExportFormatId,
   selectedImage,
-  selectedImageButtonRef,
   selectedPath,
   selectedRectRef,
   selectedShapeId,
@@ -334,15 +333,17 @@ export function AppLayout({
   const annotationsBusy = useOperations((state) => !state.canStart("project-annotations"));
   const [canvasPointer, setCanvasPointer] = useState<{ x: number; y: number } | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const selectedImageIndex = images.findIndex((image) => image.path === selectedPath);
-  const hasPreviousUnannotatedImage = images
+  const scopeStack = useAnnotationStore((state) => state.scopeStack);
+  const scopedPaths = scopePaths({ images, scopeStack });
+  const selectedImageIndex = scopedPaths.indexOf(selectedPath);
+  const hasPreviousUnannotatedImage = scopedPaths
     .slice(0, Math.max(selectedImageIndex, 0))
-    .some((image) => (annotationsByImage[image.path] ?? []).length === 0);
+    .some((path) => (annotationsByImage[path] ?? []).length === 0);
   const hasNextUnannotatedImage =
     selectedImageIndex >= 0 &&
-    images
+    scopedPaths
       .slice(selectedImageIndex + 1)
-      .some((image) => (annotationsByImage[image.path] ?? []).length === 0);
+      .some((path) => (annotationsByImage[path] ?? []).length === 0);
   useShortcut("search", images.length ? () => setIsSearchOpen(true) : undefined);
 
   function updateCanvasPointer(event: ReactMouseEvent<HTMLDivElement>) {
@@ -425,7 +426,6 @@ export function AppLayout({
           labels={labels}
           projectTemplateId={projectTemplateId}
           selectedExportFormatId={selectedExportFormatId}
-          selectedImageButtonRef={selectedImageButtonRef}
           selectedPath={selectedPath}
           selectedTemplateId={selectedTemplateId}
           templates={templates}
@@ -808,7 +808,7 @@ export function AppLayout({
               requestDeleteImage(selectedPath);
             }}
             annotation={contextAnnotation}
-            canNextImage={selectedImageIndex >= 0 && selectedImageIndex < images.length - 1}
+            canNextImage={selectedImageIndex >= 0 && selectedImageIndex < scopedPaths.length - 1}
             canNextUnannotatedImage={hasNextUnannotatedImage}
             canPreviousImage={selectedImageIndex > 0}
             canPreviousUnannotatedImage={hasPreviousUnannotatedImage}

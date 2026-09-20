@@ -209,7 +209,7 @@ interface LabelTemplate {
 - 组件用函数组件 + Hooks，禁止 class component。
 - 禁止 `any`，确需动态类型时用 `unknown` 并做类型收窄。
 - 所有 Tauri command 调用必须封装在 `lib/tauri-api.ts`，组件内不得直接 `invoke(...)`。
-- 状态分层：标注业务数据（标注列表、选中图形 id、撤销/重做栈）放入 Zustand store（`useAnnotationStore`）；画布交互状态（缩放级别、绘制中的临时图形、交互模式、平移状态）保留在 `App.tsx` 的本地 `useState`，不进 store；全局就绪标志放入 `useAppStore`。新增状态时按此归属判断，不要把瞬时交互态塞进 store。
+- 状态分层：标注业务数据（项目图片列表、当前编辑图片 selectedPath、浏览作用域 scopeStack、标注列表、选中图形 id、撤销/重做栈）放入 Zustand store（`useAnnotationStore`）；画布交互状态（缩放级别、绘制中的临时图形、交互模式、平移状态）保留在 `App.tsx` 的本地 `useState`，不进 store；全局就绪标志放入 `useAppStore`。当前编辑对象及其浏览范围属于业务状态；草稿、平移和缩放属于瞬时交互态，保留在组件本地。新增状态时按此归属判断。
 
 ### Rust
 

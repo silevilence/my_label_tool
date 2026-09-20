@@ -1,4 +1,4 @@
-import { act, useState } from "react";
+import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useImageDeletion } from "../hooks/useImageDeletion";
@@ -27,17 +27,17 @@ function Harness({
   busy?: boolean;
   shortcut?: string;
 }) {
-  const [images, setImages] = useState(initialImages);
-  const [selectedPath, setSelectedPath] = useState(`C:/images/${selected}.png`);
+  const images = useAnnotationStore((state) => state.images);
+  const selectedPath = useAnnotationStore((state) => state.selectedPath);
+  useEffect(() => {
+    useAnnotationStore.getState().setImages(initialImages);
+    useAnnotationStore.getState().select(`C:/images/${selected}.png`);
+  }, [selected]);
   const [error, setError] = useState("");
   const annotations = useAnnotationStore((state) => state.annotationsByImage);
   controls = useImageDeletion({
-    images,
     folderPath: "C:/images",
-    selectedPath,
     busy,
-    setImages,
-    setSelectedPath,
     setError,
   });
   useKeyboardShortcuts({

@@ -1,4 +1,5 @@
-import { useRef, useState, type MutableRefObject } from "react";
+import { ImageListRow, ScopeBar } from "./ImageListRow";
+import { useRef, useState } from "react";
 import { ExportPanel } from "../settings/ExportPanel";
 import { ImageListContextMenu } from "./ImageListContextMenu";
 import { LabelSettings } from "../settings/LabelSettings";
@@ -45,7 +46,6 @@ interface AppSidebarProps {
   labels: LabelConfig[];
   projectTemplateId: string;
   selectedExportFormatId: ExportFormatId;
-  selectedImageButtonRef: MutableRefObject<HTMLButtonElement | null>;
   selectedPath: string;
   selectedTemplateId: string;
   templates: LabelTemplate[];
@@ -108,7 +108,6 @@ export function AppSidebar({
   labels,
   projectTemplateId,
   selectedExportFormatId,
-  selectedImageButtonRef,
   selectedPath,
   selectedTemplateId,
   templates,
@@ -473,6 +472,7 @@ export function AppSidebar({
           </div>
         </div>
         <div className="scrollbar-dark min-h-0 flex-1 overflow-auto p-2">
+          <ScopeBar />
           {images.length === 0 && videos.length === 0 ? (
             <p className="p-2 text-sm text-slate-400">
               {folderPath
@@ -485,7 +485,6 @@ export function AppSidebar({
               videos={videos}
               selectedPath={selectedPath}
               annotations={annotationsByImage}
-              selectedRef={selectedImageButtonRef}
               onSelect={setSelectedPath}
               onPrepare={(source) => addVideo?.(source)}
               onVideoMenu={(source, x, y) => {
@@ -496,18 +495,14 @@ export function AppSidebar({
             />
           ) : (
             images.map((image) => (
-              <button
+              <ImageListRow
                 className={`block w-full truncate rounded px-3 py-2 text-left text-sm ${
                   image.path === selectedPath
                     ? "bg-sky-500 text-white"
                     : "text-slate-300 hover:bg-slate-800"
                 }`}
                 key={image.path}
-                ref={(node) => {
-                  if (image.path === selectedPath) {
-                    selectedImageButtonRef.current = node;
-                  }
-                }}
+                selected={image.path === selectedPath}
                 title={image.path}
                 type="button"
                 onClick={() => setSelectedPath(image.path)}
@@ -517,7 +512,7 @@ export function AppSidebar({
                 }}
               >
                 {image.name}
-              </button>
+              </ImageListRow>
             ))
           )}
         </div>

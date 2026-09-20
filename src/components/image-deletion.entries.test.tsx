@@ -193,9 +193,11 @@ describe("image deletion entry wiring", () => {
       "源帧 1 / 4",
     );
     await clickVideo("one");
+    // Entering a different video scope starts at its first frame; no hidden cursor is restored.
     expect(document.body.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe(
-      "源帧 4 / 4",
+      "源帧 1 / 4",
     );
+    await key("PageDown");
     await click("设置");
     await act(async () => {
       await import("./settings/ShortcutSettings");
