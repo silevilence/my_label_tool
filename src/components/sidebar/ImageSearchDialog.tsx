@@ -151,7 +151,7 @@ export function ImageSearchDialog({
   }
 
   return (
-    <Overlay onClose={onClose} kind="light" label={interactionText.search} size="xl">
+    <Overlay onClose={onClose} kind="light" label={interactionText.search} size="xl" closeOnBackdrop>
       <section className="grid w-full max-w-3xl grid-cols-[1fr_220px] gap-4 rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

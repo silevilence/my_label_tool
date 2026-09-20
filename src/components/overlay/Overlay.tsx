@@ -51,6 +51,8 @@ interface OverlayProps {
   role?: "dialog" | "alertdialog" | "menu";
   pointerOnly?: boolean;
   anchor?: { x: number; y: number };
+  /** 居中遮罩对话框：点击背板（面板外）触发 onClose；锚定菜单默认即支持。 */
+  closeOnBackdrop?: boolean;
   children: ReactNode;
 }
 
@@ -69,6 +71,7 @@ function MountedOverlay({
   role = "dialog",
   pointerOnly = false,
   anchor,
+  closeOnBackdrop = false,
   children,
 }: Omit<OverlayProps, "open">) {
   const id = useId();
@@ -141,8 +144,9 @@ function MountedOverlay({
     window.addEventListener("keydown", key, true);
     window.addEventListener("keyup", key, true);
     function outside(event: PointerEvent) {
-      if (anchored && kind === "light" && isTop() && !panel.current?.contains(event.target as Node))
-        latest.current.onClose();
+      if (!isTop() || panel.current?.contains(event.target as Node)) return;
+      // 锚定菜单（light）点击外部即关；居中对话框需显式声明 closeOnBackdrop。
+      if (anchored ? kind === "light" : closeOnBackdrop) latest.current.onClose();
     }
     document.addEventListener("pointerdown", outside);
     document.addEventListener("focusin", focus);
@@ -155,7 +159,7 @@ function MountedOverlay({
       document.removeEventListener("pointerdown", outside);
       if (wasTop && previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, [id, parentId, kind, anchored]);
+  }, [id, parentId, kind, anchored, closeOnBackdrop]);
 
   return createPortal(
     <ParentOverlay.Provider value={id}>

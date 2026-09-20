@@ -1,5 +1,6 @@
 import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
+import { useScopeEscape } from "./hooks/useScopeEscape";
 import { useOperations } from "./store/useOperations";
 import { useOverlayStore } from "./store/useOverlayStore";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
@@ -276,6 +277,7 @@ function App() {
   } = useLabelDisplaySettings(labelById);
 
   const { message: transientMessage, showMessage } = useTransientMessage();
+  useScopeEscape();
   const {
     applyProjectTemplate,
     clearProjectTemplate,

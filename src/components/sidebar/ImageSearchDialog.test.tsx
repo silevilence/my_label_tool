@@ -85,3 +85,17 @@ it("previews a clicked row without writing selection and commits it on the secon
     ids: ["a", "b", "c"],
   });
 });
+
+it("closes from a backdrop click without writing selection or scope", () => {
+  const backdrop = document.querySelector("div.fixed.inset-0")!;
+  act(() => backdrop.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  expect(close).toHaveBeenCalledOnce();
+  expect(store.getState().selectedPath).toBe("a");
+  expect(store.getState().scopeStack.map((scope) => scope.kind)).toEqual(["project", "video"]);
+});
+
+it("keeps the dialog open when clicking inside the panel", () => {
+  const panel = document.querySelector('[role="dialog"]')!;
+  act(() => panel.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  expect(close).not.toHaveBeenCalled();
+});
