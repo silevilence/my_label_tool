@@ -99,3 +99,36 @@ it("keeps the dialog open when the discard confirmation is declined", async () =
   act(() => root.unmount());
   host.remove();
 });
+
+it("submits the settings form with Enter inside the value input", async () => {
+  const save = vi.fn(async () => true);
+  const { root, host, props } = renderDialog({
+    model: {
+      settings,
+      error: "",
+      loading: false,
+      saving: false,
+      save,
+    } satisfies ProjectSettingsModel,
+  });
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+      fpsInput(),
+      "8",
+    );
+    fpsInput().dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    fpsInput().dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    );
+  });
+  expect(save).toHaveBeenCalledWith({
+    mode: "fps",
+    fps: 8,
+    frameInterval: 30,
+  });
+  expect(props.onClose).not.toHaveBeenCalled();
+  act(() => root.unmount());
+  host.remove();
+});

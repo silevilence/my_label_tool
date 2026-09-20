@@ -14,6 +14,7 @@ interface PtConversionDialogProps {
   onBack: () => void;
   onCancel: () => void;
   onConfirm: () => void;
+  onRetry: () => void;
   onParametersChange: (parameters: PtConversionParameters) => void;
 }
 
@@ -24,6 +25,7 @@ export function PtConversionDialog({
   onBack,
   onCancel,
   onConfirm,
+  onRetry,
   onParametersChange,
 }: PtConversionDialogProps) {
   const outputRef = useRef<HTMLPreElement>(null);
@@ -162,6 +164,15 @@ export function PtConversionDialog({
                   onClick={onConfirm}
                 >
                   {text.ptStartConversion}
+                </button>
+              )}
+              {session.status === "failed" && (
+                <button
+                  className="rounded bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500"
+                  type="button"
+                  onClick={onRetry}
+                >
+                  {text.ptRetryConversion}
                 </button>
               )}
             </>

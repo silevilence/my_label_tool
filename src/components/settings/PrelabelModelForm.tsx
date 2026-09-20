@@ -40,19 +40,33 @@ export function ModelImportForm({
   onUpdateFromUrl?: () => void;
   onValidate: () => void;
 }) {
-  const invalid =
-    !model.name.trim() ||
-    model.classNames.some((name) => !name.trim()) ||
-    !Number.isFinite(model.confidenceThreshold) ||
-    model.confidenceThreshold < 0 ||
-    model.confidenceThreshold > 1 ||
-    !Number.isFinite(model.iouThreshold) ||
-    model.iouThreshold < 0 ||
-    model.iouThreshold > 1 ||
-    !(model.inputSizeOverride ?? [model.inputWidth, model.inputHeight]).every(
+  const fieldErrors = {
+    name: !model.name.trim() ? text.fieldNameRequired : "",
+    classNames: model.classNames.some((name) => !name.trim()) ? text.fieldClassNamesBlank : "",
+    confidence:
+      !Number.isFinite(model.confidenceThreshold) ||
+      model.confidenceThreshold < 0 ||
+      model.confidenceThreshold > 1
+        ? text.fieldThresholdRange
+        : "",
+    iou:
+      !Number.isFinite(model.iouThreshold) ||
+      model.iouThreshold < 0 ||
+      model.iouThreshold > 1
+        ? text.fieldThresholdRange
+        : "",
+    inputSize: !(model.inputSizeOverride ?? [model.inputWidth, model.inputHeight]).every(
       (dimension) => Number.isSafeInteger(dimension) && dimension > 0,
-    ) ||
-    (Boolean(model.sourceUrl?.trim()) && !isValidModelSourceUrl(model.sourceUrl ?? ""));
+    )
+      ? text.fieldSizePositive
+      : "",
+    sourceUrl:
+      Boolean(model.sourceUrl?.trim()) && !isValidModelSourceUrl(model.sourceUrl ?? "")
+        ? text.fieldSourceUrlInvalid
+        : "",
+  };
+  const invalid = Object.values(fieldErrors).some(Boolean);
+  const firstFieldError = Object.values(fieldErrors).find(Boolean) ?? "";
   const sourceUrl = model.sourceUrl ?? "";
   const canUpdate = Boolean(update && onUpdateFromUrl) && isValidModelSourceUrl(sourceUrl);
   const progressPercent =
@@ -60,7 +74,12 @@ export function ModelImportForm({
       ? Math.min(100, (update.progress.downloaded / update.progress.total) * 100)
       : 0;
   return (
-    <div>
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!invalid && !disabled) onSubmit();
+      }}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="font-medium text-slate-100">{text.importForm}</h3>
@@ -71,8 +90,10 @@ export function ModelImportForm({
         </span>
       </div>
       <fieldset disabled={disabled} className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Field label={text.modelName}>
+        <Field error={fieldErrors.name} errorId="model-name-error" label={text.modelName}>
           <input
+            aria-describedby={fieldErrors.name ? "model-name-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.name) || undefined}
             className={inputClass}
             value={model.name}
             onChange={(event) => onChange({ ...model, name: event.target.value })}
@@ -83,8 +104,10 @@ export function ModelImportForm({
             {text.modelSummary(model.classCount, model.inputWidth, model.inputHeight)}
           </div>
         </Field>
-        <Field label={text.confidenceThreshold}>
+        <Field error={fieldErrors.confidence} errorId="model-confidence-error" label={text.confidenceThreshold}>
           <input
+            aria-describedby={fieldErrors.confidence ? "model-confidence-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.confidence) || undefined}
             className={inputClass}
             max="1"
             min="0"
@@ -96,8 +119,10 @@ export function ModelImportForm({
             }
           />
         </Field>
-        <Field label={text.iouThreshold}>
+        <Field error={fieldErrors.iou} errorId="model-iou-error" label={text.iouThreshold}>
           <input
+            aria-describedby={fieldErrors.iou ? "model-iou-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.iou) || undefined}
             className={inputClass}
             max="1"
             min="0"
@@ -123,8 +148,10 @@ export function ModelImportForm({
         {model.device === "gpu" && gpuAvailable === false && (
           <p className="text-xs text-amber-300">{text.deviceGpuUnavailable}</p>
         )}
-        <Field label={text.inputWidthOverride}>
+        <Field error={fieldErrors.inputSize} errorId="model-width-error" label={text.inputWidthOverride}>
           <input
+            aria-describedby={fieldErrors.inputSize ? "model-width-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.inputSize) || undefined}
             className={inputClass}
             min="1"
             placeholder={model.inputWidth ? String(model.inputWidth) : text.dynamicDimension}
@@ -138,8 +165,10 @@ export function ModelImportForm({
             }
           />
         </Field>
-        <Field label={text.inputHeightOverride}>
+        <Field error={fieldErrors.inputSize} errorId="model-height-error" label={text.inputHeightOverride}>
           <input
+            aria-describedby={fieldErrors.inputSize ? "model-height-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.inputSize) || undefined}
             className={inputClass}
             min="1"
             placeholder={model.inputHeight ? String(model.inputHeight) : text.dynamicDimension}
@@ -163,6 +192,8 @@ export function ModelImportForm({
           <label className="grid grid-cols-[3rem_1fr] items-center gap-2" key={index}>
             <span className="text-right text-xs text-slate-500">{index}</span>
             <input
+              aria-describedby={fieldErrors.classNames ? "model-classnames-error" : undefined}
+              aria-invalid={Boolean(fieldErrors.classNames) || undefined}
               className={inputClass}
               value={name}
               onChange={(event) =>
@@ -177,11 +208,18 @@ export function ModelImportForm({
           </label>
         ))}
       </fieldset>
+      {fieldErrors.classNames && (
+        <p id="model-classnames-error" className="mt-1 text-xs text-red-300">
+          {fieldErrors.classNames}
+        </p>
+      )}
       {mode === "edit" && update && (
         <div className="mt-5 rounded border border-slate-700 bg-slate-950/60 p-3">
-          <Field label={text.sourceUrl}>
+          <Field error={fieldErrors.sourceUrl} errorId="model-source-url-error" label={text.sourceUrl}>
             <div className="flex gap-2">
               <input
+                aria-describedby={fieldErrors.sourceUrl ? "model-source-url-error" : undefined}
+                aria-invalid={Boolean(fieldErrors.sourceUrl) || undefined}
                 className={inputClass}
                 placeholder={text.sourceUrlPlaceholder}
                 disabled={disabled}
@@ -260,24 +298,44 @@ export function ModelImportForm({
             {text.cancelChanges}
           </button>
           <button
+            aria-describedby={invalid ? "model-submit-reason" : undefined}
             className="rounded bg-sky-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             disabled={disabled || invalid}
-            type="button"
-            onClick={onSubmit}
+            type="submit"
           >
             {submitLabel}
           </button>
         </div>
+        {invalid && !disabled && (
+          <p id="model-submit-reason" className="w-full text-xs text-amber-300">
+            {firstFieldError}
+          </p>
+        )}
       </div>
-    </div>
+    </form>
   );
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({
+  error,
+  errorId,
+  label,
+  children,
+}: {
+  error?: string;
+  errorId?: string;
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="text-xs text-slate-400">
       <span className="mb-1 block">{label}</span>
       {children}
+      {error && errorId && (
+        <span id={errorId} className="mt-1 block text-xs text-red-300">
+          {error}
+        </span>
+      )}
     </label>
   );
 }

@@ -769,6 +769,7 @@ export function PrelabelSettings({
               void useOperations.getState().cancel(modelOperation.current.id);
           }}
           onConfirm={() => void convertPt(ptGuidance, ptConversionSession)}
+          onRetry={() => void convertPt(ptGuidance, ptConversionSession)}
           onParametersChange={(parameters) => {
             const next = { ...ptConversionSession, parameters, plan: null, error: "" };
             setPtConversionSession(next);
