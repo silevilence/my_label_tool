@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { usePrelabelResourceStore as store } from "./usePrelabelResourceStore";
 import { DEFAULT_PRELABEL_RESOURCE_LIMITS as defaults } from "../lib/defaults/prelabel";
+import { PRELABEL_RESOURCE_ZH_CN as text } from "../i18n/prelabel-resource.zh-CN";
 
 const api = vi.hoisted(() => ({
   loadPrelabelResourceLimits: vi.fn(),
@@ -50,6 +51,7 @@ it("blocks overlapping reads/writes and refuses invalid saves", async () => {
   const loading = store.getState().load();
   await store.getState().load();
   await expect(store.getState().save(defaults)).rejects.toThrow();
+  expect(store.getState().error).toBe(text.busy);
   expect(api.loadPrelabelResourceLimits).toHaveBeenCalledTimes(1);
   finish(defaults);
   await loading;
@@ -65,6 +67,7 @@ it("blocks overlapping reads/writes and refuses invalid saves", async () => {
   const saving = store.getState().save(defaults);
   await store.getState().load();
   await expect(store.getState().save(defaults)).rejects.toThrow();
+  expect(store.getState().error).toBe(text.busy);
   expect(api.loadPrelabelResourceLimits).toHaveBeenCalledTimes(1);
   finishSave();
   await saving;

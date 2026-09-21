@@ -7,13 +7,17 @@ import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
 import type { PrelabelModelConfig } from "../../types/prelabel";
 
 const model: PrelabelModelConfig = {
-  ...createPrelabelModelConfig("C:/app/models/a.onnx", {
-    format: "yolo11",
-    classCount: 1,
-    inputWidth: 640,
-    inputHeight: 640,
-    classNames: ["person"],
-  }, "a"),
+  ...createPrelabelModelConfig(
+    "C:/app/models/a.onnx",
+    {
+      format: "yolo11",
+      classCount: 1,
+      inputWidth: 640,
+      inputHeight: 640,
+      classNames: ["person"],
+    },
+    "a",
+  ),
   name: "YOLO11",
 };
 
@@ -61,7 +65,9 @@ it("shows per-field reasons with aria wiring and a perceivable disabled-submit r
   const { props } = renderForm({ name: "", classNames: ["person", ""], confidenceThreshold: 3 });
   const nameInput = inputByLabel(text.modelName);
   expect(nameInput.getAttribute("aria-invalid")).toBe("true");
-  expect(document.getElementById("model-name-error")?.textContent).toContain(text.fieldNameRequired);
+  expect(document.getElementById("model-name-error")?.textContent).toContain(
+    text.fieldNameRequired,
+  );
   expect(document.getElementById("model-classnames-error")?.textContent).toContain(
     text.fieldClassNamesBlank,
   );
@@ -79,18 +85,22 @@ it("shows per-field reasons with aria wiring and a perceivable disabled-submit r
   expect(props.onSubmit).not.toHaveBeenCalled();
 });
 
-it("submits through the form on Enter once every field is valid", () => {
-  const { props } = renderForm({ confidenceThreshold: 0.5 });
+it("submits valid fractional thresholds through the submit button without native step validation", () => {
+  const { props } = renderForm({ confidenceThreshold: 0.123 });
   const nameInput = inputByLabel(text.modelName);
   expect(nameInput.getAttribute("aria-invalid")).toBeNull();
   expect(document.body.textContent).not.toContain(text.fieldNameRequired);
   act(() => {
-    nameInput.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
-    );
-    nameInput.form!.dispatchEvent(
-      new Event("submit", { bubbles: true, cancelable: true }),
-    );
+    expect(nameInput.form!.noValidate).toBe(true);
+    host.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
   });
   expect(props.onSubmit).toHaveBeenCalledTimes(1);
+});
+
+it("marks only the invalid input dimension", () => {
+  renderForm({ inputSizeOverride: [640, 0] });
+  expect(inputByLabel(text.inputWidthOverride).getAttribute("aria-invalid")).toBeNull();
+  expect(document.getElementById("model-width-error")).toBeNull();
+  expect(inputByLabel(text.inputHeightOverride).getAttribute("aria-invalid")).toBe("true");
+  expect(document.getElementById("model-height-error")?.textContent).toBe(text.fieldSizePositive);
 });

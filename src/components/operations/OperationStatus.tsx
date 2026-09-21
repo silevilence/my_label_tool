@@ -87,7 +87,9 @@ export function OperationStatus({ children }: { children?: ReactNode }) {
               {op.message && (
                 <p className="mt-1 break-words">
                   {op.message}
-                  {op.failCount && op.failCount > 1 ? text.failureCount(op.failCount) : ""}
+                  {op.status === "failed" && op.failCount && op.failCount > 1
+                    ? text.failureCount(op.failCount)
+                    : ""}
                 </p>
               )}
               {op.status === "running" && (

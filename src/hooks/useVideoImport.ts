@@ -68,7 +68,9 @@ export function useVideoImport(
         (progress) => {
           setBatch(progress);
           handle.progress(
-            progress.total ? (progress.completed / progress.total) * 100 : null,
+            progress.total
+              ? ((progress.completed + progress.failures.length) / progress.total) * 100
+              : null,
             text.batchProgress(progress.completed, progress.total, progress.failures.length),
           );
           if (progress.finished)

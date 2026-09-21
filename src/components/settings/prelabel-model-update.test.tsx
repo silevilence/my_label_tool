@@ -1,4 +1,5 @@
 import { useOperations } from "../../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../../i18n/operations.zh-CN";
 import { OperationStatus } from "../../components/operations/OperationStatus";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -10,8 +11,15 @@ import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
 import type { ModelDownloadResult, PrelabelModelLibrary } from "../../types/prelabel";
 
 const api = vi.hoisted(() => ({
-  loadPrelabelResourceLimits: vi.fn().mockResolvedValue({ maxMemoryMiB: 80, maxCandidates: 100_000 }),
+  loadPrelabelResourceLimits: vi
+    .fn()
+    .mockResolvedValue({ maxMemoryMiB: 80, maxCandidates: 100_000 }),
   getOnnxRuntimeStatus: vi.fn(),
+  selectPrelabelModelFile: vi.fn(),
+  findConvertedOnnx: vi.fn(),
+  detectPtConversionEnvironment: vi.fn(),
+  previewPtConversionCommand: vi.fn(),
+  convertPtToOnnx: vi.fn(),
   downloadPrelabelModel: vi.fn(),
   cancelPrelabelModelDownload: vi.fn(),
   loadPrelabelModelLibrary: vi.fn(),
@@ -116,6 +124,31 @@ async function click(label: string) {
   await act(async () => button(label).click());
 }
 
+it("clears only settings failures when starting another settings action", async () => {
+  act(() => {
+    const registry = useOperations.getState();
+    registry.pushError(operationText.prelabel, "inference failed");
+    registry.pushError(operationText.prelabel, "inference failed again");
+    registry.pushError(operationText.prelabelSettings, "settings failed");
+  });
+  const inferenceFailure = useOperations
+    .getState()
+    .operations.find((op) => op.label === operationText.prelabel);
+  expect(inferenceFailure?.failCount).toBe(2);
+  api.selectPrelabelModelFile.mockResolvedValueOnce(null);
+  await click(text.addModel);
+  expect(useOperations.getState().operations).toContainEqual(inferenceFailure);
+  expect(
+    useOperations
+      .getState()
+      .operations.some(
+        (op) => op.label === operationText.prelabelSettings && op.status === "failed",
+      ),
+  ).toBe(false);
+  expect(document.body.textContent).toContain("inference failed again");
+  expect(document.body.textContent).not.toContain("settings failed");
+});
+
 it("locks library edits and closing from confirmation through persistence", async () => {
   const confirmation = deferred<boolean>();
   const persistence = deferred<void>();
@@ -213,4 +246,45 @@ it("keeps cancellation retryable after a host error", async () => {
   expect(api.cancelPrelabelModelDownload).toHaveBeenCalledTimes(2);
   await act(async () => download.resolve(null));
   expect(useOperations.getState().canStart("model-download")).toBe(true);
+});
+
+it("retries a failed PT conversion with its saved plan and clears the old failure", async () => {
+  const plan = {
+    method: "yolo-cli",
+    executable: "yolo",
+    command: "yolo export",
+    timeoutSeconds: 300,
+    parameters: { imgsz: 640, simplify: false },
+  };
+  api.selectPrelabelModelFile.mockResolvedValue("C:/models/a.pt");
+  api.findConvertedOnnx.mockResolvedValue(null);
+  api.detectPtConversionEnvironment.mockResolvedValue({
+    available: true,
+    method: "yolo-cli",
+    executable: "yolo",
+    message: "",
+  });
+  api.previewPtConversionCommand.mockResolvedValue(plan);
+  api.convertPtToOnnx.mockRejectedValueOnce(new Error("conversion failed"));
+  await click(text.addModel);
+  await click(text.ptConvertNow);
+  await click(text.ptStartConversion);
+  expect(api.convertPtToOnnx).toHaveBeenCalledOnce();
+  expect(button(text.ptRetryConversion).disabled).toBe(false);
+  const retry = deferred<ModelDownloadResult>();
+  api.convertPtToOnnx.mockReturnValueOnce(retry.promise);
+  await click(text.ptRetryConversion);
+  expect(api.convertPtToOnnx).toHaveBeenCalledTimes(2);
+  expect(api.convertPtToOnnx.mock.calls[1].slice(0, 3)).toEqual(
+    api.convertPtToOnnx.mock.calls[0].slice(0, 3),
+  );
+  expect(useOperations.getState().operations.filter((op) => op.status === "failed")).toHaveLength(
+    0,
+  );
+  expect(useOperations.getState().operations.filter((op) => op.status === "running")).toHaveLength(
+    1,
+  );
+  await act(async () => retry.resolve(result));
+  expect(document.body.textContent).not.toContain(text.ptRetryConversion);
+  expect(button(text.addToLibrary).disabled).toBe(false);
 });

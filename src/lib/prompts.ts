@@ -1,17 +1,6 @@
 import { create } from "zustand";
 import { PROMPTS_ZH_CN as text } from "../i18n/prompts.zh-CN";
 
-// 当前 tsconfig lib < ES2024：按官方定义补齐 Promise.withResolvers。
-declare global {
-  interface PromiseConstructor {
-    withResolvers<T>(): {
-      promise: Promise<T>;
-      resolve: (value: T | PromiseLike<T>) => void;
-      reject: (reason?: unknown) => void;
-    };
-  }
-}
-
 export interface ConfirmOptions {
   title: string;
   message?: string;
@@ -50,14 +39,14 @@ export const usePromptStore = create<PromptStore>((set) => ({
   confirmQueue: [],
   promptQueue: [],
   requestConfirm: (options) => {
-    const { promise, resolve } = Promise.withResolvers<boolean>();
-    set((state) => ({ confirmQueue: [...state.confirmQueue, { ...options, resolve }] }));
-    return promise;
+    return new Promise<boolean>((resolve) => {
+      set((state) => ({ confirmQueue: [...state.confirmQueue, { ...options, resolve }] }));
+    });
   },
   requestPrompt: (options) => {
-    const { promise, resolve } = Promise.withResolvers<string | null>();
-    set((state) => ({ promptQueue: [...state.promptQueue, { ...options, resolve }] }));
-    return promise;
+    return new Promise<string | null>((resolve) => {
+      set((state) => ({ promptQueue: [...state.promptQueue, { ...options, resolve }] }));
+    });
   },
   settleConfirm: (value) =>
     set((state) => {

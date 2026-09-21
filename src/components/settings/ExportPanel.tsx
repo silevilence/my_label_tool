@@ -46,12 +46,14 @@ export function ExportPanel({
   onExport,
   onSaveProject,
 }: ExportPanelProps) {
-  const hasFailedExport = useOperations((state) =>
-    state.operations.some(
-      (operation) =>
-        operation.status === "failed" &&
-        (operation.label === operationText.export || operation.label === operationText.save),
-    ),
+  const failedExport = useOperations((state) =>
+    [...state.operations]
+      .reverse()
+      .find(
+        (operation) =>
+          operation.status === "failed" &&
+          (operation.label === operationText.export || operation.label === operationText.save),
+      ),
   );
   const selectedTemplate =
     EXPORT_TEMPLATES.find((template) => template.id === selectedFormatId) ?? EXPORT_TEMPLATES[0];
@@ -143,15 +145,17 @@ export function ExportPanel({
       )}
       <div data-operation-error-feedback={operationText.export} />
       <div data-operation-error-feedback={operationText.save} />
-      {exportError && hasFailedExport && (
+      {exportError && failedExport && (
         <div className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
           <button
             className="rounded border border-red-400/60 px-3 py-1 text-xs text-red-100 hover:bg-red-500/20 disabled:opacity-50"
             type="button"
             disabled={disabled || selectedDisabled || isSaving || isPluginExporting}
-            onClick={onExport}
+            onClick={failedExport.label === operationText.save ? onSaveProject : onExport}
           >
-            {projectText.retryExport}
+            {failedExport.label === operationText.save
+              ? projectText.retrySave
+              : projectText.retryExport}
           </button>
         </div>
       )}

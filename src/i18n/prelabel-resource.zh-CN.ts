@@ -16,6 +16,7 @@ export const PRELABEL_RESOURCE_ZH_CN = {
   saved: "资源设置已保存",
   defaults: "填入默认值",
   retry: "重新读取",
+  discardReload: "重新读取将丢弃尚未保存的资源设置，是否继续？",
   loadFailed: (error: unknown) => `预打标资源设置读取失败：${String(error)}`,
   saveFailed: (error: unknown) => `预打标资源设置保存失败：${String(error)}`,
   busy: "资源设置正在读写，请稍后重试。",

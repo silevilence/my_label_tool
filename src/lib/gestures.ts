@@ -1,5 +1,8 @@
 import type { AnnotationShapeType } from "../types/annotation";
 import type { InteractionMode } from "../components/canvas/types";
+
+export const PAN_MOVEMENT_THRESHOLD_PX = 3;
+
 export type GestureIntent =
   "draw-rect" | "draw-polygon" | "draw-point" | "select" | "pan" | "context";
 export function resolveGesture(
@@ -31,9 +34,16 @@ export function resolveGesture(
   return `draw-${ctx.shapeType}`;
 }
 
-// 空格平移门禁：与快捷键/草稿键盘一致的三重裁决（遮罩栈、可编辑焦点、操作互斥）。
+// 空格平移检查遮罩栈、可编辑焦点、操作互斥，并额外排除需用空格激活的交互控件。
 export function shouldPanWithSpace(
-  event: { key: string; repeat: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean },
+  event: {
+    key: string;
+    repeat: boolean;
+    ctrlKey: boolean;
+    altKey: boolean;
+    metaKey: boolean;
+    target?: EventTarget | null;
+  },
   ctx: { editableTarget: boolean; overlayDepth: number; operationAvailable: boolean },
 ): boolean {
   return (
@@ -43,6 +53,12 @@ export function shouldPanWithSpace(
     !event.altKey &&
     !event.metaKey &&
     !ctx.editableTarget &&
+    !(
+      event.target instanceof Element &&
+      event.target.closest(
+        'button, a[href], summary, [role="button"], [role="checkbox"], [role="switch"], [role="radio"]',
+      )
+    ) &&
     ctx.overlayDepth === 0 &&
     ctx.operationAvailable
   );

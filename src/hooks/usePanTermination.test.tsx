@@ -68,3 +68,9 @@ it("does not restore an explicitly cancelled draft on later mouseup or blur", ()
   });
   expect(gesture.state).toBe("idle");
 });
+
+it("restores a draft when the mouse moves outside Konva before release", () => {
+  startPan(false);
+  act(() => window.dispatchEvent(new MouseEvent("mouseup", { clientX: 80, clientY: 90 })));
+  expect(gesture.draft).toEqual({ kind: "polygon", points: [10, 20], cursor: { x: 10, y: 20 } });
+});

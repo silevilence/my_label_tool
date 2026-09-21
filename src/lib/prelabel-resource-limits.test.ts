@@ -17,7 +17,8 @@ describe("prelabel output budgets", () => {
         maxMemoryMiB: MAX_PRELABEL_MEMORY_MIB,
         maxCandidates: Number.MAX_SAFE_INTEGER,
       }),
-    ).toBe(MAX_PRELABEL_MEMORY_MIB * 131_072);
+    ).toBe(1_125_899_906_711_552);
+    expect(MAX_PRELABEL_MEMORY_MIB).toBe(8_589_934_591);
   });
 
   it("rejects invalid, fractional and unsafe values instead of disabling protection", () => {

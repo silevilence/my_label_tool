@@ -105,9 +105,15 @@ export function PrelabelSettings({
   const [ptGuidance, setPtGuidance] = useState<PtGuidance | null>(null);
   const [ptConversionSession, setPtConversionSession] = useState<PtConversionSession | null>(null);
   const [ptConversionNotice, setPtConversionNotice] = useState("");
-  // 预打标域错误统一进操作卡片：常驻可关闭、同名聚合计数。
-  const setError = (message: string) =>
-    useOperations.getState().pushError(operationText.prelabel, message);
+  // 设置错误独立于推理操作，重试设置时只清理本面板的失败消息。
+  const setError = (message: string) => {
+    const registry = useOperations.getState();
+    if (message) registry.pushError(operationText.prelabelSettings, message);
+    else
+      registry.operations
+        .filter((op) => op.label === operationText.prelabelSettings && op.status === "failed")
+        .forEach((op) => registry.dismiss(op.id));
+  };
   const modelOperation = useRef<OperationHandle | null>(null);
   const runtimeOperation = useRef<OperationHandle | null>(null);
   const operations = useOperations((state) => state.operations);
@@ -413,7 +419,11 @@ export function PrelabelSettings({
   }
 
   async function convertPt(guidance: PtGuidance, session: PtConversionSession) {
-    if (mutationInFlight.current || session.status !== "confirming" || !session.plan) {
+    if (
+      mutationInFlight.current ||
+      !["confirming", "failed"].includes(session.status) ||
+      !session.plan
+    ) {
       return;
     }
     const operation = tryBeginOperation({ label: operationText.model, resource: "model-download" });

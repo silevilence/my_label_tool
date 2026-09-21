@@ -206,12 +206,12 @@ export function useLabelActions({
         { danger: true },
       );
       if (removeAnnotations) {
-        const safeIds = new Set(savedLabels.map((label) => label.id));
+        const removedIds = new Set(danglingDraftLabels.map((label) => label.id));
         replaceAnnotations(
           Object.fromEntries(
             Object.entries(annotationsByImage).map(([path, items]) => [
               path,
-              items.filter((annotation) => safeIds.has(annotation.labelId)),
+              items.filter((annotation) => !removedIds.has(annotation.labelId)),
             ]),
           ),
         );

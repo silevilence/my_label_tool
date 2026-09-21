@@ -296,3 +296,22 @@ it("revalidates a thumbnail after its row leaves and reenters the virtual window
   await act(async () => {});
   expect(generateThumbnail.mock.calls.filter(([path]) => path === images[0].path)).toHaveLength(2);
 });
+
+it("renders empty, first and last windows and survives shrinking the list", () => {
+  renderList({ images: [] });
+  expect(host.querySelectorAll("button[title]")).toHaveLength(0);
+  renderList({ images });
+  expect(host.querySelector(`button[title="${images[0].path}"]`)).not.toBeNull();
+  Object.defineProperty(scroller(), "clientHeight", { value: 48, configurable: true });
+  act(() => {
+    scroller().scrollTop = 299 * IMAGE_ROW_HEIGHT;
+    scroller().dispatchEvent(new Event("scroll"));
+  });
+  expect(host.querySelector(`button[title="${images[299].path}"]`)).not.toBeNull();
+  expect(host.querySelector(`button[title="${images[0].path}"]`)).toBeNull();
+  renderList({ images: images.slice(0, 1), selectedPath: images[0].path });
+  act(() => scroller().dispatchEvent(new Event("scroll")));
+  expect(content().style.height).toBe("48px");
+  expect(host.querySelectorAll("button[title]")).toHaveLength(1);
+  expect(host.querySelector(`button[title="${images[0].path}"]`)).not.toBeNull();
+});

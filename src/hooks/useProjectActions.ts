@@ -153,9 +153,14 @@ export function useProjectActions({
       );
       return saved;
     } catch (error) {
-      // 失败只进操作卡片（fail），同时面板内就地展示以便重试。
+      const message = error instanceof Error ? error.message : String(error);
+      // Plugin commands preserve the protocol code as a bracketed prefix.
+      if (message.startsWith("[CANCELLED] ")) {
+        handle.complete(operationText.cancelled, "warning");
+        return false;
+      }
       handle.fail(error);
-      setExportError(error instanceof Error ? error.message : String(error));
+      setExportError(message);
       return false;
     } finally {
       exportOperation.current = null;
@@ -167,18 +172,12 @@ export function useProjectActions({
   async function exportSelectedFormatInternal() {
     setError("");
 
-    try {
-      const savedPath = await exportSelectedFormatAs();
-      if (!savedPath) return false;
-      if (isBuiltInProjectFormat(selectedExportFormatId)) {
-        await updateProjectConfig(selectedExportFormatId, savedPath);
-      }
-      return true;
-    } catch (caughtError: unknown) {
-      exportOperation.current?.fail(caughtError);
-      setExportError(caughtError instanceof Error ? caughtError.message : String(caughtError));
-      return false;
+    const savedPath = await exportSelectedFormatAs();
+    if (!savedPath) return false;
+    if (isBuiltInProjectFormat(selectedExportFormatId)) {
+      await updateProjectConfig(selectedExportFormatId, savedPath);
     }
+    return true;
   }
 
   async function exportSelectedFormatAs(): Promise<string | null> {
@@ -285,19 +284,12 @@ export function useProjectActions({
   async function saveProjectExportInternal() {
     setError("");
 
-    try {
-      if (!activeProjectConfig || selectedExportFormatId !== activeProjectConfig.format) {
-        return await exportSelectedFormatInternal();
-      }
-
-      await exportToProjectConfig(activeProjectConfig);
-      await updateProjectConfig(activeProjectConfig.format, activeProjectConfig.annotationPath);
-      return true;
-    } catch (caughtError: unknown) {
-      exportOperation.current?.fail(caughtError);
-      setExportError(caughtError instanceof Error ? caughtError.message : String(caughtError));
-      return false;
+    if (!activeProjectConfig || selectedExportFormatId !== activeProjectConfig.format) {
+      return await exportSelectedFormatInternal();
     }
+    await exportToProjectConfig(activeProjectConfig);
+    await updateProjectConfig(activeProjectConfig.format, activeProjectConfig.annotationPath);
+    return true;
   }
 
   async function exportToProjectConfig(config: ProjectConfig) {

@@ -9,7 +9,7 @@ import {
 } from "../lib/updater";
 import type { Update } from "@tauri-apps/plugin-updater";
 
-export function useAppUpdate(setError: (message: string) => void) {
+export function useAppUpdate() {
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>("idle");
   const [updateMessage, setUpdateMessage] = useState("");
@@ -109,7 +109,6 @@ export function useAppUpdate(setError: (message: string) => void) {
       operation.fail(message);
       setUpdateStatus("error");
       setUpdateMessage(message);
-      setError(message);
     }
   }
 

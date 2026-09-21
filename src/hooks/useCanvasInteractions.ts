@@ -1,4 +1,4 @@
-import { resolveGesture } from "../lib/gestures";
+import { PAN_MOVEMENT_THRESHOLD_PX, resolveGesture } from "../lib/gestures";
 import { createTransform } from "../components/canvas/transform";
 import type { useDraftGesture } from "./useDraftGesture";
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
@@ -347,7 +347,7 @@ export function useCanvasInteractions({
     if (panState && gesture.state === "pan") {
       const deltaX = event.evt.clientX - panState.startX;
       const deltaY = event.evt.clientY - panState.startY;
-      if (Math.hypot(deltaX, deltaY) >= 3) panState.moved = true;
+      if (Math.hypot(deltaX, deltaY) >= PAN_MOVEMENT_THRESHOLD_PX) panState.moved = true;
       if (!panState.moved) return;
       setImageView((layout) =>
         layout ? { ...layout, x: panState.layoutX + deltaX, y: panState.layoutY + deltaY } : layout,

@@ -105,3 +105,27 @@ describe("canvas gesture seam", () => {
     }
   });
 });
+
+it.each(["draw-rect", "draw-polygon", "draw-point"] as const)(
+  "end-pan restores %s unless cancelled",
+  (intent) => {
+    const draft = reduceDraft({ kind: "idle" }, { type: "start", intent, point: { x: 10, y: 20 } });
+    const pan = reduceDraft(draft, { type: "start", intent: "pan", point: { x: 1, y: 2 } });
+    expect(reduceDraft(pan, { type: "end-pan", cancelDraft: false })).toEqual(draft);
+    expect(reduceDraft(pan, { type: "end-pan", cancelDraft: true })).toEqual({ kind: "idle" });
+    const cancelled = reduceDraft(pan, { type: "cancel" });
+    expect(reduceDraft(cancelled, { type: "end-pan", cancelDraft: false })).toEqual({
+      kind: "idle",
+    });
+  },
+);
+it("leaves Space activation to focused controls including their descendants", () => {
+  const button = document.createElement("button");
+  const span = document.createElement("span");
+  button.append(span);
+  const event = { key: " ", repeat: false, ctrlKey: false, altKey: false, metaKey: false };
+  const ctx = { editableTarget: false, overlayDepth: 0, operationAvailable: true };
+  expect(shouldPanWithSpace({ ...event, target: button }, ctx)).toBe(false);
+  expect(shouldPanWithSpace({ ...event, target: span }, ctx)).toBe(false);
+  expect(shouldPanWithSpace({ ...event, target: document.body }, ctx)).toBe(true);
+});

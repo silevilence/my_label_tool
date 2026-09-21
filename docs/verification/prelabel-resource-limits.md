@@ -12,20 +12,20 @@
 
 ## 可复核测试
 
-所有命令在仓库根目录执行，测试文件留在源码目录中。
+所有命令在仓库根目录执行，测试文件留在源码目录中。下表为 2026-09-21 二审修复后的全量复跑结果；日志保留为仓库根目录的 `review-round2-*.log`。前端由首轮修复后的 499 项增加到 503 项，新增更新失败去重、资源恢复及设置错误隔离用例；同时扩充已有类别映射和边界测试。
 
 | 命令 | 结果 |
 | --- | --- |
 | `npm run typecheck` | 通过 |
 | `npm run lint` | 通过 |
-| `npm run test:coverage` | 84 文件、475 测试通过；行覆盖率 95.69%，语句 95.63%，分支 90.93%，函数 99.07% |
-| `cargo clippy --manifest-path src-tauri/Cargo.toml` | 通过 |
-| `cargo test --manifest-path src-tauri/Cargo.toml -- --test-threads=1` | 250 单元测试及 1 个插件 conformance 集成测试通过；13 项按原有声明忽略 |
+| `npm run test:coverage` | 85 文件、503 测试通过；行覆盖率 95.64%，语句 95.53%，分支 90.92%，函数 98.71% |
+| `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets` | 通过；仅有未改动的 `pipeline.rs` 测试夹具中 4 条原有 `identity_op` 警告 |
+| `cargo test --manifest-path src-tauri/Cargo.toml -- --test-threads=1` | 251 单元测试及 1 个插件 conformance 集成测试通过；13 项按原有声明忽略。较上轮新增 1 项取消错误格式回归，原 250 项计数正确 |
 | `git diff --check` | 通过 |
 
-真实模型/DirectML/转换测试依赖外部 ONNX、Runtime、图片或 Python 环境，本机未配置相应 fixture，因此本次没有声称完成真实模型端到端验收。2560 案例通过生产输出契约校验函数测试，未执行实际 YOLO 网络。未改动画布坐标或标注交互。新增界面通过 React DOM 测试验证，未运行桌面窗口人工验收。
+真实模型/DirectML/转换测试依赖外部 ONNX、Runtime、图片或 Python 环境，本机未配置相应 fixture，因此本次没有声称完成真实模型端到端验收。2560 案例通过生产输出契约校验函数测试，未执行实际 YOLO 网络。本轮画布仅统一既有 3px 阈值常量及文案命名；界面修复通过 React DOM 回归测试验证，未重新运行桌面窗口人工验收。首轮的 `review-native-ui.log` 不作为本轮新增路径的验证证据。
 
-首次全量前端测试因旧设置界面测试缺少新接口 mock，导致三个断言读到配置读取错误。已补齐 mock，重新全量执行通过。未降低断言或覆盖率阈值。
+资源设置首次验收时，全量前端测试因旧设置界面测试缺少新接口 mock，导致三个断言读到配置读取错误。已补齐 mock，重新全量执行通过。未降低断言或覆盖率阈值。
 
 重点测试文件：
 

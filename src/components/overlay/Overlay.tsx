@@ -112,7 +112,7 @@ function MountedOverlay({
     store.register({ id, parentId, kind });
     const isTop = () => useOverlayStore.getState().stack.slice(-1)[0]?.id === id;
     const focusFirst = () => (focusTargets(panel.current)[0] ?? panel.current)?.focus();
-    if (isTop()) focusFirst();
+    if (isTop() && !panel.current?.contains(document.activeElement)) focusFirst();
     function key(event: KeyboardEvent) {
       if (!isTop()) return;
       if (event.key === "Escape") {
@@ -149,7 +149,12 @@ function MountedOverlay({
     function outside(event: PointerEvent) {
       if (!isTop() || panel.current?.contains(event.target as Node)) return;
       // 锚定菜单（light）点击外部即关；居中对话框需显式声明 closeOnBackdrop。
-      if (anchored ? kind === "light" : closeOnBackdrop) latest.current.onClose();
+      const allowed = latest.current.canDismiss;
+      if (
+        (anchored ? kind === "light" : closeOnBackdrop) &&
+        (typeof allowed === "function" ? allowed() : allowed)
+      )
+        latest.current.onClose();
     }
     document.addEventListener("pointerdown", outside);
     document.addEventListener("focusin", focus);

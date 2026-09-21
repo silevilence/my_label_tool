@@ -29,7 +29,12 @@ export function VideoBatchDialog({
         {progress.total > 0 && (
           <div className="mt-3 flex items-center gap-2">
             <div
-              aria-label={text.batchPrepare}
+              aria-label={text.batchProgressLabel}
+              aria-valuetext={text.batchProgress(
+                progress.completed,
+                progress.total,
+                progress.failures.length,
+              )}
               aria-valuemax={100}
               aria-valuemin={0}
               aria-valuenow={Math.min(

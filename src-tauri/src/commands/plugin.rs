@@ -233,3 +233,18 @@ fn command_error(error: PluginRegistryError) -> String {
 fn runtime_command_error(error: crate::plugins::runtime::PluginCallError) -> String {
     format!("[{}] {}", error.code, error.message)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::runtime_command_error;
+    use crate::plugins::runtime::PluginCallError;
+
+    #[test]
+    fn cancellation_command_error_preserves_frontend_prefix() {
+        // Paired with the cancellation cases in src/hooks/video-yolo-export.test.tsx.
+        assert_eq!(
+            runtime_command_error(PluginCallError::external("CANCELLED", "cancelled by user")),
+            "[CANCELLED] cancelled by user"
+        );
+    }
+}

@@ -84,7 +84,7 @@ function PromptCard({ request }: { request: PromptRequest }) {
           placeholder={request.placeholder}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") submit();
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) submit();
           }}
         />
         <div className="mt-4 flex justify-end gap-2">

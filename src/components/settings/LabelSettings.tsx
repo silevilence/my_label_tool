@@ -1,3 +1,4 @@
+import { LABEL_DRAFT_ZH_CN } from "../../i18n/label-draft.zh-CN";
 import { detectConflicts } from "../../lib/shortcuts";
 import { useShortcutStore } from "../../store/useShortcutStore";
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
@@ -188,7 +189,7 @@ export function LabelSettings({
               </button>
               {!canSaveTemplate && (
                 <p className="col-span-2 text-xs leading-relaxed text-amber-300">
-                  内置模板不可覆盖：未修改时无需保存；有修改时"保存"会另存为新模板。
+                  {LABEL_DRAFT_ZH_CN.builtInSaveHint}
                 </p>
               )}
               {selectedTemplateId === PROJECT_TEMPLATE_ID && (

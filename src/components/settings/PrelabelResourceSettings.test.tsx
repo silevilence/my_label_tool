@@ -5,6 +5,8 @@ import { PrelabelResourceSettings, PrelabelResourceSummary } from "./PrelabelRes
 import { usePrelabelResourceStore as store } from "../../store/usePrelabelResourceStore";
 import { PRELABEL_RESOURCE_ZH_CN as text } from "../../i18n/prelabel-resource.zh-CN";
 
+const prompts = vi.hoisted(() => ({ confirmAction: vi.fn() }));
+vi.mock("../../lib/prompts", () => prompts);
 const api = vi.hoisted(() => ({
   loadPrelabelResourceLimits: vi.fn(),
   savePrelabelResourceLimits: vi.fn(),
@@ -65,14 +67,16 @@ it("persists both settings and refreshes the model management conversion", async
   await act(async () => {
     root.unmount();
   });
-  api.loadPrelabelResourceLimits.mockResolvedValue({ maxMemoryMiB: 128, maxCandidates: 150_000 });
+  api.loadPrelabelResourceLimits.mockClear();
+  api.loadPrelabelResourceLimits.mockResolvedValue({ maxMemoryMiB: 256, maxCandidates: 150_000 });
   root = createRoot(host);
   await act(async () =>
     root.render(<PrelabelResourceSettings onDirtyChange={dirty} onSavingChange={saving} />),
   );
   expect(host.querySelector<HTMLInputElement>(`input[aria-label="${text.memory}"]`)!.value).toBe(
-    "128",
+    "256",
   );
+  expect(api.loadPrelabelResourceLimits).toHaveBeenCalledOnce();
 });
 
 it("blocks invalid values and leaves the saved summary unchanged on write failure", async () => {
@@ -90,4 +94,73 @@ it("blocks invalid values and leaves the saved summary unchanged on write failur
   expect(dirty).toHaveBeenLastCalledWith(true);
   act(() => button(text.defaults).click());
   expect(dirty).toHaveBeenLastCalledWith(false);
+});
+
+it("confirms before reload discards a failed-save draft", async () => {
+  edit(text.memory, "128");
+  api.savePrelabelResourceLimits.mockRejectedValueOnce("disk full");
+  await act(async () => button(text.save).click());
+  api.loadPrelabelResourceLimits.mockClear();
+  prompts.confirmAction.mockResolvedValueOnce(false);
+  await act(async () => button(text.retry).click());
+  expect(prompts.confirmAction).toHaveBeenCalledWith(text.discardReload);
+  expect(api.loadPrelabelResourceLimits).not.toHaveBeenCalled();
+  expect(host.querySelector<HTMLInputElement>(`input[aria-label="${text.memory}"]`)!.value).toBe(
+    "128",
+  );
+  prompts.confirmAction.mockResolvedValueOnce(true);
+  await act(async () => button(text.retry).click());
+  expect(api.loadPrelabelResourceLimits).toHaveBeenCalledOnce();
+  expect(dirty).toHaveBeenLastCalledWith(false);
+});
+it("recovers an unreadable configuration by explicitly saving defaults", async () => {
+  await act(async () => root.unmount());
+  store.setState({ limits: null, error: "" });
+  api.loadPrelabelResourceLimits.mockRejectedValue("invalid JSON");
+  root = createRoot(host);
+  await act(async () =>
+    root.render(<PrelabelResourceSettings onDirtyChange={dirty} onSavingChange={saving} />),
+  );
+  expect(host.textContent).toContain("invalid JSON");
+  expect(button(text.defaults).disabled).toBe(false);
+  act(() => button(text.defaults).click());
+  expect(button(text.save).disabled).toBe(false);
+  await act(async () => button(text.save).click());
+  expect(api.savePrelabelResourceLimits).toHaveBeenCalledWith({
+    maxMemoryMiB: 80,
+    maxCandidates: 100_000,
+  });
+  expect(store.getState().error).toBe("");
+  expect(dirty).toHaveBeenLastCalledWith(false);
+});
+
+it("allows default recovery after a reload invalidates previously loaded defaults", async () => {
+  expect(store.getState().limits).toEqual({ maxMemoryMiB: 80, maxCandidates: 100_000 });
+  expect(button(text.save).disabled).toBe(true);
+  api.loadPrelabelResourceLimits.mockRejectedValueOnce("invalid JSON");
+  await act(async () => store.getState().load());
+  expect(store.getState().limits).toBeNull();
+  expect(host.textContent).toContain("invalid JSON");
+  act(() => button(text.defaults).click());
+  expect(button(text.save).disabled).toBe(false);
+  await act(async () => button(text.save).click());
+  expect(api.savePrelabelResourceLimits).toHaveBeenCalledExactlyOnceWith({
+    maxMemoryMiB: 80,
+    maxCandidates: 100_000,
+  });
+  expect(store.getState().error).toBe("");
+  expect(dirty).toHaveBeenLastCalledWith(false);
+});
+
+it("explains invalid recovery inputs while disabling save", async () => {
+  api.loadPrelabelResourceLimits.mockRejectedValueOnce("invalid JSON");
+  await act(async () => store.getState().load());
+  expect(store.getState().limits).toBeNull();
+  edit(text.memory, "0");
+  expect(button(text.save).disabled).toBe(true);
+  expect(host.textContent).toContain(text.invalidMemory);
+  edit(text.memory, "80");
+  edit(text.candidates, "0");
+  expect(button(text.save).disabled).toBe(true);
+  expect(host.textContent).toContain(text.invalidCandidates);
 });

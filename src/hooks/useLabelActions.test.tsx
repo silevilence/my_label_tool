@@ -139,7 +139,7 @@ it("removes annotations with dangling references when confirmed", async () => {
     usedLabelIds: new Set(["a", "c"]),
     annotationsByImage: {
       p1: [annotation("s1", "a"), annotation("s2", "c")],
-      p2: [annotation("s3", "c")],
+      p2: [annotation("s3", "c"), annotation("unrelated", "missing")],
     },
     replaceAnnotations,
     setLabels,
@@ -148,9 +148,11 @@ it("removes annotations with dangling references when confirmed", async () => {
   await act(() => controls.cancelLabelChanges());
   expect(promptsApi.confirmAction).toHaveBeenCalledTimes(1);
   expect(String(promptsApi.confirmAction.mock.calls[0][0])).toContain("草稿标签");
+  expect(String(promptsApi.confirmAction.mock.calls[0][0])).toContain("2 个标注");
+  expect(String(promptsApi.confirmAction.mock.calls[0][0])).toContain("不可撤销");
   expect(replaceAnnotations).toHaveBeenCalledWith({
     p1: [annotation("s1", "a")],
-    p2: [],
+    p2: [annotation("unrelated", "missing")],
   });
   expect(setLabels).toHaveBeenCalledWith([savedA]);
   expect(setIsLabelDirty).toHaveBeenCalledWith(false);

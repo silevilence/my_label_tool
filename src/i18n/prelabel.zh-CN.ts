@@ -36,7 +36,7 @@ export const PRELABEL_ZH_CN = {
     "转换将由外部进程在本机执行（yolo CLI 或 Python ultralytics），通常需要数十秒到数分钟；失败或中途取消不会修改源 .pt 模型文件，转换完成的 ONNX 与源文件并存。",
   ptRetryConversion: "重试转换",
   fieldNameRequired: "模型名称不能为空。",
-  fieldClassNamesBlank: "类名表存在空行，请填写或删除。",
+  fieldClassNamesBlank: "类名表存在空行，请填写每个类别的名称。",
   fieldThresholdRange: "阈值需在 0 到 1 之间。",
   fieldSizePositive: "输入尺寸覆盖需为正整数。",
   fieldSourceUrlInvalid: "更新地址格式无效。",

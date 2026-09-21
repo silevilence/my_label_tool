@@ -96,6 +96,8 @@ it("closes from a backdrop click without writing selection or scope", () => {
 
 it("keeps the dialog open when clicking inside the panel", () => {
   const panel = document.querySelector('[role="dialog"]')!;
-  act(() => panel.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  act(() =>
+    panel.querySelector("input")!.dispatchEvent(new Event("pointerdown", { bubbles: true })),
+  );
   expect(close).not.toHaveBeenCalled();
 });

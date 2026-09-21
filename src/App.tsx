@@ -52,6 +52,7 @@ import { usePrelabelExecution } from "./hooks/usePrelabelExecution";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
 import { saveProjectConfig, isEditableTarget } from "./lib/app-utils";
+import { OPERATION_ZH_CN as operationText } from "./i18n/operations.zh-CN";
 import { shouldPanWithSpace } from "./lib/gestures";
 import {
   loadLabelConfigs,
@@ -159,7 +160,7 @@ function App() {
   // 画布插值等非操作警告：保留 5 秒可关闭条（既有语义）；各 hook 的操作错误统一走操作卡片。
   const { message: error, showMessage: setCanvasWarning } = useTransientMessage(5000);
   const setError = useCallback((message: string) => {
-    useOperations.getState().pushError("操作失败", message);
+    useOperations.getState().pushError(operationText.failed, message);
   }, []);
 
   const prelabelModels = usePrelabelModels(setError);
@@ -272,7 +273,7 @@ function App() {
     updateMessage,
     updateProgress,
     updateStatus,
-  } = useAppUpdate(setError);
+  } = useAppUpdate();
   const { shortcuts, updateShortcut } = useShortcutsConfig(setError);
   const {
     helpDisplaySettings,
@@ -284,7 +285,7 @@ function App() {
   } = useLabelDisplaySettings(labelById);
 
   const { message: transientMessage, showMessage } = useTransientMessage();
-  useScopeEscape();
+  useScopeEscape(gesture.state !== "idle");
   const {
     applyProjectTemplate,
     clearProjectTemplate,

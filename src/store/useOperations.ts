@@ -70,8 +70,11 @@ export const useOperations = create<Operations>((set, get) => ({
     if (input.cancel) cancellations.set(id, input.cancel);
     set((state) => ({
       operations: [
-        ...state.operations,
+        ...state.operations.filter((op) => op.label !== input.label || op.status !== "failed"),
         {
+          failCount: state.operations
+            .filter((op) => op.label === input.label && op.status === "failed")
+            .reduce((total, op) => total + (op.failCount ?? 1), 0),
           id,
           label: input.label,
           resources: asResources(input.resource),
@@ -111,7 +114,9 @@ export const useOperations = create<Operations>((set, get) => ({
           );
           const failedIds = new Set(previousFailures.map((op) => op.id));
           const failCount =
-            1 + previousFailures.reduce((count, op) => count + (op.failCount ?? 1), 0);
+            1 +
+            (current.failCount ?? 0) +
+            previousFailures.reduce((count, op) => count + (op.failCount ?? 1), 0);
           return {
             operations: state.operations
               .filter((op) => !failedIds.has(op.id))

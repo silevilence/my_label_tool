@@ -25,21 +25,24 @@ export const usePrelabelResourceStore = create<ResourceState>((set, get) => ({
       const limits = await loadPrelabelResourceLimits();
       const error = validatePrelabelResourceLimits(limits);
       if (error) throw new Error(error);
-      set({ limits });
+      set({ limits: { ...limits }, error: "" });
     } catch (error) {
-      set({ error: text.loadFailed(error) });
+      set({ limits: null, error: text.loadFailed(error) });
     } finally {
       set({ loading: false });
     }
   },
   save: async (limits) => {
-    if (get().saving || get().loading) throw new Error(text.busy);
+    if (get().saving || get().loading) {
+      set({ error: text.busy });
+      throw new Error(text.busy);
+    }
     const error = validatePrelabelResourceLimits(limits);
     if (error) throw new Error(error);
     set({ saving: true, error: "" });
     try {
       await savePrelabelResourceLimits(limits);
-      set({ limits: { ...limits } });
+      set({ limits: { ...limits }, error: "" });
     } catch (error) {
       set({ error: text.saveFailed(error) });
       throw error;

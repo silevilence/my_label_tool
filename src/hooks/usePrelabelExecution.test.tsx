@@ -70,6 +70,18 @@ it("cancels a running inference through the originally registered callback and s
     "warning",
   );
   expect(options.insertAnnotationsBatch).not.toHaveBeenCalled();
+  api.runPrelabelInference.mockRejectedValue(new Error("broken model"));
+  options.setError.mockClear();
+  await act(async () => controls.runSingle());
+  expect(options.setError.mock.calls.filter(([message]) => message)).toEqual([]);
+  expect(useOperations.getState().operations.filter((op) => op.status === "failed")).toHaveLength(
+    1,
+  );
+  await act(async () => controls.runBatch(false));
+  expect(options.setError.mock.calls.filter(([message]) => message)).toEqual([]);
+  expect(useOperations.getState().operations.filter((op) => op.status === "failed")).toHaveLength(
+    1,
+  );
   act(() => root.unmount());
   useOperations.getState().dismiss(operation.id);
 });

@@ -129,6 +129,7 @@ export function ZoomIndicator({
       <button
         className="min-w-[3.5rem] px-2 py-1 text-center font-medium leading-5 hover:bg-slate-800"
         onClick={onReset}
+        aria-label={interactionText.resetCanvas}
         title={interactionText.resetCanvas}
         type="button"
       >

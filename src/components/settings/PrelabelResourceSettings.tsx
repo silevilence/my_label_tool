@@ -1,3 +1,4 @@
+import { confirmAction } from "../../lib/prompts";
 import { useEffect, useState } from "react";
 import { usePrelabelResourceStore } from "../../store/usePrelabelResourceStore";
 import {
@@ -33,9 +34,9 @@ export function PrelabelResourceSettings({
   }, [limits]);
   const draft = { maxMemoryMiB: Number(memory), maxCandidates: Number(candidates) };
   const invalid = validatePrelabelResourceLimits(draft);
-  const dirty =
-    !!limits &&
-    (memory !== String(limits.maxMemoryMiB) || candidates !== String(limits.maxCandidates));
+  const dirty = limits
+    ? memory !== String(limits.maxMemoryMiB) || candidates !== String(limits.maxCandidates)
+    : memory !== "" || candidates !== "";
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
   useEffect(() => onSavingChange(saving), [saving, onSavingChange]);
 
@@ -68,7 +69,7 @@ export function PrelabelResourceSettings({
             min={1}
             max={MAX_PRELABEL_MEMORY_MIB}
             step={1}
-            disabled={!limits || loading || saving}
+            disabled={loading || saving}
             value={memory}
             onChange={(event) => {
               setMemory(event.target.value);
@@ -85,7 +86,7 @@ export function PrelabelResourceSettings({
             min={1}
             max={MAX_PRELABEL_CANDIDATES}
             step={1}
-            disabled={!limits || loading || saving}
+            disabled={loading || saving}
             value={candidates}
             onChange={(event) => {
               setCandidates(event.target.value);
@@ -95,7 +96,7 @@ export function PrelabelResourceSettings({
           />
         </label>
       </div>
-      {limits && invalid && (
+      {!loading && invalid && (
         <p role="alert" className="mt-2 text-xs text-red-300">
           {invalid}
         </p>
@@ -109,7 +110,7 @@ export function PrelabelResourceSettings({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          disabled={!limits || loading || saving || !!invalid || !dirty}
+          disabled={loading || saving || !!invalid || !dirty}
           onClick={() => void submit()}
           className="rounded bg-sky-600 px-3 py-1.5 text-xs text-white disabled:opacity-40"
         >
@@ -117,7 +118,7 @@ export function PrelabelResourceSettings({
         </button>
         <button
           type="button"
-          disabled={!limits || loading || saving}
+          disabled={loading || saving}
           onClick={() => {
             setMemory(String(DEFAULT_PRELABEL_RESOURCE_LIMITS.maxMemoryMiB));
             setCandidates(String(DEFAULT_PRELABEL_RESOURCE_LIMITS.maxCandidates));
@@ -131,7 +132,11 @@ export function PrelabelResourceSettings({
           <button
             type="button"
             disabled={loading || saving}
-            onClick={() => void load()}
+            onClick={async () => {
+              if (dirty && !(await confirmAction(text.discardReload))) return;
+              setSaved(false);
+              await load();
+            }}
             className="text-xs text-sky-300"
           >
             {text.retry}

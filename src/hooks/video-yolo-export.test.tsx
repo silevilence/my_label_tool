@@ -1,3 +1,6 @@
+import type { PluginExportFormatDescriptor } from "../types/plugin";
+import { OPERATION_ZH_CN as operationText } from "../i18n/operations.zh-CN";
+import { PROJECT_ZH_CN as projectText } from "../i18n/project.zh-CN";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -5,6 +8,8 @@ import { useProjectActions } from "./useProjectActions";
 import { projectVideos, mergeProjectImages, projectFrameIndices } from "../lib/project-media";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import {
+  runPluginExport,
+  cancelPluginExport,
   exportTextFiles,
   exportAnnotationsJson,
   selectExportFolder,
@@ -21,6 +26,8 @@ import { DEFAULT_PROJECT_SETTINGS } from "../lib/defaults/video";
 import { projectConfigTemplate, type ProjectConfig } from "../lib/importers";
 vi.mock("../lib/tauri-api", async (original) => ({
   ...(await original<typeof import("../lib/tauri-api")>()),
+  runPluginExport: vi.fn(),
+  cancelPluginExport: vi.fn(),
   exportTextFiles: vi.fn(),
   exportAnnotationsJson: vi.fn(),
   selectExportFolder: vi.fn(),
@@ -59,6 +66,21 @@ const videos = projectVideos(
 );
 const images = mergeProjectImages([{ path: "C:/project/photo.png", name: "photo.png" }], videos);
 let actions: ReturnType<typeof useProjectActions>;
+const pluginFormat: PluginExportFormatDescriptor = {
+  selectionId: "plugin:dev.test.export:dev.test.format",
+  pluginId: "dev.test.export",
+  pluginName: "Test exporter",
+  format: {
+    id: "dev.test.format",
+    displayName: "Test format",
+    extensions: ["json"],
+    multiFile: true,
+  },
+  enabled: true,
+  disabledReason: null,
+  supportsProgress: true,
+  supportsCancel: true,
+};
 const existingConfig: ProjectConfig = {
   schemaVersion: 1,
   format: "json",
@@ -97,7 +119,7 @@ function Harness({
     activeProjectConfigPath: activePath,
     selectedExportFormatId: selected,
     customMappingText: "{}",
-    pluginExportFormats: [],
+    pluginExportFormats: [pluginFormat],
     refreshPluginExtensions: async () => {},
     applyProjectTemplate: vi.fn(),
     clearProjectTemplate: vi.fn(),
@@ -122,7 +144,7 @@ function Harness({
         disabled={false}
         isSaving={false}
         selectedFormatId={selected}
-        pluginFormats={[]}
+        pluginFormats={[pluginFormat]}
         exportError={actions.exportError}
         pluginExportProgress={null}
         canSaveProject
@@ -349,4 +371,57 @@ it("saves only classes for an unprepared-video project and reports zero exported
     "C:/project/my-label-tool.project.json",
     expect.objectContaining({ format: "yolo" }),
   );
+});
+
+it("retries a failed save at its existing path without opening an export chooser", async () => {
+  await act(async () => root.render(<Harness existing />));
+  vi.mocked(exportAnnotationsJson).mockRejectedValueOnce("disk full");
+  await act(async () => actions.saveProjectExport());
+  const retry = [...container.querySelectorAll("button")].find(
+    (button) => button.textContent === projectText.retrySave,
+  );
+  expect(retry).toBeDefined();
+  vi.mocked(exportAnnotationsJson).mockClear();
+  await act(async () => retry!.click());
+  expect(exportAnnotationsJson).toHaveBeenCalledWith(
+    existingConfig.annotationPath,
+    expect.anything(),
+  );
+  expect(selectExportFolder).not.toHaveBeenCalled();
+  expect(useOperations.getState().operations.filter((op) => op.status === "failed")).toHaveLength(
+    0,
+  );
+});
+it("settles an explicitly cancelled plugin export without a failure or retry", async () => {
+  let reject!: (reason: string) => void;
+  vi.mocked(runPluginExport).mockReturnValue(
+    new Promise((_, fail) => {
+      reject = fail;
+    }),
+  );
+  vi.mocked(cancelPluginExport).mockImplementation(async (exportId) => ({ found: true, exportId }));
+  await act(async () => root.render(<Harness format={pluginFormat.selectionId} />));
+  let run!: Promise<boolean>;
+  await act(async () => {
+    run = actions.exportSelectedFormat();
+  });
+  await act(async () => actions.cancelActivePluginExport());
+  expect(cancelPluginExport).toHaveBeenCalledOnce();
+  await act(async () => {
+    reject("[CANCELLED] 插件调用已取消");
+    await run;
+  });
+  expect(actions.exportError).toBeNull();
+  expect(useOperations.getState().operations).toMatchObject([
+    { status: "completed", kind: "warning", message: operationText.cancelled },
+  ]);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("does not treat an unrelated export error mentioning cancellation as a cancelled operation", async () => {
+  vi.mocked(runPluginExport).mockRejectedValue("[INTERNAL_ERROR] CANCELLED handler failed");
+  await act(async () => root.render(<Harness format={pluginFormat.selectionId} />));
+  await act(async () => actions.exportSelectedFormat());
+  expect(actions.exportError).toBe("[INTERNAL_ERROR] CANCELLED handler failed");
+  expect(useOperations.getState().operations).toMatchObject([{ status: "failed" }]);
 });

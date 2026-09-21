@@ -218,3 +218,39 @@ it("excludes hidden controls and collapsed details from the focus cycle", () => 
   key("Tab");
   expect(document.activeElement?.textContent).toBe("visible");
 });
+
+it.each([false, true])("gates outside dismissal for anchored=%s", (anchored) => {
+  const close = vi.fn();
+  const render = (allowed: boolean | (() => boolean)) =>
+    act(() =>
+      root.render(
+        <Overlay
+          label="gated"
+          onClose={close}
+          canDismiss={allowed}
+          closeOnBackdrop
+          kind={anchored ? "light" : "blocking"}
+          anchor={anchored ? { x: 10, y: 10 } : undefined}
+        >
+          <button>
+            <span>inside</span>
+          </button>
+        </Overlay>,
+      ),
+    );
+  render(false);
+  act(() => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  expect(close).not.toHaveBeenCalled();
+  render(() => false);
+  act(() => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  expect(close).not.toHaveBeenCalled();
+  render(() => true);
+  act(() =>
+    document
+      .querySelector('[role="dialog"] span')!
+      .dispatchEvent(new Event("pointerdown", { bubbles: true })),
+  );
+  expect(close).not.toHaveBeenCalled();
+  act(() => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  expect(close).toHaveBeenCalledOnce();
+});

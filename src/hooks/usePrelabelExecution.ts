@@ -249,7 +249,6 @@ export function usePrelabelExecution({
       });
     } catch (reason) {
       operation.current?.fail(text.inferenceFailed(reason));
-      setError(text.inferenceFailed(reason));
       setProgress({ ...IDLE_PROGRESS, message: text.inferenceStopped });
     } finally {
       runningRef.current = false;
@@ -377,7 +376,6 @@ export function usePrelabelExecution({
         return;
       }
       operation.current?.fail(text.inferenceFailed(reason));
-      setError(text.inferenceFailed(reason));
       setProgress({
         operation: "batch",
         isRunning: false,
@@ -537,7 +535,6 @@ export function usePrelabelExecution({
       if (operation.current === owner && runningRef.current) {
         cancelRequestedRef.current = false;
         setProgress((current) => ({ ...current, cancelRequested: false }));
-        setError(operationId ? text.pluginCancelFailed(reason) : text.cancelFailed(reason));
       }
       throw reason;
     }

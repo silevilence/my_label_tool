@@ -7,6 +7,7 @@ export const OPERATION_ZH_CN = {
   save: "保存标注",
   export: "导出标注",
   prelabel: "预打标",
+  prelabelSettings: "预打标模型设置",
   video: "视频抽帧",
   deleteImage: "删除图片",
   model: "模型下载",

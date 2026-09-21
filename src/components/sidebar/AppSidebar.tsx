@@ -1,3 +1,4 @@
+import { PROJECT_ZH_CN as projectText } from "../../i18n/project.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
 import { useState } from "react";
@@ -250,7 +251,7 @@ export function AppSidebar({
                         className="w-full cursor-not-allowed rounded px-3 py-2 text-left text-sm text-slate-500"
                         disabled
                         key={format}
-                        title="外部项目创建暂未实现"
+                        title={projectText.externalProjectUnavailable}
                       >
                         从 {format} 创建项目（暂未实现）
                       </button>
@@ -481,17 +482,20 @@ export function AppSidebar({
           </div>
           <div className="mt-2 flex items-center gap-2">
             <div
-              aria-label="标注进度"
+              aria-label={projectText.annotationProgress}
               aria-valuemax={100}
               aria-valuemin={0}
               aria-valuenow={Math.round(progressPercent)}
-              aria-valuetext={`已标注 ${annotatedCount} / ${images.length}`}
+              aria-valuetext={projectText.annotationProgressValue(annotatedCount, images.length)}
               className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800"
               role="progressbar"
             >
               <div className="h-full bg-sky-500" style={{ width: `${progressPercent}%` }} />
             </div>
-            <span className="w-16 text-right text-xs text-slate-400" title="已标注 / 素材总数">
+            <span
+              className="w-16 text-right text-xs text-slate-400"
+              title={projectText.annotationProgressHint}
+            >
               {annotatedCount}/{images.length}
             </span>
           </div>

@@ -1,4 +1,5 @@
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/defaults/video";
+import { SHORTCUT_ZH_CN as shortcutText } from "../i18n/shortcuts.zh-CN";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,7 +51,9 @@ vi.mock("../lib/tauri-api", async (importOriginal) => ({
   loadLabelConfigs: vi.fn().mockResolvedValue([]),
   loadLabelTemplates: vi.fn().mockResolvedValue([]),
   loadShortcuts: vi.fn().mockResolvedValue({}),
-  loadPrelabelResourceLimits: vi.fn().mockResolvedValue({ maxMemoryMiB: 80, maxCandidates: 100_000 }),
+  loadPrelabelResourceLimits: vi
+    .fn()
+    .mockResolvedValue({ maxMemoryMiB: 80, maxCandidates: 100_000 }),
   saveShortcuts: vi.fn().mockResolvedValue(undefined),
   loadPluginLabelPresets: vi.fn().mockResolvedValue({ presets: [], warning: null }),
   loadPluginExportFormats: vi.fn().mockResolvedValue({ formats: [], warning: null }),
@@ -524,15 +527,21 @@ describe("image deletion entry wiring", () => {
     const record =
       description.parentElement?.parentElement?.querySelector<HTMLButtonElement>("button");
     expect(record).toBeTruthy();
-    const recordError = () =>
-      document.body.querySelector('[role="alert"]')?.textContent ?? "";
+    const recordError = () => document.body.querySelector('[role="alert"]')?.textContent ?? "";
     await act(async () => record?.click());
     await key("Delete");
     expect(recordError()).toContain("同时绑定了");
     await key("1");
-    expect(recordError().length).toBeGreaterThan(0);
+    expect(recordError()).toBe(
+      shortcutText.conflict("1", [text.deleteCurrentImage, shortcutText.labelBinding("1")]),
+    );
     await key("ArrowLeft");
-    expect(recordError().length).toBeGreaterThan(0);
+    expect(recordError()).toBe(
+      shortcutText.conflict("ArrowLeft", [
+        text.deleteCurrentImage,
+        shortcutText.previousImage.label,
+      ]),
+    );
     expect(api.saveShortcuts).not.toHaveBeenCalled();
     await key("F9");
     expect(recordError()).toBe("");
@@ -541,8 +550,12 @@ describe("image deletion entry wiring", () => {
       'button[aria-label="恢复默认快捷键：删除当前图片"]',
     )!;
     await act(async () => restore.click());
-    expect(api.saveShortcuts).toHaveBeenLastCalledWith(expect.objectContaining({ deleteImage: "F8" }));
-    expect(document.body.querySelector('button[aria-label="恢复默认快捷键：删除当前图片"]')).toBeNull();
+    expect(api.saveShortcuts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ deleteImage: "F8" }),
+    );
+    expect(
+      document.body.querySelector('button[aria-label="恢复默认快捷键：删除当前图片"]'),
+    ).toBeNull();
     await click("关闭");
     await key("F8");
     // 恢复默认后 F8 重新绑定到删除动作，应再次打开确认对话框。

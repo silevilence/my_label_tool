@@ -1,3 +1,4 @@
+import { CANVAS_ZH_CN, INTERACTION_MODE_ZH_CN } from "../../i18n/canvas.zh-CN";
 import type { LabelConfig } from "../../types/annotation";
 
 export interface ImageLayout {
@@ -18,7 +19,7 @@ export interface DrawingRect {
 // 标注引用的标签不存在时的渲染哨兵：警示色 + 可见名称，替代原先静默套用第一个标签。
 export const MISSING_ANNOTATION_LABEL: LabelConfig = {
   id: "",
-  name: "标签缺失",
+  name: CANVAS_ZH_CN.missingLabel,
   color: "#f59e0b",
   shapeType: "any",
 };
@@ -40,36 +41,5 @@ export interface PanState {
 
 export type InteractionMode = "default" | "select" | "annotate";
 
-export const INTERACTION_MODE_HELP: Record<InteractionMode, { title: string; tips: string[] }> = {
-  default: {
-    title: "默认模式",
-    tips: [
-      "左键：点框选择，空白处绘制",
-      "Shift：强制选择",
-      "Ctrl：强制标注",
-      "空格+左键拖拽：平移画布",
-      "中键：拖拽平移，单击取消草稿",
-      "右键：打开菜单",
-      "滚轮：缩放（图片内外均可）",
-    ],
-  },
-  select: {
-    title: "选择模式（Shift）",
-    tips: [
-      "左键：选择/取消选择",
-      "右键：打开菜单",
-      "滚轮：循环高亮重叠框",
-      "松开 Shift：返回默认模式",
-    ],
-  },
-  annotate: {
-    title: "标注模式（Ctrl）",
-    tips: [
-      "左键：绘制新框",
-      "Ctrl+右键拖拽：平移画布",
-      "空格+左键拖拽：平移画布",
-      "滚轮：缩放",
-      "松开 Ctrl：返回默认模式",
-    ],
-  },
-};
+export const INTERACTION_MODE_HELP: Record<InteractionMode, { title: string; tips: string[] }> =
+  INTERACTION_MODE_ZH_CN;

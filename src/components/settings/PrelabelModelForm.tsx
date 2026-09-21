@@ -50,16 +50,19 @@ export function ModelImportForm({
         ? text.fieldThresholdRange
         : "",
     iou:
-      !Number.isFinite(model.iouThreshold) ||
-      model.iouThreshold < 0 ||
-      model.iouThreshold > 1
+      !Number.isFinite(model.iouThreshold) || model.iouThreshold < 0 || model.iouThreshold > 1
         ? text.fieldThresholdRange
         : "",
-    inputSize: !(model.inputSizeOverride ?? [model.inputWidth, model.inputHeight]).every(
-      (dimension) => Number.isSafeInteger(dimension) && dimension > 0,
-    )
-      ? text.fieldSizePositive
-      : "",
+    inputWidth:
+      Number.isSafeInteger(model.inputSizeOverride?.[0] ?? model.inputWidth) &&
+      (model.inputSizeOverride?.[0] ?? model.inputWidth) > 0
+        ? ""
+        : text.fieldSizePositive,
+    inputHeight:
+      Number.isSafeInteger(model.inputSizeOverride?.[1] ?? model.inputHeight) &&
+      (model.inputSizeOverride?.[1] ?? model.inputHeight) > 0
+        ? ""
+        : text.fieldSizePositive,
     sourceUrl:
       Boolean(model.sourceUrl?.trim()) && !isValidModelSourceUrl(model.sourceUrl ?? "")
         ? text.fieldSourceUrlInvalid
@@ -75,6 +78,7 @@ export function ModelImportForm({
       : 0;
   return (
     <form
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
         if (!invalid && !disabled) onSubmit();
@@ -104,7 +108,11 @@ export function ModelImportForm({
             {text.modelSummary(model.classCount, model.inputWidth, model.inputHeight)}
           </div>
         </Field>
-        <Field error={fieldErrors.confidence} errorId="model-confidence-error" label={text.confidenceThreshold}>
+        <Field
+          error={fieldErrors.confidence}
+          errorId="model-confidence-error"
+          label={text.confidenceThreshold}
+        >
           <input
             aria-describedby={fieldErrors.confidence ? "model-confidence-error" : undefined}
             aria-invalid={Boolean(fieldErrors.confidence) || undefined}
@@ -148,10 +156,14 @@ export function ModelImportForm({
         {model.device === "gpu" && gpuAvailable === false && (
           <p className="text-xs text-amber-300">{text.deviceGpuUnavailable}</p>
         )}
-        <Field error={fieldErrors.inputSize} errorId="model-width-error" label={text.inputWidthOverride}>
+        <Field
+          error={fieldErrors.inputWidth}
+          errorId="model-width-error"
+          label={text.inputWidthOverride}
+        >
           <input
-            aria-describedby={fieldErrors.inputSize ? "model-width-error" : undefined}
-            aria-invalid={Boolean(fieldErrors.inputSize) || undefined}
+            aria-describedby={fieldErrors.inputWidth ? "model-width-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.inputWidth) || undefined}
             className={inputClass}
             min="1"
             placeholder={model.inputWidth ? String(model.inputWidth) : text.dynamicDimension}
@@ -165,10 +177,14 @@ export function ModelImportForm({
             }
           />
         </Field>
-        <Field error={fieldErrors.inputSize} errorId="model-height-error" label={text.inputHeightOverride}>
+        <Field
+          error={fieldErrors.inputHeight}
+          errorId="model-height-error"
+          label={text.inputHeightOverride}
+        >
           <input
-            aria-describedby={fieldErrors.inputSize ? "model-height-error" : undefined}
-            aria-invalid={Boolean(fieldErrors.inputSize) || undefined}
+            aria-describedby={fieldErrors.inputHeight ? "model-height-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.inputHeight) || undefined}
             className={inputClass}
             min="1"
             placeholder={model.inputHeight ? String(model.inputHeight) : text.dynamicDimension}
@@ -215,7 +231,11 @@ export function ModelImportForm({
       )}
       {mode === "edit" && update && (
         <div className="mt-5 rounded border border-slate-700 bg-slate-950/60 p-3">
-          <Field error={fieldErrors.sourceUrl} errorId="model-source-url-error" label={text.sourceUrl}>
+          <Field
+            error={fieldErrors.sourceUrl}
+            errorId="model-source-url-error"
+            label={text.sourceUrl}
+          >
             <div className="flex gap-2">
               <input
                 aria-describedby={fieldErrors.sourceUrl ? "model-source-url-error" : undefined}

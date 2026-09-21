@@ -1,3 +1,5 @@
+import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
+import { SHORTCUT_ZH_CN as shortcutText } from "../../i18n/shortcuts.zh-CN";
 import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import type { KonvaEventObject } from "konva/lib/Node";
@@ -188,17 +190,20 @@ it("renders fit state or percentage and routes indicator actions", () => {
     scale: null,
   };
   act(() => root.render(<ZoomIndicator {...props} />));
-  expect(document.body.textContent).toContain("适应");
-  const buttons = () => Array.from(host.querySelectorAll("button"));
-  act(() => buttons()[1]!.click());
+  expect(document.body.textContent).toContain(interactionText.fitCanvas);
+  const button = (name: string) =>
+    host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!;
+  act(() => button(interactionText.resetCanvas).click());
   expect(onReset).toHaveBeenCalledTimes(1);
   act(() => root.render(<ZoomIndicator {...props} fit={false} scale={1.27} />));
   expect(document.body.textContent).toContain("127%");
-  expect(document.body.textContent).not.toContain("适应");
-  act(() => buttons()[0]!.click());
+  expect(document.body.textContent).not.toContain(interactionText.fitCanvas);
+  act(() => button(shortcutText.zoomOut.label).click());
   expect(onZoomOut).toHaveBeenCalledTimes(1);
-  act(() => buttons()[2]!.click());
+  act(() => button(shortcutText.zoomIn.label).click());
   expect(onZoomIn).toHaveBeenCalledTimes(1);
+  act(() => root.render(<ZoomIndicator {...props} fit={false} scale={null} />));
+  expect(button(interactionText.resetCanvas).textContent).toBe(interactionText.fitCanvas);
   act(() => root.unmount());
   host.remove();
 });

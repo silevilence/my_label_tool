@@ -149,7 +149,7 @@ export function ClassMappingRow({
   useEffect(() => {
     setSelectedLabelId(mapping.labelId ?? labels[0]?.id ?? "");
     setPendingSelection(false);
-  }, [labels, mapping.labelId]);
+  }, [labels, mapping.labelId, mapping.excluded]);
 
   const status =
     mapping.source === "auto-exact"
@@ -187,7 +187,7 @@ export function ClassMappingRow({
           value={selectedLabelId}
           onChange={(event) => {
             setSelectedLabelId(event.target.value);
-            setPendingSelection(true);
+            setPendingSelection(event.target.value !== mapping.labelId);
           }}
         >
           {labels.map((label) => (

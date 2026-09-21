@@ -141,3 +141,29 @@ it("routes matching failures into one inline slot while keeping aggregation and 
   await act(async () => root.unmount());
   host.remove();
 });
+
+it("replaces old failure cards on retry and does not label progress or success with a failure count", () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  useOperations.setState({ operations: [] });
+  const host = document.createElement("div"),
+    root = createRoot(host);
+  act(() => root.render(<OperationStatus />));
+  const registry = useOperations.getState();
+  act(() => {
+    registry.begin({ label: "retry", resource: "export-dir" }).fail("first");
+    registry.begin({ label: "retry", resource: "export-dir" }).fail("second");
+  });
+  expect(host.textContent).toContain("共 2 次");
+  let retry!: ReturnType<typeof registry.begin>;
+  act(() => {
+    retry = registry.begin({ label: "retry", resource: "export-dir" });
+    retry.progress(50, "running");
+  });
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(host.textContent).toContain("running");
+  expect(host.textContent).not.toContain("共 2 次");
+  act(() => retry.complete("success"));
+  expect(host.textContent).toContain("success");
+  expect(host.textContent).not.toContain("共 2 次");
+  act(() => root.unmount());
+});

@@ -1,5 +1,6 @@
 import { useEffect, type MutableRefObject } from "react";
 import type { PanState } from "../components/canvas/types";
+import { PAN_MOVEMENT_THRESHOLD_PX } from "../lib/gestures";
 
 /** Mouse release outside the canvas and window focus loss must finish the same pan. */
 export function usePanTermination(
@@ -16,7 +17,14 @@ export function usePanTermination(
     function stopPanning(event: Event) {
       const pan = panStateRef.current;
       panStateRef.current = null;
-      if (pan) endPan(event.type === "mouseup" && pan.button === 1 && !pan.moved);
+      if (pan) {
+        const moved =
+          pan.moved ||
+          (event instanceof MouseEvent &&
+            Math.hypot(event.clientX - pan.startX, event.clientY - pan.startY) >=
+              PAN_MOVEMENT_THRESHOLD_PX);
+        endPan(event.type === "mouseup" && pan.button === 1 && !moved);
+      }
       window.setTimeout(() => {
         suppressContextMenuRef.current = false;
       }, 250);

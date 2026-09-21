@@ -57,11 +57,12 @@ it("marks danger confirms and resolves escape-style close as false", async () =>
   });
   const confirmButton = button("删除");
   expect(confirmButton.className).toContain("bg-red-600");
-  act(() => confirmButton.click());
-  await expect(pending).resolves.toBe(true);
+  expect(document.activeElement).toBe(confirmButton);
+  act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  await expect(pending).resolves.toBe(false);
 });
 
-it("submits trimmed prompt text via button and Enter, null on cancel", async () => {
+it("submits trimmed prompt text via Enter and returns null on cancel click", async () => {
   let pending!: Promise<string | null>;
   act(() => {
     pending = promptText("新模板名称", "  草稿  ");
@@ -71,7 +72,7 @@ it("submits trimmed prompt text via button and Enter, null on cancel", async () 
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
       input,
-      "我的模板",
+      "  我的模板  ",
     );
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
@@ -116,4 +117,45 @@ it("resets the input for queued naming requests with the same title", async () =
   expect(document.body.querySelector<HTMLInputElement>("input")!.value).toBe("第二个");
   act(() => button("确定").click());
   await expect(second).resolves.toBe("第二个");
+});
+
+it("ignores IME Enter and settles a naming prompt with Escape", async () => {
+  let pending!: Promise<string | null>;
+  act(() => {
+    pending = promptText("名称", "拼音");
+  });
+  const input = document.body.querySelector("input")!;
+  act(() =>
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        isComposing: true,
+      }),
+    ),
+  );
+  expect(usePromptStore.getState().promptQueue).toHaveLength(1);
+  act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  await expect(pending).resolves.toBeNull();
+});
+it("settles prompts even when Promise.withResolvers is absent", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(Promise, "withResolvers");
+  Object.defineProperty(Promise, "withResolvers", { configurable: true, value: undefined });
+  try {
+    let confirm!: Promise<boolean>;
+    act(() => {
+      confirm = confirmAction("兼容性确认");
+    });
+    act(() => button("确定").click());
+    await expect(confirm).resolves.toBe(true);
+    let prompt!: Promise<string | null>;
+    act(() => {
+      prompt = promptText("兼容性输入", "test");
+    });
+    act(() => button("确定").click());
+    await expect(prompt).resolves.toBe("test");
+  } finally {
+    if (descriptor) Object.defineProperty(Promise, "withResolvers", descriptor);
+    else Reflect.deleteProperty(Promise, "withResolvers");
+  }
 });

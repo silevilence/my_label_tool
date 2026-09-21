@@ -1,7 +1,9 @@
-import { act } from "react";
+import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
+import { projectConfigTemplate, type ProjectConfig } from "../../lib/importers";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { ClassMappingRow } from "./PrelabelClassMapping";
+import { ClassMappingPanel, ClassMappingRow } from "./PrelabelClassMapping";
 import type { LabelConfig } from "../../types/annotation";
 import type { ResolvedPrelabelClassMapping } from "../../types/prelabel";
 
@@ -48,7 +50,7 @@ it("flags an unbound selection instead of silently resetting it", () => {
   host.remove();
 });
 
-it("clears the pending flag after binding commits the selection", async () => {
+it("clears the pending flag when the parent supplies a saved binding", async () => {
   const { root, host, props } = renderRow();
   const select = document.body.querySelector<HTMLSelectElement>('select[aria-label="选择标签"]')!;
   act(() => {
@@ -74,6 +76,80 @@ it("clears the pending flag after binding commits the selection", async () => {
     );
   });
   expect(document.body.textContent).not.toContain("未绑定，点击绑定生效");
+  act(() => root.unmount());
+  host.remove();
+});
+
+it("persists binding through the panel and clears pending when reselecting the saved label", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const persist = vi.fn();
+  function Harness() {
+    const [config, setConfig] = useState<ProjectConfig>({
+      schemaVersion: 1,
+      format: "json",
+      annotationPath: "a.json",
+      imageFolder: "p",
+      exportedAt: "",
+      labels,
+      template: projectConfigTemplate(),
+      exportOptions: { format: "json" },
+    });
+    return (
+      <ClassMappingPanel
+        activeProjectConfig={config}
+        labels={labels}
+        classNames={["person"]}
+        sourceId="model"
+        disabled={false}
+        isLabelDirty={false}
+        onSave={async (mappings) => {
+          persist(mappings);
+          setConfig({ ...config, prelabelMappings: { model: mappings } });
+        }}
+      />
+    );
+  }
+  act(() => root.render(<Harness />));
+  const select = host.querySelector("select")!;
+  const choose = (value: string) =>
+    act(() => {
+      select.value = value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  choose("l2");
+  expect(host.textContent).toContain(text.pendingSelection);
+  await act(async () =>
+    [...host.querySelectorAll("button")]
+      .find((button) => button.textContent === text.excludeClass)!
+      .click(),
+  );
+  expect(persist).toHaveBeenLastCalledWith([
+    { classIndex: 0, className: "person", action: "exclude" },
+  ]);
+  expect(host.textContent).not.toContain(text.pendingSelection);
+  expect(host.textContent).toContain(text.mappingExcluded);
+  expect(select.value).toBe("l1");
+  persist.mockClear();
+  choose("l2");
+  expect(host.textContent).toContain(text.pendingSelection);
+  await act(async () =>
+    [...host.querySelectorAll("button")]
+      .find((button) => button.textContent === text.bindExisting)!
+      .click(),
+  );
+  expect(persist).toHaveBeenCalledWith([
+    { classIndex: 0, className: "person", action: "bind", labelId: "l2" },
+  ]);
+  expect(host.textContent).not.toContain(text.pendingSelection);
+  expect(host.textContent).toContain(text.mappingExplicit);
+  choose("l1");
+  expect(host.textContent).toContain(text.pendingSelection);
+  choose("l2");
+  expect(host.textContent).not.toContain(text.pendingSelection);
+  expect(persist).toHaveBeenCalledOnce();
   act(() => root.unmount());
   host.remove();
 });

@@ -142,3 +142,29 @@ it("treats the backend's rejected extraction after cancellation as a warning, no
   });
   expect(useOperations.getState().canStart("video-frames")).toBe(true);
 });
+
+it("counts failed videos as processed in the running operation card", async () => {
+  let finish!: (value: { folderPath: string; video: { frames: [] } }) => void;
+  api.importVideo.mockRejectedValueOnce("broken video").mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  let run!: Promise<void>;
+  await act(async () => {
+    run = controls.startBatch(1, "project", ["bad.mp4", "good.mp4"]);
+  });
+  expect(controls.batch).toMatchObject({
+    completed: 0,
+    total: 2,
+    failures: [{ source: "bad.mp4" }],
+  });
+  expect(useOperations.getState().operations.find((op) => op.status === "running")?.percent).toBe(
+    50,
+  );
+  await act(async () => {
+    finish({ folderPath: "project/good", video: { frames: [] } });
+    await run;
+  });
+  expect(useOperations.getState().operations.slice(-1)[0]?.percent).toBe(100);
+});

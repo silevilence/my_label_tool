@@ -84,6 +84,30 @@ mod tests {
 
     #[test]
     fn converts_memory_for_both_copies_and_rejects_invalid_limits() {
+        assert_eq!(MAX_SAFE_INTEGER / MIB, 8_589_934_591);
+        assert_eq!(
+            PrelabelResourceLimits {
+                max_memory_mib: 1,
+                max_candidates: 9_007_199_254_740_991,
+            }
+            .max_output_elements()
+            .unwrap(),
+            131_072
+        );
+        let maximum = PrelabelResourceLimits {
+            max_memory_mib: 8_589_934_591,
+            max_candidates: 1,
+        };
+        assert_eq!(
+            maximum.max_output_elements().unwrap(),
+            1_125_899_906_711_552
+        );
+        assert!(PrelabelResourceLimits {
+            max_memory_mib: 8_589_934_592,
+            ..maximum
+        }
+        .max_output_elements()
+        .is_err());
         assert_eq!(
             PrelabelResourceLimits::default()
                 .max_output_elements()
@@ -104,7 +128,7 @@ mod tests {
                 ..Default::default()
             },
             PrelabelResourceLimits {
-                max_candidates: MAX_SAFE_INTEGER + 1,
+                max_candidates: 9_007_199_254_740_992,
                 ..Default::default()
             },
         ] {
@@ -141,6 +165,8 @@ mod tests {
         assert_eq!(read(&path).unwrap(), PrelabelResourceLimits::default());
         fs::write(&path, "{broken").unwrap();
         assert!(read(&path).is_err());
+        write(&path, PrelabelResourceLimits::default()).unwrap();
+        assert_eq!(read(&path).unwrap(), PrelabelResourceLimits::default());
         fs::remove_file(&path).unwrap();
         fs::remove_dir(&dir).unwrap();
     }
