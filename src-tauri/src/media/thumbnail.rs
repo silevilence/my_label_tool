@@ -25,7 +25,7 @@ pub(crate) fn cache_path_for(image_path: &Path, cache_dir: &Path) -> Result<Path
     let normalized = fs::canonicalize(image_path).unwrap_or_else(|_| image_path.to_path_buf());
     let mut hasher = Sha256::new();
     hasher.update(normalized.to_string_lossy().as_bytes());
-    hasher.update([b'|']);
+    hasher.update(b"|");
     hasher.update(since_epoch.as_secs().to_le_bytes());
     hasher.update(since_epoch.subsec_nanos().to_le_bytes());
     hasher.update(metadata.len().to_le_bytes());
