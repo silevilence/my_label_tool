@@ -56,7 +56,39 @@ pub const PRELABEL_OUTPUT_SIZE_INVALID: &str = "模型输出张量尺寸过大�
 pub const PRELABEL_BATCH_SIZE_INVALID: &str = "预打标模型输出仅支持 batch=1";
 pub const PRELABEL_OUTPUT_FIXED_SHAPE_REQUIRED: &str =
     "预打标模型输出必须是 batch=1 的固定形状张量，以确保资源占用可控";
-pub const PRELABEL_OUTPUT_TOO_LARGE: &str = "预打标模型输出规模过大，已拒绝加载以避免内存耗尽";
+pub const PRELABEL_OUTPUT_SIZE_OVERFLOW: &str =
+    "预打标模型输出尺寸计算溢出，无法安全计算资源占用，请检查 ONNX 输出形状并重新导出模型";
+pub const PRELABEL_RESOURCE_LIMITS_INVALID: &str =
+    "预打标资源上限必须为正整数，内存上限不得超过 8589934591 MiB，候选框上限不得超过 9007199254740991";
+
+pub fn prelabel_resource_settings_failed(error: impl std::fmt::Display) -> String {
+    format!("预打标资源设置读写失败：{error}")
+}
+
+pub fn prelabel_output_resource_limit(
+    elements: usize,
+    element_limit: usize,
+    candidates: Option<usize>,
+    candidate_limit: usize,
+) -> String {
+    let mut reasons = Vec::new();
+    if elements > element_limit {
+        let output_mib = elements as f64 * 8.0 / (1024.0 * 1024.0);
+        let memory_limit_mib = element_limit as f64 * 8.0 / (1024.0 * 1024.0);
+        reasons.push(format!(
+            "输出元素数量 {elements}，超过上限 {element_limit}（输出及副本约 {output_mib:.1} MiB，内存预算 {memory_limit_mib:.1} MiB，不含模型中间层）"
+        ));
+    }
+    if let Some(candidates) = candidates.filter(|count| *count > candidate_limit) {
+        reasons.push(format!(
+            "候选框数量 {candidates}，超过上限 {candidate_limit}（置信度过滤前）"
+        ));
+    }
+    format!(
+        "预打标模型输出规模过大：{}。已超过设置中的预打标资源上限，并非检测到内存不足；可在设置中调整上限，或降低输入尺寸重新导出 ONNX 模型",
+        reasons.join("；")
+    )
+}
 pub const PRELABEL_SOURCE_IMAGE_TOO_LARGE: &str =
     "源图片解码为 RGB 后超过 128 MiB，已拒绝处理以避免内存耗尽";
 pub const PRELABEL_ENCODED_IMAGE_TOO_LARGE: &str =

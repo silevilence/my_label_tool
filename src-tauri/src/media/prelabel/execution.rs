@@ -13,10 +13,11 @@ use crate::{
     media::prelabel::{
         inference::PrelabelSession,
         pipeline::Detection,
+        resource_limits,
         runtime_download::{ensure_runtime_available, runtime_directory},
         task::{CancelHandle, CancellationResult, CancellationToken, TaskRegistry},
     },
-    models::prelabel::PrelabelModelConfig,
+    models::prelabel::{PrelabelModelConfig, PrelabelResourceLimits},
 };
 
 #[derive(Debug, Serialize)]
@@ -59,6 +60,7 @@ pub struct PrelabelInferenceOutcome {
 #[derive(PartialEq)]
 struct SessionCacheKey {
     model: PrelabelModelConfig,
+    limits: PrelabelResourceLimits,
     file_length: u64,
     modified_at: SystemTime,
 }
@@ -87,9 +89,10 @@ pub async fn run_prelabel_inference_task(
     image_paths: Vec<PathBuf>,
     on_progress: Channel<PrelabelProgressEvent>,
 ) -> Result<PrelabelInferenceOutcome, String> {
+    let limits = resource_limits::load(&app)?;
+    let runtime_directory = runtime_directory(&app)?;
     let token = Arc::new(CancellationToken::new());
     prelabel_tasks().register(&task_id, Arc::clone(&token))?;
-    let runtime_directory = runtime_directory(&app)?;
     let for_task = Arc::clone(&token);
     let outcome = tauri::async_runtime::spawn_blocking(move || {
         run_prelabel_inference_blocking(
@@ -100,6 +103,7 @@ pub async fn run_prelabel_inference_task(
             |event| {
                 let _ = on_progress.send(event.clone());
             },
+            limits,
         )
     })
     .await;
@@ -113,12 +117,13 @@ fn run_prelabel_inference_blocking(
     image_paths: Vec<PathBuf>,
     token: &CancellationToken,
     mut on_progress: impl FnMut(&PrelabelProgressEvent),
+    limits: PrelabelResourceLimits,
 ) -> Result<PrelabelInferenceOutcome, String> {
     if token.is_cancelled() {
         return Ok(cancelled_outcome(Vec::new()));
     }
     ensure_runtime_available(runtime_directory)?;
-    let key = session_cache_key(model)?;
+    let key = session_cache_key(model, limits)?;
     let cache = SESSION_CACHE.get_or_init(|| Mutex::new(None));
     let mut cache = cache
         .lock()
@@ -126,7 +131,7 @@ fn run_prelabel_inference_blocking(
     let session = get_or_try_insert(
         &mut cache,
         key,
-        || PrelabelSession::from_config(model),
+        || PrelabelSession::from_config(model, limits),
         || on_progress(&PrelabelProgressEvent::ModelLoading),
     )?;
     let total = image_paths.len();
@@ -159,7 +164,10 @@ fn cancelled_outcome(results: Vec<PrelabelImageInference>) -> PrelabelInferenceO
     }
 }
 
-fn session_cache_key(model: &PrelabelModelConfig) -> Result<SessionCacheKey, String> {
+fn session_cache_key(
+    model: &PrelabelModelConfig,
+    limits: PrelabelResourceLimits,
+) -> Result<SessionCacheKey, String> {
     let metadata = fs::metadata(&model.path)
         .map_err(|error| text::prelabel_model_metadata_failed(&model.path, error))?;
     let modified_at = metadata
@@ -167,6 +175,7 @@ fn session_cache_key(model: &PrelabelModelConfig) -> Result<SessionCacheKey, Str
         .map_err(|error| text::prelabel_model_modified_time_failed(&model.path, error))?;
     Ok(SessionCacheKey {
         model: model.clone(),
+        limits,
         file_length: metadata.len(),
         modified_at,
     })
@@ -213,6 +222,45 @@ mod tests {
     };
     use crate::media::prelabel::task::{CancelHandle, CancellationToken};
     use crate::models::prelabel::{PrelabelDevice, PrelabelModelConfig, YoloModelFormat};
+
+    #[test]
+    fn changing_resource_limits_invalidates_the_cached_session() {
+        let path =
+            std::env::temp_dir().join(format!("prelabel-cache-limits-{}.onnx", std::process::id()));
+        std::fs::write(&path, b"metadata-only-cache-fixture").unwrap();
+        let mut model = sample_model();
+        model.path = path.to_string_lossy().into_owned();
+        let mut cache = None;
+        let mut loads = 0;
+        for (memory, candidates, expected_loads) in [
+            (80, 100_000, 1),
+            (80, 100_000, 1),
+            (128, 100_000, 2),
+            (128, 150_000, 3),
+            (80, 100_000, 4),
+        ] {
+            let key = super::session_cache_key(
+                &model,
+                crate::models::prelabel::PrelabelResourceLimits {
+                    max_memory_mib: memory,
+                    max_candidates: candidates,
+                },
+            )
+            .unwrap();
+            let value = get_or_try_insert(
+                &mut cache,
+                key,
+                || {
+                    loads += 1;
+                    Ok::<_, String>(loads)
+                },
+                || {},
+            )
+            .unwrap();
+            assert_eq!(*value, expected_loads);
+        }
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn reuses_a_cached_session_until_its_model_key_changes() {
@@ -283,6 +331,7 @@ mod tests {
             vec![PathBuf::from("a.png")],
             &token,
             |_| events.set(events.get() + 1),
+            Default::default(),
         )
         .unwrap();
 
@@ -325,6 +374,7 @@ mod tests {
             vec![image_path.clone()],
             &CancellationToken::new(),
             |_| {},
+            Default::default(),
         )
         .unwrap();
         let second = run_prelabel_inference_blocking(
@@ -333,6 +383,7 @@ mod tests {
             vec![image_path],
             &CancellationToken::new(),
             |_| {},
+            Default::default(),
         )
         .unwrap();
 

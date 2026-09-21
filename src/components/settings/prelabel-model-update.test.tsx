@@ -10,6 +10,7 @@ import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
 import type { ModelDownloadResult, PrelabelModelLibrary } from "../../types/prelabel";
 
 const api = vi.hoisted(() => ({
+  loadPrelabelResourceLimits: vi.fn().mockResolvedValue({ maxMemoryMiB: 80, maxCandidates: 100_000 }),
   getOnnxRuntimeStatus: vi.fn(),
   downloadPrelabelModel: vi.fn(),
   cancelPrelabelModelDownload: vi.fn(),

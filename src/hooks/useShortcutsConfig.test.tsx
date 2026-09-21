@@ -8,18 +8,24 @@ import {
 } from "../lib/defaults/display";
 import { DEFAULT_SHORTCUTS, type ShortcutMap } from "../lib/defaults/shortcuts";
 import { confirmAction } from "../lib/prompts";
-import { loadShortcuts, saveShortcuts } from "../lib/tauri-api";
+import { loadShortcuts, saveShortcuts, loadPrelabelResourceLimits } from "../lib/tauri-api";
+import { PRELABEL_RESOURCE_ZH_CN as resourceText } from "../i18n/prelabel-resource.zh-CN";
 import { SHORTCUT_ZH_CN as text } from "../i18n/shortcuts.zh-CN";
 import { useShortcutStore } from "../store/useShortcutStore";
 import { useShortcutsConfig } from "./useShortcutsConfig";
 
-vi.mock("../lib/tauri-api", () => ({ loadShortcuts: vi.fn(), saveShortcuts: vi.fn() }));
+vi.mock("../lib/tauri-api", () => ({
+  loadShortcuts: vi.fn(),
+  saveShortcuts: vi.fn(),
+  loadPrelabelResourceLimits: vi.fn(),
+}));
 vi.mock("../lib/prompts", () => ({ confirmAction: vi.fn() }));
 
 let root: Root;
 let host: HTMLDivElement;
 let config: ReturnType<typeof useShortcutsConfig>;
 const reportError = vi.fn();
+const onClose = vi.fn();
 
 function Harness({ labelShortcuts = [] }: { labelShortcuts?: string[] }) {
   config = useShortcutsConfig(reportError);
@@ -32,7 +38,7 @@ function Harness({ labelShortcuts = [] }: { labelShortcuts?: string[] }) {
       onChangeHelpDisplaySetting={vi.fn()}
       onChangeLabelDisplaySetting={vi.fn()}
       onChangeShortcut={config.updateShortcut}
-      onClose={vi.fn()}
+      onClose={onClose}
     />
   );
 }
@@ -41,6 +47,10 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.resetAllMocks();
   vi.mocked(loadShortcuts).mockResolvedValue(DEFAULT_SHORTCUTS);
+  vi.mocked(loadPrelabelResourceLimits).mockResolvedValue({
+    maxMemoryMiB: 80,
+    maxCandidates: 100_000,
+  });
   vi.mocked(saveShortcuts).mockResolvedValue(undefined);
   vi.mocked(confirmAction).mockResolvedValue(true);
   host = document.createElement("div");
@@ -114,4 +124,22 @@ it("does not persist attempts to change fixed actions or unchanged bindings", as
   await act(async () => config.updateShortcut({ save: "x", previousImage: "ArrowLeft" }));
   expect(config.shortcuts).toEqual(DEFAULT_SHORTCUTS);
   expect(saveShortcuts).not.toHaveBeenCalled();
+});
+
+it("keeps unsaved resource edits when closing is cancelled", async () => {
+  await render({});
+  const input = document.querySelector<HTMLInputElement>(
+    `input[aria-label="${resourceText.memory}"]`,
+  )!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "128");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  vi.mocked(confirmAction).mockResolvedValueOnce(false);
+  await clickRestore("关闭");
+  expect(confirmAction).toHaveBeenCalledWith(resourceText.discard);
+  expect(onClose).not.toHaveBeenCalled();
+  expect(input.value).toBe("128");
+  await clickRestore("关闭");
+  expect(onClose).toHaveBeenCalledTimes(1);
 });

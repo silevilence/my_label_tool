@@ -50,6 +50,7 @@ vi.mock("../lib/tauri-api", async (importOriginal) => ({
   loadLabelConfigs: vi.fn().mockResolvedValue([]),
   loadLabelTemplates: vi.fn().mockResolvedValue([]),
   loadShortcuts: vi.fn().mockResolvedValue({}),
+  loadPrelabelResourceLimits: vi.fn().mockResolvedValue({ maxMemoryMiB: 80, maxCandidates: 100_000 }),
   saveShortcuts: vi.fn().mockResolvedValue(undefined),
   loadPluginLabelPresets: vi.fn().mockResolvedValue({ presets: [], warning: null }),
   loadPluginExportFormats: vi.fn().mockResolvedValue({ formats: [], warning: null }),

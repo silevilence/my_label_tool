@@ -14,6 +14,7 @@ import { PluginSettings } from "./PluginSettings";
 import { PrelabelSettings } from "./PrelabelSettings";
 
 const tauriMocks = vi.hoisted(() => ({
+  loadPrelabelResourceLimits: vi.fn().mockResolvedValue({ maxMemoryMiB: 80, maxCandidates: 100_000 }),
   authorizePlugin: vi.fn(),
   clearPluginFailures: vi.fn(),
   getOnnxRuntimeStatus: vi.fn(),

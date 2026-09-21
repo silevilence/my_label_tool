@@ -6,9 +6,11 @@ use crate::{
     i18n::zh_cn as text,
     media::prelabel::{
         pipeline::{decode_outputs, preprocess_image, Detection, RawTensor},
-        runtime::{validate_session_contract, MAX_PRELABEL_OUTPUT_ELEMENTS},
+        runtime::{validate_output_resource_budget, validate_session_contract, TensorDescriptor},
     },
-    models::prelabel::{PrelabelDevice, PrelabelModelConfig, YoloModelFormat},
+    models::prelabel::{
+        PrelabelDevice, PrelabelModelConfig, PrelabelResourceLimits, YoloModelFormat,
+    },
 };
 
 pub struct PrelabelSession {
@@ -18,6 +20,7 @@ pub struct PrelabelSession {
     input_height: usize,
     confidence_threshold: f32,
     iou_threshold: f32,
+    limits: PrelabelResourceLimits,
 }
 
 const MAX_ENCODED_IMAGE_BYTES: usize = 128 * 1024 * 1024;
@@ -33,22 +36,32 @@ enum DmlPolicy {
 }
 
 impl PrelabelSession {
-    pub fn from_config(config: &PrelabelModelConfig) -> Result<Self, String> {
+    pub fn from_config(
+        config: &PrelabelModelConfig,
+        limits: PrelabelResourceLimits,
+    ) -> Result<Self, String> {
+        limits.max_output_elements()?;
         validate_config_basics(config)?;
         match config.device {
-            PrelabelDevice::Cpu => Self::build_session(config, DmlPolicy::Disabled),
-            PrelabelDevice::Gpu => Self::build_session(config, DmlPolicy::Strict),
+            PrelabelDevice::Cpu => Self::build_session(config, DmlPolicy::Disabled, limits),
+            PrelabelDevice::Gpu => Self::build_session(config, DmlPolicy::Strict, limits),
             // Auto prefers DirectML but must *guarantee* a CPU fallback: even when the DML provider
             // registers cleanly, creating the session can still fail (e.g. no usable D3D12 device),
             // so a failed DML build is retried with a pure-CPU session.
-            PrelabelDevice::Auto => match Self::build_session(config, DmlPolicy::Fallback) {
-                Ok(session) => Ok(session),
-                Err(_) => Self::build_session(config, DmlPolicy::Disabled),
-            },
+            PrelabelDevice::Auto => {
+                match Self::build_session(config, DmlPolicy::Fallback, limits) {
+                    Ok(session) => Ok(session),
+                    Err(_) => Self::build_session(config, DmlPolicy::Disabled, limits),
+                }
+            }
         }
     }
 
-    fn build_session(config: &PrelabelModelConfig, dml: DmlPolicy) -> Result<Self, String> {
+    fn build_session(
+        config: &PrelabelModelConfig,
+        dml: DmlPolicy,
+        limits: PrelabelResourceLimits,
+    ) -> Result<Self, String> {
         let mut builder = Session::builder().map_err(text::runtime_session_failed)?;
         match dml {
             DmlPolicy::Disabled => {}
@@ -75,7 +88,7 @@ impl PrelabelSession {
                 text::model_session_failed(error)
             }
         })?;
-        let contract = validate_session_contract(&session, Some(config.format.clone()))?;
+        let contract = validate_session_contract(&session, Some(config.format.clone()), &limits)?;
         validate_contract_class_count(config, contract.class_count)?;
         let [input_width, input_height] =
             resolve_input_size(config.input_size_override, &contract)?;
@@ -86,6 +99,7 @@ impl PrelabelSession {
             input_height,
             confidence_threshold: config.confidence_threshold,
             iou_threshold: config.iou_threshold,
+            limits,
         })
     }
 
@@ -103,19 +117,35 @@ impl PrelabelSession {
             .session
             .run(ort::inputs![input])
             .map_err(text::prelabel_inference_failed)?;
-        let mut total_elements = 0_usize;
+        // Check all actual output shapes before allocating any host copies.
+        let descriptors = outputs
+            .values()
+            .map(|output| {
+                let array = output
+                    .try_extract_array::<f32>()
+                    .map_err(text::prelabel_output_tensor_failed)?;
+                let dimensions = array
+                    .shape()
+                    .iter()
+                    .map(|dimension| {
+                        i64::try_from(*dimension)
+                            .map_err(|_| text::PRELABEL_OUTPUT_SIZE_OVERFLOW.to_string())
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(TensorDescriptor {
+                    name: String::new(),
+                    element_type: "f32".to_string(),
+                    dimensions,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        validate_output_resource_budget(&descriptors, &self.limits)?;
         let raw_outputs = outputs
             .values()
             .map(|output| {
                 let array = output
                     .try_extract_array::<f32>()
                     .map_err(text::prelabel_output_tensor_failed)?;
-                total_elements = total_elements
-                    .checked_add(array.len())
-                    .ok_or_else(|| text::PRELABEL_OUTPUT_TOO_LARGE.to_string())?;
-                if total_elements > MAX_PRELABEL_OUTPUT_ELEMENTS {
-                    return Err(text::PRELABEL_OUTPUT_TOO_LARGE.to_string());
-                }
                 let mut data = Vec::new();
                 data.try_reserve_exact(array.len())
                     .map_err(text::prelabel_output_allocation_failed)?;
@@ -238,11 +268,14 @@ mod tests {
         let image = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
         load_runtime(&runtime).unwrap();
 
-        let mut yolov8 = PrelabelSession::from_config(&config(
-            fixture("MY_LABEL_TOOL_YOLOV8_ONNX"),
-            YoloModelFormat::YoloV8,
-            0.25,
-        ))
+        let mut yolov8 = PrelabelSession::from_config(
+            &config(
+                fixture("MY_LABEL_TOOL_YOLOV8_ONNX"),
+                YoloModelFormat::YoloV8,
+                0.25,
+            ),
+            Default::default(),
+        )
         .unwrap();
         let first = yolov8.infer_file(&image).unwrap();
         let second = yolov8.infer_file(&image).unwrap();
@@ -266,11 +299,14 @@ mod tests {
         let image = fixture("MY_LABEL_TOOL_YOLO_IMAGE");
         load_runtime(&runtime).unwrap();
 
-        let mut yolov5 = PrelabelSession::from_config(&config(
-            fixture("MY_LABEL_TOOL_YOLOV5_ONNX"),
-            YoloModelFormat::YoloV5,
-            0.3,
-        ))
+        let mut yolov5 = PrelabelSession::from_config(
+            &config(
+                fixture("MY_LABEL_TOOL_YOLOV5_ONNX"),
+                YoloModelFormat::YoloV5,
+                0.3,
+            ),
+            Default::default(),
+        )
         .unwrap();
         let v5_first = yolov5.infer_file(&image).unwrap();
         let v5_second = yolov5.infer_file(&image).unwrap();
@@ -303,7 +339,7 @@ mod tests {
         // On a DirectML runtime without a usable GPU the DML session build may fail after the
         // provider registers; Auto must fall back to a pure-CPU session and still produce results
         // rather than surfacing an error the user can't act on.
-        let mut session = PrelabelSession::from_config(&model).unwrap();
+        let mut session = PrelabelSession::from_config(&model, Default::default()).unwrap();
         let detections = session.infer_file(&image).unwrap();
         assert!(!detections.is_empty());
     }
@@ -321,7 +357,7 @@ mod tests {
             0.25,
         );
         model.device = PrelabelDevice::Gpu;
-        let mut session = PrelabelSession::from_config(&model).unwrap();
+        let mut session = PrelabelSession::from_config(&model, Default::default()).unwrap();
         let detections = session.infer_file(&image).unwrap();
         assert!(!detections.is_empty());
     }

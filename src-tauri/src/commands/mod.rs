@@ -8,6 +8,7 @@ mod prelabel_conversion;
 mod prelabel_inference;
 mod prelabel_model;
 mod prelabel_runtime;
+mod prelabel_settings;
 mod thumbnail;
 pub use plugin::*;
 pub use prelabel::*;
@@ -15,6 +16,7 @@ pub use prelabel_conversion::*;
 pub use prelabel_inference::*;
 pub use prelabel_model::*;
 pub use prelabel_runtime::*;
+pub use prelabel_settings::*;
 pub use thumbnail::*;
 
 use std::{

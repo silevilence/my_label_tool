@@ -131,6 +131,7 @@ my_label_tool/
 | `load_shortcuts` / `save_shortcuts` | 快捷键配置持久化（`shortcuts.json`） |
 | `inspect_onnx_model` / `find_converted_onnx` | 解析 YOLO ONNX 元数据；为 `.pt` 查找同目录转换产物 |
 | `load_prelabel_model_library` / `save_prelabel_model_library` | 预打标模型库持久化（`prelabel-models.json`）；原子保存成功后才清理已替换且不再被引用的受管模型文件 |
+| `load_prelabel_resource_limits` / `save_prelabel_resource_limits` | 宿主全局 ONNX 输出内存预算与原始候选框上限（`prelabel-resource-limits.json`）；校验和推理共用，不向插件开放，见 docs/prelabel-resource-limits.md |
 | `get_onnx_runtime_status` | 重新检测并按需加载应用数据目录中的 ONNX Runtime |
 | `install_onnx_runtime_from_file` | 校验并安装手动选择的 Runtime DLL；同目录存在 provider / DirectML DLL 时一并安装 |
 | `download_onnx_runtime` | 经确认后下载、校验并安装项目 Release 中的 Runtime DLL |

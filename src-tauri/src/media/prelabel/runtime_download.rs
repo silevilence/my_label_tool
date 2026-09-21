@@ -262,11 +262,15 @@ pub fn validate_prelabel_model(
     path: PathBuf,
 ) -> Result<ModelValidationReport, String> {
     ensure_runtime_available(&runtime_directory(&app)?)?;
-    validate_model_file(&path)
+    let limits = super::resource_limits::load(&app)?;
+    validate_model_file(&path, &limits)
 }
 
-fn validate_model_file(path: &Path) -> Result<ModelValidationReport, String> {
-    let mut contract = validate_model_with_runtime(path, None)?;
+fn validate_model_file(
+    path: &Path,
+    limits: &crate::models::prelabel::PrelabelResourceLimits,
+) -> Result<ModelValidationReport, String> {
+    let mut contract = validate_model_with_runtime(path, None, limits)?;
     let bytes = fs::read(path).map_err(text::read_onnx_failed)?;
     let file_name = path
         .file_name()
@@ -785,11 +789,11 @@ mod tests {
         let yolov8_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLOV8_ONNX"));
 
         load_runtime(&runtime_path).unwrap();
-        let official = validate_model_file(&official_path).unwrap();
+        let official = validate_model_file(&official_path, &Default::default()).unwrap();
         assert_eq!(official.contract.format, YoloModelFormat::Yolo11);
         assert_eq!(official.contract.class_count, 80);
 
-        let yolov8 = validate_model_file(&yolov8_path).unwrap();
+        let yolov8 = validate_model_file(&yolov8_path, &Default::default()).unwrap();
         assert_eq!(yolov8.contract.format, YoloModelFormat::YoloV8);
         assert_eq!(yolov8.contract.class_count, 80);
         assert_eq!(yolov8.contract.output_names, ["output0"]);
@@ -802,7 +806,7 @@ mod tests {
         let yolov5_path = resolve_fixture(required_fixture("MY_LABEL_TOOL_YOLOV5_ONNX"));
 
         load_runtime(&runtime_path).unwrap();
-        let yolov5 = validate_model_file(&yolov5_path).unwrap();
+        let yolov5 = validate_model_file(&yolov5_path, &Default::default()).unwrap();
         assert_eq!(yolov5.contract.format, YoloModelFormat::YoloV5);
         assert_eq!(yolov5.contract.class_count, 80);
         assert_eq!(yolov5.contract.output_names, ["output0"]);

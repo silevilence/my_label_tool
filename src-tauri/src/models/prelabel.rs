@@ -1,5 +1,24 @@
 use serde::{Deserialize, Serialize};
 
+/// Host-only ONNX output budget. Each f32 element accounts for the runtime output
+/// and one host copy (8 bytes); model weights/intermediates are not included.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PrelabelResourceLimits {
+    #[serde(rename = "maxMemoryMiB")]
+    pub max_memory_mib: u64,
+    pub max_candidates: u64,
+}
+
+impl Default for PrelabelResourceLimits {
+    fn default() -> Self {
+        Self {
+            max_memory_mib: 80,
+            max_candidates: 100_000,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum YoloModelFormat {
     #[serde(rename = "yolov5")]

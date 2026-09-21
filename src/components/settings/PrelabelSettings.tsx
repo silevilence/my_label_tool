@@ -51,6 +51,7 @@ import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
 import { ModelImportForm } from "./PrelabelModelForm";
 import { ClassMappingPanel } from "./PrelabelClassMapping";
 import { PtConversionDialog } from "./PtConversionDialog";
+import { PrelabelResourceSummary } from "./PrelabelResourceSettings";
 import type { PluginPrelabelSourceDescriptor } from "../../types/plugin";
 
 interface PrelabelSettingsProps {
@@ -522,6 +523,8 @@ export function PrelabelSettings({
             {text.close}
           </button>
         </header>
+
+        <PrelabelResourceSummary />
 
         <div className="grid min-h-0 flex-1 overflow-y-auto md:grid-cols-[18rem_1fr] md:grid-rows-[minmax(0,1fr)] md:overflow-hidden">
           <aside className="overflow-y-auto border-b border-slate-800 p-4 md:border-b-0 md:border-r">

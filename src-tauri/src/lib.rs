@@ -39,6 +39,8 @@ pub fn run() {
             commands::inspect_onnx_model,
             commands::find_converted_onnx,
             commands::load_prelabel_model_library,
+            commands::load_prelabel_resource_limits,
+            commands::save_prelabel_resource_limits,
             commands::save_prelabel_model_library,
             commands::get_onnx_runtime_status,
             commands::install_onnx_runtime_from_file,

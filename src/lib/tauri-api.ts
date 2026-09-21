@@ -53,6 +53,7 @@ import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annot
 import type { ExportData, TextExportFile } from "../types/export";
 import type { ShortcutMap } from "./defaults/shortcuts";
 import type {
+  PrelabelResourceLimits,
   ModelDownloadEvent,
   ModelDownloadResult,
   ModelValidationReport,
@@ -280,6 +281,14 @@ export function cancelPtConversion(conversionId: string): Promise<PtCancellation
 
 export function loadPrelabelModelLibrary(): Promise<PrelabelModelLibrary> {
   return invoke<PrelabelModelLibrary>("load_prelabel_model_library");
+}
+
+export function loadPrelabelResourceLimits(): Promise<PrelabelResourceLimits> {
+  return invoke("load_prelabel_resource_limits");
+}
+
+export function savePrelabelResourceLimits(limits: PrelabelResourceLimits): Promise<void> {
+  return invoke("save_prelabel_resource_limits", { limits });
 }
 
 export function savePrelabelModelLibrary(library: PrelabelModelLibrary): Promise<void> {

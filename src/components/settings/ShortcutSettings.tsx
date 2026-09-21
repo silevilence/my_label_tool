@@ -14,6 +14,9 @@ import type { HelpDisplaySettings, LabelDisplaySettings } from "../../lib/defaul
 import { formatShortcut, normalizeShortcutKey } from "../../lib/shortcut-utils";
 import { detectConflicts, shortcutKey } from "../../lib/shortcuts";
 import { SHORTCUT_ZH_CN as shortcutText } from "../../i18n/shortcuts.zh-CN";
+import { PRELABEL_RESOURCE_ZH_CN as resourceText } from "../../i18n/prelabel-resource.zh-CN";
+import { PrelabelResourceSettings } from "./PrelabelResourceSettings";
+import { usePrelabelResourceStore } from "../../store/usePrelabelResourceStore";
 
 interface ShortcutSettingsProps {
   helpDisplaySettings: HelpDisplaySettings;
@@ -38,6 +41,14 @@ export function ShortcutSettings({
 }: ShortcutSettingsProps) {
   const [recordingActionId, setRecordingActionId] = useState<ShortcutActionId | null>(null);
   const [recordError, setRecordError] = useState("");
+  const [resourceDirty, setResourceDirty] = useState(false);
+  const [resourceSaving, setResourceSaving] = useState(false);
+
+  async function requestClose() {
+    if (resourceSaving || usePrelabelResourceStore.getState().saving) return;
+    if (resourceDirty && !(await confirmAction(resourceText.discard))) return;
+    onClose();
+  }
 
   useEffect(() => {
     if (!recordingActionId) {
@@ -136,7 +147,7 @@ export function ShortcutSettings({
 
   return (
     <Overlay
-      onClose={onClose}
+      onClose={requestClose}
       label={interactionText.shortcuts}
       size="lg"
       canDismiss={() => {
@@ -144,7 +155,7 @@ export function ShortcutSettings({
           setRecordingActionId(null);
           return false;
         }
-        return true;
+        return !resourceSaving;
       }}
     >
       <section className="scrollbar-dark max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
@@ -158,11 +169,17 @@ export function ShortcutSettings({
           <button
             className="rounded border border-slate-700 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800"
             type="button"
-            onClick={onClose}
+            disabled={resourceSaving}
+            onClick={() => void requestClose()}
           >
             关闭
           </button>
         </div>
+
+        <PrelabelResourceSettings
+          onDirtyChange={setResourceDirty}
+          onSavingChange={setResourceSaving}
+        />
 
         {recordError && (
           <p

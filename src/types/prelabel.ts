@@ -1,5 +1,12 @@
 export type YoloModelFormat = "yolov5" | "yolov8" | "yolo11";
 
+/** 宿主全局 ONNX 输出预算，不限制插件进程，也不代表推理总内存峰值。 */
+export interface PrelabelResourceLimits {
+  /** 输出张量与宿主副本合计预算，单位 MiB。 */
+  maxMemoryMiB: number;
+  maxCandidates: number;
+}
+
 export interface OnnxModelSummary {
   format: YoloModelFormat;
   classCount: number;

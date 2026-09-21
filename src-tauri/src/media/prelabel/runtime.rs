@@ -10,10 +10,7 @@ use ort::{
 use serde::Serialize;
 
 use crate::i18n::zh_cn as text;
-use crate::models::prelabel::YoloModelFormat;
-
-pub const MAX_PRELABEL_OUTPUT_ELEMENTS: usize = 10_000_000;
-pub const MAX_PRELABEL_OUTPUT_CANDIDATES: usize = 100_000;
+use crate::models::prelabel::{PrelabelResourceLimits, YoloModelFormat};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TensorDescriptor {
@@ -37,6 +34,7 @@ pub fn validate_tensor_contract(
     inputs: &[TensorDescriptor],
     outputs: &[TensorDescriptor],
     format_hint: Option<YoloModelFormat>,
+    limits: &PrelabelResourceLimits,
 ) -> Result<ModelTensorContract, String> {
     if inputs.len() != 1 {
         return Err(text::YOLO_REQUIRES_ONE_INPUT.to_string());
@@ -54,7 +52,7 @@ pub fn validate_tensor_contract(
     if outputs.is_empty() || outputs.iter().any(|output| output.element_type != "f32") {
         return Err(text::YOLO_OUTPUT_FLOAT.to_string());
     }
-    validate_output_resource_budget(outputs)?;
+    validate_output_resource_budget(outputs, limits)?;
 
     let (format, class_count) = if outputs.len() == 1 {
         validate_single_output(&outputs[0], format_hint)?
@@ -80,7 +78,10 @@ fn dynamic_input_dimension(dimension: i64) -> Result<usize, String> {
     }
 }
 
-fn validate_output_resource_budget(outputs: &[TensorDescriptor]) -> Result<(), String> {
+pub(super) fn validate_output_resource_budget(
+    outputs: &[TensorDescriptor],
+    limits: &PrelabelResourceLimits,
+) -> Result<(), String> {
     let mut total_elements = 0_usize;
     let mut total_candidates = 0_usize;
     for output in outputs {
@@ -101,8 +102,10 @@ fn validate_output_resource_budget(outputs: &[TensorDescriptor]) -> Result<(), S
                     .and_then(|dimension| size.checked_mul(dimension))
             });
         total_elements = total_elements
-            .checked_add(element_count.ok_or_else(|| text::PRELABEL_OUTPUT_TOO_LARGE.to_string())?)
-            .ok_or_else(|| text::PRELABEL_OUTPUT_TOO_LARGE.to_string())?;
+            .checked_add(
+                element_count.ok_or_else(|| text::PRELABEL_OUTPUT_SIZE_OVERFLOW.to_string())?,
+            )
+            .ok_or_else(|| text::PRELABEL_OUTPUT_SIZE_OVERFLOW.to_string())?;
         let candidates = match output.dimensions.as_slice() {
             [1, first, second] => usize::try_from((*first).max(*second)).ok(),
             [1, anchors, height, width, _] => usize::try_from(*anchors)
@@ -114,12 +117,28 @@ fn validate_output_resource_budget(outputs: &[TensorDescriptor]) -> Result<(), S
         .ok_or_else(|| text::YOLO_OUTPUT_CONTRACT.to_string())?;
         total_candidates = total_candidates
             .checked_add(candidates)
-            .ok_or_else(|| text::PRELABEL_OUTPUT_TOO_LARGE.to_string())?;
+            .ok_or_else(|| text::PRELABEL_OUTPUT_SIZE_OVERFLOW.to_string())?;
     }
-    if total_elements > MAX_PRELABEL_OUTPUT_ELEMENTS
-        || total_candidates > MAX_PRELABEL_OUTPUT_CANDIDATES
+    validate_output_counts(total_elements, Some(total_candidates), limits)
+}
+
+/// Checks the same element budget before inference output is copied into host memory.
+/// Candidate counts are available during the fixed-shape session validation.
+pub(super) fn validate_output_counts(
+    total_elements: usize,
+    total_candidates: Option<usize>,
+    limits: &PrelabelResourceLimits,
+) -> Result<(), String> {
+    let max_elements = limits.max_output_elements()?;
+    let max_candidates = limits.max_candidates as usize;
+    if total_elements > max_elements || total_candidates.is_some_and(|count| count > max_candidates)
     {
-        return Err(text::PRELABEL_OUTPUT_TOO_LARGE.to_string());
+        return Err(text::prelabel_output_resource_limit(
+            total_elements,
+            max_elements,
+            total_candidates,
+            max_candidates,
+        ));
     }
     Ok(())
 }
@@ -161,17 +180,19 @@ pub fn load_runtime(dll_path: &Path) -> Result<(), String> {
 pub fn validate_model_with_runtime(
     model_path: &Path,
     format_hint: Option<YoloModelFormat>,
+    limits: &PrelabelResourceLimits,
 ) -> Result<ModelTensorContract, String> {
     let session = Session::builder()
         .map_err(text::runtime_session_failed)?
         .commit_from_file(model_path)
         .map_err(text::model_session_failed)?;
-    validate_session_contract(&session, format_hint)
+    validate_session_contract(&session, format_hint, limits)
 }
 
 pub fn validate_session_contract(
     session: &Session,
     format_hint: Option<YoloModelFormat>,
+    limits: &PrelabelResourceLimits,
 ) -> Result<ModelTensorContract, String> {
     let inputs = session
         .inputs()
@@ -183,7 +204,7 @@ pub fn validate_session_contract(
         .iter()
         .map(tensor_descriptor)
         .collect::<Result<Vec<_>, _>>()?;
-    validate_tensor_contract(&inputs, &outputs, format_hint)
+    validate_tensor_contract(&inputs, &outputs, format_hint, limits)
 }
 
 fn tensor_descriptor(outlet: &ort::value::Outlet) -> Result<TensorDescriptor, String> {
@@ -274,8 +295,20 @@ fn validate_anchor_branches(
 
 #[cfg(test)]
 mod tests {
-    use super::{load_runtime, validate_tensor_contract, TensorDescriptor};
-    use crate::models::prelabel::YoloModelFormat;
+    use super::{load_runtime, ModelTensorContract, TensorDescriptor};
+    use crate::models::prelabel::{PrelabelResourceLimits, YoloModelFormat};
+
+    fn validate_tensor_contract(
+        inputs: &[TensorDescriptor],
+        outputs: &[TensorDescriptor],
+        hint: Option<YoloModelFormat>,
+    ) -> Result<ModelTensorContract, String> {
+        super::validate_tensor_contract(inputs, outputs, hint, &PrelabelResourceLimits::default())
+    }
+
+    fn validate_output_counts(elements: usize, candidates: Option<usize>) -> Result<(), String> {
+        super::validate_output_counts(elements, candidates, &PrelabelResourceLimits::default())
+    }
 
     fn tensor(name: &str, dimensions: &[i64]) -> TensorDescriptor {
         TensorDescriptor {
@@ -371,6 +404,148 @@ mod tests {
         )
         .unwrap_err();
         assert!(oversized_error.contains("过大"));
+    }
+
+    #[test]
+    fn reports_element_limit_without_claiming_a_candidate_limit() {
+        let error = validate_output_counts(10_485_761, None).unwrap_err();
+        assert!(
+            error.contains("输出元素数量 10485761，超过上限 10485760"),
+            "{error}"
+        );
+        assert!(error.contains("80.0 MiB"), "{error}");
+        assert!(!error.contains("候选框数量"), "{error}");
+    }
+
+    #[test]
+    fn accepts_output_counts_at_the_limits() {
+        assert!(validate_output_counts(10_485_760, Some(100_000)).is_ok());
+        assert!(validate_output_counts(10_485_760, None).is_ok());
+    }
+
+    #[test]
+    fn reports_total_candidate_count_across_yolov5_branches() {
+        let error = validate_tensor_contract(
+            &[tensor("images", &[1, 3, 1280, 1280])],
+            &[
+                tensor("small", &[1, 3, 160, 160, 6]),
+                tensor("medium", &[1, 3, 80, 80, 6]),
+                tensor("large", &[1, 3, 40, 40, 6]),
+            ],
+            Some(YoloModelFormat::YoloV5),
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("候选框数量 100800，超过上限 100000"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn reports_candidate_limit_for_single_class_yolov8_at_2560() {
+        let error = validate_tensor_contract(
+            &[tensor("images", &[1, 3, 2560, 2560])],
+            &[tensor("output0", &[1, 5, 134_400])],
+            Some(YoloModelFormat::YoloV8),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.contains("候选框数量 134400，超过上限 100000"),
+            "{error}"
+        );
+        assert!(!error.contains("输出元素数量"), "{error}");
+        assert!(error.contains("并非检测到内存不足"), "{error}");
+    }
+
+    #[test]
+    fn reports_both_limits_for_eighty_class_yolov8_at_2560() {
+        let error = validate_tensor_contract(
+            &[tensor("images", &[1, 3, 2560, 2560])],
+            &[tensor("output0", &[1, 84, 134_400])],
+            Some(YoloModelFormat::YoloV8),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.contains("输出元素数量 11289600，超过上限 10485760"),
+            "{error}"
+        );
+        assert!(
+            error.contains("候选框数量 134400，超过上限 100000"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn distinguishes_output_size_overflow_from_a_resource_limit() {
+        let error = validate_tensor_contract(
+            &[tensor("images", &[1, 3, 640, 640])],
+            &[tensor("output0", &[1, i64::MAX, i64::MAX])],
+            None,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("计算溢出"), "{error}");
+        assert!(!error.contains("超过上限"), "{error}");
+    }
+
+    #[test]
+    fn configurable_limits_allow_2560_and_enforce_memory_and_candidates_independently() {
+        let input = [tensor("images", &[1, 3, 2560, 2560])];
+        let output = [tensor("output0", &[1, 84, 134_400])];
+        let limits = PrelabelResourceLimits {
+            max_memory_mib: 128,
+            max_candidates: 150_000,
+        };
+        assert!(super::validate_tensor_contract(
+            &input,
+            &output,
+            Some(YoloModelFormat::YoloV8),
+            &limits
+        )
+        .is_ok());
+        let memory_error = super::validate_tensor_contract(
+            &input,
+            &output,
+            None,
+            &PrelabelResourceLimits {
+                max_memory_mib: 80,
+                ..limits
+            },
+        )
+        .unwrap_err();
+        assert!(memory_error.contains("输出元素数量"));
+        assert!(!memory_error.contains("候选框数量"));
+        let candidates_error = super::validate_tensor_contract(
+            &input,
+            &output,
+            None,
+            &PrelabelResourceLimits {
+                max_candidates: 134_399,
+                ..limits
+            },
+        )
+        .unwrap_err();
+        assert!(candidates_error.contains("候选框数量 134400，超过上限 134399"));
+        assert!(!candidates_error.contains("输出元素数量"));
+        // The same budget check runs on actual output shapes before copying, without ORT fixtures.
+        assert!(super::validate_output_resource_budget(&output, &limits).is_ok());
+        assert!(super::validate_output_resource_budget(
+            &output,
+            &PrelabelResourceLimits::default()
+        )
+        .is_err());
+        assert!(super::validate_tensor_contract(
+            &input,
+            &output,
+            None,
+            &PrelabelResourceLimits {
+                max_memory_mib: 0,
+                ..limits
+            }
+        )
+        .is_err());
     }
 
     #[test]
