@@ -5,6 +5,9 @@ import type { PluginExportFormatDescriptor } from "../../types/plugin";
 import { PLUGIN_ZH_CN as pluginText } from "../../i18n/plugin.zh-CN";
 import type { PluginExportProgressState } from "../../hooks/useProjectActions";
 import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
+import { PROJECT_ZH_CN as projectText } from "../../i18n/project.zh-CN";
+import { OPERATION_ZH_CN as operationText } from "../../i18n/operations.zh-CN";
+import { useOperations } from "../../store/useOperations";
 
 interface ExportPanelProps {
   videoFrameCount?: number;
@@ -43,6 +46,13 @@ export function ExportPanel({
   onExport,
   onSaveProject,
 }: ExportPanelProps) {
+  const hasFailedExport = useOperations((state) =>
+    state.operations.some(
+      (operation) =>
+        operation.status === "failed" &&
+        (operation.label === operationText.export || operation.label === operationText.save),
+    ),
+  );
   const selectedTemplate =
     EXPORT_TEMPLATES.find((template) => template.id === selectedFormatId) ?? EXPORT_TEMPLATES[0];
   const selectedPluginFormat = pluginFormats.find(
@@ -94,7 +104,7 @@ export function ExportPanel({
       </p>
       {selectedFormatId === "custom" && (
         <textarea
-          aria-label="自定义导出映射（JSON）"
+          aria-label={projectText.customExportMapping}
           className="mt-3 h-32 w-full resize-none rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-xs text-slate-100"
           spellCheck={false}
           value={customMappingText}
@@ -131,18 +141,17 @@ export function ExportPanel({
           )}
         </div>
       )}
-      {exportError && (
-        <div
-          role="alert"
-          className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200"
-        >
-          <p className="break-words">{exportError}</p>
+      <div data-operation-error-feedback={operationText.export} />
+      <div data-operation-error-feedback={operationText.save} />
+      {exportError && hasFailedExport && (
+        <div className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
           <button
-            className="mt-2 rounded border border-red-400/60 px-3 py-1 text-xs text-red-100 hover:bg-red-500/20"
+            className="rounded border border-red-400/60 px-3 py-1 text-xs text-red-100 hover:bg-red-500/20 disabled:opacity-50"
             type="button"
+            disabled={disabled || selectedDisabled || isSaving || isPluginExporting}
             onClick={onExport}
           >
-            重试导出
+            {projectText.retryExport}
           </button>
         </div>
       )}

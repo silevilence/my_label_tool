@@ -21,10 +21,7 @@ export function ProjectSettingsDialog({
   const [hasUnsaved, setHasUnsaved] = useState(false);
 
   async function requestClose() {
-    if (
-      hasUnsaved &&
-      !(await confirmAction("项目设置有未保存的修改，关闭将丢弃这些修改。确定关闭？"))
-    ) {
+    if (hasUnsaved && !(await confirmAction(text.discardSettingsConfirmation))) {
       return;
     }
     setHasUnsaved(false);

@@ -6,4 +6,6 @@ export const INTERACTION_ZH_CN = {
   search: "图片搜索",
   deleteAnnotation: "确认删除标注",
   canvasMenu: "画布菜单",
+  fitCanvas: "适应",
+  resetCanvas: "恢复适应画布",
 };

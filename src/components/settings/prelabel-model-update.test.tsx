@@ -28,19 +28,19 @@ function Harness() {
     <>
       <OperationStatus />
       <PrelabelSettings
-      activeProjectConfig={null}
-      isLabelDirty={false}
-      isLoaded={models.isLoaded}
-      labels={[]}
-      library={models.library}
-      pluginSources={[]}
-      onAddModel={models.addModel}
-      onDeleteModel={models.deleteModel}
-      onSelectModel={models.selectModel}
-      onUpdateModel={models.updateModel}
-      onClose={onClose}
-      onSaveMappings={async () => {}}
-    />
+        activeProjectConfig={null}
+        isLabelDirty={false}
+        isLoaded={models.isLoaded}
+        labels={[]}
+        library={models.library}
+        pluginSources={[]}
+        onAddModel={models.addModel}
+        onDeleteModel={models.deleteModel}
+        onSelectModel={models.selectModel}
+        onUpdateModel={models.updateModel}
+        onClose={onClose}
+        onSaveMappings={async () => {}}
+      />
     </>
   );
 }
@@ -73,7 +73,7 @@ let root: Root;
 let container: HTMLDivElement;
 
 beforeEach(async () => {
-    useOperations.setState({ operations: [] });
+  useOperations.setState({ operations: [] });
   vi.clearAllMocks();
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   saved = { schemaVersion: 1, currentModelId: "a", models: [model] };
@@ -182,6 +182,13 @@ it("keeps the current config and allows retry after a save failure", async () =>
   await act(async () => download.resolve(result));
   expect(saved.models[0].path).toBe(model.path);
   expect(document.body.textContent).toContain("disk full");
+  expect(useOperations.getState().operations.filter((op) => op.status === "failed")).toHaveLength(
+    1,
+  );
+  expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+  expect(document.querySelector('[role="dialog"] [role="alert"]')?.textContent).toContain(
+    "disk full",
+  );
   expect(document.body.textContent).not.toContain(text.modelUpdateCompleted(model.name));
   expect(button(text.updateModel).disabled).toBe(false);
 });

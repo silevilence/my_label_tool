@@ -133,6 +133,24 @@ it("renders a window of rows and reserves the full virtual height", () => {
   expect(generateThumbnail).not.toHaveBeenCalled();
 });
 
+it("keeps rendered rows bounded when a project grows to ten thousand images", () => {
+  renderList({ images });
+  const smallCount = host.querySelectorAll("button[title]").length;
+  const largeImages = Array.from({ length: 10_000 }, (_, index) => ({
+    path: `C:/large/image-${index}.png`,
+    name: `image-${index}.png`,
+  }));
+  renderList({ images: largeImages });
+  expect(host.querySelectorAll("button[title]").length).toBe(smallCount);
+  Object.defineProperty(scroller(), "clientHeight", { value: 480, configurable: true });
+  act(() => {
+    scroller().scrollTop = 5_000 * IMAGE_ROW_HEIGHT;
+    scroller().dispatchEvent(new Event("scroll"));
+  });
+  expect(host.querySelector('button[title="C:/large/image-5000.png"]')).not.toBeNull();
+  expect(host.querySelectorAll("button[title]").length).toBeLessThan(25);
+});
+
 it("follows scrolling to render the target window", () => {
   renderList({ images });
   const target = images[200];
@@ -239,4 +257,42 @@ it("scrolls the nested frame list by frame index when selection enters a video",
   expect(
     nested.querySelector('[data-frame-path="C:/project/frames/frame-0001.png"]'),
   ).not.toBeNull();
+});
+
+it("subscribes to scrolling each time a previously collapsed video is expanded", () => {
+  const video = videoFixture(1000);
+  renderList({ videos: [video] });
+  for (let cycle = 0; cycle < 2; cycle += 1) {
+    renderList({ videos: [video], selectedPath: video.images[0].path });
+    const nested = scroller().querySelector<HTMLDivElement>(".overflow-auto")!;
+    Object.defineProperty(nested, "clientHeight", { value: 192, configurable: true });
+    act(() => {
+      nested.scrollTop = 500 * 32;
+      nested.dispatchEvent(new Event("scroll"));
+    });
+    expect(nested.querySelector(`[data-frame-path="${video.images[500].path}"]`)).not.toBeNull();
+    expect(nested.querySelector(`[data-frame-path="${video.images[0].path}"]`)).toBeNull();
+    expect(nested.querySelectorAll("[data-frame-path]").length).toBeLessThan(20);
+    renderList({ videos: [video] });
+    expect(scroller().querySelector(".overflow-auto")).toBeNull();
+  }
+});
+
+it("revalidates a thumbnail after its row leaves and reenters the virtual window", async () => {
+  renderList({ images });
+  act(() => FakeIntersectionObserver.instances.forEach((observer) => observer.trigger(true)));
+  await act(async () => {});
+  expect(generateThumbnail.mock.calls.filter(([path]) => path === images[0].path)).toHaveLength(1);
+  act(() => {
+    scroller().scrollTop = 200 * IMAGE_ROW_HEIGHT;
+    scroller().dispatchEvent(new Event("scroll"));
+  });
+  FakeIntersectionObserver.instances = [];
+  act(() => {
+    scroller().scrollTop = 0;
+    scroller().dispatchEvent(new Event("scroll"));
+  });
+  act(() => FakeIntersectionObserver.instances.forEach((observer) => observer.trigger(true)));
+  await act(async () => {});
+  expect(generateThumbnail.mock.calls.filter(([path]) => path === images[0].path)).toHaveLength(2);
 });

@@ -106,7 +106,7 @@ export function PrelabelSettings({
   const [ptConversionNotice, setPtConversionNotice] = useState("");
   // 预打标域错误统一进操作卡片：常驻可关闭、同名聚合计数。
   const setError = (message: string) =>
-    useOperations.getState().pushError("预打标", message);
+    useOperations.getState().pushError(operationText.prelabel, message);
   const modelOperation = useRef<OperationHandle | null>(null);
   const runtimeOperation = useRef<OperationHandle | null>(null);
   const operations = useOperations((state) => state.operations);
@@ -158,8 +158,7 @@ export function PrelabelSettings({
       try {
         await loadOnnxDraft(path);
       } catch (reason) {
-        modelOperation.current?.fail(reason);
-        setError(text.importFailed(reason));
+        modelOperation.current?.fail(text.importFailed(reason));
       }
     });
   }
@@ -182,8 +181,7 @@ export function PrelabelSettings({
       try {
         await loadOnnxDraft(path);
       } catch (reason) {
-        modelOperation.current?.fail(reason);
-        setError(text.importFailed(reason));
+        modelOperation.current?.fail(text.importFailed(reason));
       }
     });
   }
@@ -204,7 +202,6 @@ export function PrelabelSettings({
       await action();
     } catch (reason) {
       operation.fail(reason);
-      setError(String(reason));
     } finally {
       mutationInFlight.current = false;
       operation.complete();
@@ -223,8 +220,7 @@ export function PrelabelSettings({
     try {
       setRuntimeStatus(await action());
     } catch (reason) {
-      operation.fail(reason);
-      setError(text.runtimeOperationFailed(reason));
+      operation.fail(text.runtimeOperationFailed(reason));
     } finally {
       operation.complete();
     }
@@ -279,8 +275,7 @@ export function PrelabelSettings({
         setRuntimeNotice(text.runtimeCompleted);
       }
     } catch (reason) {
-      operation.fail(reason);
-      setError(text.runtimeOperationFailed(reason));
+      operation.fail(text.runtimeOperationFailed(reason));
     } finally {
       if (activeDownloadId.current === downloadId) {
         activeDownloadId.current = null;
@@ -295,12 +290,7 @@ export function PrelabelSettings({
     if (!downloadId) {
       return;
     }
-    try {
-      await cancelOnnxRuntimeDownload(downloadId);
-    } catch (reason) {
-      setError(text.runtimeOperationFailed(reason));
-      throw reason;
-    }
+    await cancelOnnxRuntimeDownload(downloadId);
   }
 
   /** 从模型配置的更新地址手动拉取新版本：下载、校验 ONNX、落盘到受管目录并更新配置。 */
@@ -340,8 +330,7 @@ export function PrelabelSettings({
           setModelUpdateNotice({ tone: "success", message: text.modelUpdateCompleted(model.name) });
         }
       } catch (reason) {
-        modelOperation.current?.fail(reason);
-        setError(text.modelUpdateFailed(reason));
+        modelOperation.current?.fail(text.modelUpdateFailed(reason));
       } finally {
         activeModelDownloadId.current = null;
         setIsModelUpdating(false);
@@ -355,12 +344,7 @@ export function PrelabelSettings({
     if (!downloadId) {
       return;
     }
-    try {
-      await cancelPrelabelModelDownload(downloadId);
-    } catch (reason) {
-      setError(text.modelUpdateFailed(reason));
-      throw reason;
-    }
+    await cancelPrelabelModelDownload(downloadId);
   }
 
   async function refreshRuntime() {
@@ -388,8 +372,7 @@ export function PrelabelSettings({
       );
       setRuntimeStatus(await getOnnxRuntimeStatus());
     } catch (reason) {
-      operation.fail(reason);
-      setError(text.modelValidationFailed(reason));
+      operation.fail(text.modelValidationFailed(reason));
     } finally {
       operation.complete();
     }
@@ -518,6 +501,7 @@ export function PrelabelSettings({
 
   return (
     <Overlay
+      operationFeedback
       onClose={onClose}
       canDismiss={!isBusy && !isRuntimeBusy}
       label={text.title}
@@ -699,7 +683,12 @@ export function PrelabelSettings({
                   onValidate={() => void validateModel(editingModel)}
                   onDelete={() => {
                     void (async () => {
-                      if (await confirmAction(text.removeConfirmation(editingModel.name), { danger: true, confirmLabel: "删除" })) {
+                      if (
+                        await confirmAction(text.removeConfirmation(editingModel.name), {
+                          danger: true,
+                          confirmLabel: text.removeModel,
+                        })
+                      ) {
                         await runLibraryMutation(() => onDeleteModel(editingModel.id));
                       }
                     })();
@@ -862,9 +851,7 @@ function RuntimeStatusPanel({
                   className={`h-full bg-sky-500 transition-all ${
                     downloadProgress?.total ? "" : "progress-indeterminate w-1/2"
                   }`}
-                  style={
-                    downloadProgress?.total ? { width: `${progressPercent}%` } : undefined
-                  }
+                  style={downloadProgress?.total ? { width: `${progressPercent}%` } : undefined}
                 />
               </div>
             </div>

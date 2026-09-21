@@ -38,7 +38,7 @@ export function ModeHelpOverlay({ corner, mode, shortcuts }: ModeHelpOverlayProp
 
   return (
     <div
-      className={`canvas-floating-panel pointer-events-none absolute top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}
+      className={`canvas-floating-panel pointer-events-none absolute z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}
     >
       <div className="font-medium text-sky-200">{help.title}</div>
       {help.tips.map((tip) => (
@@ -76,7 +76,7 @@ export function LabelShortcutOverlay({
 
   return (
     <div
-      className={`canvas-floating-panel pointer-events-none absolute top-3 z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}
+      className={`canvas-floating-panel pointer-events-none absolute z-10 max-w-xs rounded-lg border border-slate-700/70 bg-slate-950/75 px-3 py-2 text-xs leading-5 text-slate-200 shadow-lg ${OVERLAY_CORNER_CLASS[corner]}`}
     >
       <div className="font-medium text-sky-200">标签快捷键</div>
       {labelShortcuts.map((label) => (
@@ -102,7 +102,7 @@ export function isFitScale(scale: number, fitScale: number): boolean {
   return Math.abs(scale - fitScale) < FIT_SCALE_EPSILON;
 }
 
-// 顶中常驻：四个角落被模式提示与标签浮层的默认/让位态占用，顶中在任何浮层状态下都不重叠。
+// 顶中常驻；角落帮助面板在 CSS 中保留顶部 48px 控件区，窄画布也不会遮挡。
 export function ZoomIndicator({
   fit,
   onReset,
@@ -119,7 +119,7 @@ export function ZoomIndicator({
   return (
     <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center overflow-hidden rounded-lg border border-slate-700/70 bg-slate-950/75 text-xs text-slate-200 shadow-lg">
       <button
-        aria-label="缩小画布"
+        aria-label={shortcutText.zoomOut.label}
         className="px-2 py-1 leading-5 hover:bg-slate-800"
         onClick={onZoomOut}
         type="button"
@@ -129,13 +129,13 @@ export function ZoomIndicator({
       <button
         className="min-w-[3.5rem] px-2 py-1 text-center font-medium leading-5 hover:bg-slate-800"
         onClick={onReset}
-        title="恢复适应画布"
+        title={interactionText.resetCanvas}
         type="button"
       >
-        {fit || scale === null ? "适应" : `${Math.round(scale * 100)}%`}
+        {fit || scale === null ? interactionText.fitCanvas : `${Math.round(scale * 100)}%`}
       </button>
       <button
-        aria-label="放大画布"
+        aria-label={shortcutText.zoomIn.label}
         className="px-2 py-1 leading-5 hover:bg-slate-800"
         onClick={onZoomIn}
         type="button"
@@ -430,6 +430,7 @@ export function AnnotationRect({
         strokeWidth={isHighlighted || isSelected ? 3 : 2}
         draggable={
           !isPanning &&
+          !spacePan &&
           resolveGesture(
             { button: 0, phase: "drag" },
             { mode: interactionMode, shapeType: annotation.type, hit: true },
@@ -439,10 +440,17 @@ export function AnnotationRect({
           event.cancelBubble = true;
           onContextMenu(event, annotation.id);
         }}
-        onDragStart={(event) => handleShapeDragStart(event, interactionMode)}
+        onDragStart={(event) => handleShapeDragStart(event, interactionMode, spacePan)}
         onDragEnd={(event) => onDragEnd(annotation, event)}
         onMouseDown={(event) =>
-          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart, spacePan)
+          handleShapeMouseDown(
+            event,
+            interactionMode,
+            annotation.id,
+            onSelect,
+            onPanStart,
+            spacePan,
+          )
         }
         onTransformEnd={() => onTransformEnd(annotation)}
       />
@@ -512,7 +520,14 @@ export function AnnotationPolygon({
           onContextMenu(event, annotation.id);
         }}
         onMouseDown={(event) =>
-          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart, spacePan)
+          handleShapeMouseDown(
+            event,
+            interactionMode,
+            annotation.id,
+            onSelect,
+            onPanStart,
+            spacePan,
+          )
         }
       />
       {isSelected &&
@@ -522,6 +537,7 @@ export function AnnotationPolygon({
             <Circle
               draggable={
                 !isPanning &&
+                !spacePan &&
                 resolveGesture(
                   { button: 0, phase: "drag" },
                   { mode: interactionMode, shapeType: annotation.type, hit: true },
@@ -535,9 +551,16 @@ export function AnnotationPolygon({
               x={x}
               y={points[index * 2 + 1]}
               onMouseDown={(event) =>
-                handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart, spacePan)
+                handleShapeMouseDown(
+                  event,
+                  interactionMode,
+                  annotation.id,
+                  onSelect,
+                  onPanStart,
+                  spacePan,
+                )
               }
-              onDragStart={(event) => handleShapeDragStart(event, interactionMode)}
+              onDragStart={(event) => handleShapeDragStart(event, interactionMode, spacePan)}
               onDragEnd={(event) => onVertexDragEnd(annotation, index, event)}
             />
           ))}
@@ -589,6 +612,7 @@ export function AnnotationPoint({
       <Circle
         draggable={
           !isPanning &&
+          !spacePan &&
           resolveGesture(
             { button: 0, phase: "drag" },
             { mode: interactionMode, shapeType: annotation.type, hit: true },
@@ -607,10 +631,17 @@ export function AnnotationPoint({
           event.cancelBubble = true;
           onContextMenu(event, annotation.id);
         }}
-        onDragStart={(event) => handleShapeDragStart(event, interactionMode)}
+        onDragStart={(event) => handleShapeDragStart(event, interactionMode, spacePan)}
         onDragEnd={(event) => onPointDragEnd(annotation, event)}
         onMouseDown={(event) =>
-          handleShapeMouseDown(event, interactionMode, annotation.id, onSelect, onPanStart, spacePan)
+          handleShapeMouseDown(
+            event,
+            interactionMode,
+            annotation.id,
+            onSelect,
+            onPanStart,
+            spacePan,
+          )
         }
       />
       {showLabel && (
@@ -654,8 +685,13 @@ function handleShapeMouseDown(
   }
 }
 
-function handleShapeDragStart(event: KonvaEventObject<DragEvent>, mode: InteractionMode) {
+function handleShapeDragStart(
+  event: KonvaEventObject<DragEvent>,
+  mode: InteractionMode,
+  spacePan: boolean,
+) {
   if (
+    spacePan ||
     resolveGesture(
       {
         button: event.evt.button ?? ("touches" in event.evt ? 0 : -1),

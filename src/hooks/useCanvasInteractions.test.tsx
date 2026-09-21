@@ -3,7 +3,11 @@ import { createRoot } from "react-dom/client";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Mock } from "vitest";
 import { expect, it, vi } from "vitest";
-import { useCanvasInteractions, type CanvasInteractions, type UseCanvasInteractionsParams } from "./useCanvasInteractions";
+import {
+  useCanvasInteractions,
+  type CanvasInteractions,
+  type UseCanvasInteractionsParams,
+} from "./useCanvasInteractions";
 import { useDraftGesture } from "./useDraftGesture";
 import type { ImageLayout } from "../components/canvas/types";
 
@@ -79,6 +83,10 @@ function renderHarness(overrides: Partial<UseCanvasInteractionsParams> = {}): {
   const panStateRef = { current: null };
   const selectedRectRef = { current: null };
   const suppressContextMenuRef = { current: false };
+  const loadedImage = Object.defineProperties(new Image(), {
+    naturalWidth: { value: 100 },
+    naturalHeight: { value: 100 },
+  });
   const box = {} as { current: CanvasInteractions };
   function Harness() {
     const gesture = useDraftGesture();
@@ -93,7 +101,7 @@ function renderHarness(overrides: Partial<UseCanvasInteractionsParams> = {}): {
       imageLayout: { x: 0, y: 0, width: 100, height: 100, scale: 1 },
       labelById: new Map([[label.id, label]]),
       labels: [label],
-      loadedImage: Object.assign(new Image(), { width: 100, height: 100 }),
+      loadedImage,
       panStateRef,
       spacePanActive: false,
       selectedPath: "a",
@@ -167,6 +175,64 @@ it("pans with space-held left button instead of drawing", () => {
   });
   act(() => controls.current.handleStageMouseUp());
   expect(addAnnotation).not.toHaveBeenCalled();
+});
+
+it("preserves polygon vertices across middle-button dragging", () => {
+  const addAnnotation = vi.fn();
+  const controls = renderHarness({ currentShapeType: "polygon", addAnnotation });
+  act(() => controls.current.handleStageMouseDown(stageEvent({ button: 0 }, { x: 10, y: 10 })));
+  act(() => controls.current.handleStageMouseDown(stageEvent({ button: 0 }, { x: 30, y: 10 })));
+  act(() => controls.current.handleStageMouseDown(stageEvent({ button: 1 }, { x: 40, y: 40 })));
+  act(() => controls.current.handleStageMouseMove(stageEvent({ buttons: 4 }, { x: 70, y: 50 })));
+  act(() => controls.current.handleStageMouseUp());
+  act(() => controls.current.handleStageMouseDown(stageEvent({ button: 0 }, { x: 30, y: 30 })));
+  act(() => controls.current.completePolygon());
+  expect(addAnnotation).toHaveBeenCalledWith(
+    "a",
+    expect.objectContaining({
+      type: "polygon",
+      points: [10, 10, 30, 10, 30, 30],
+    }),
+  );
+});
+
+it("cancels polygon vertices only on a middle click, allowing small pointer jitter", () => {
+  const addAnnotation = vi.fn();
+  const controls = renderHarness({ currentShapeType: "polygon", addAnnotation });
+  for (const point of [
+    { x: 10, y: 10 },
+    { x: 30, y: 10 },
+    { x: 30, y: 30 },
+  ]) {
+    act(() => controls.current.handleStageMouseDown(stageEvent({ button: 0 }, point)));
+  }
+  act(() => controls.current.handleStageMouseDown(stageEvent({ button: 1 }, { x: 40, y: 40 })));
+  act(() => controls.current.handleStageMouseMove(stageEvent({ buttons: 4 }, { x: 41, y: 40 })));
+  act(() => controls.current.handleStageMouseUp());
+  act(() => controls.current.completePolygon());
+  expect(addAnnotation).not.toHaveBeenCalled();
+});
+
+it("keeps a polygon when a space-pan left click has no movement", () => {
+  const addAnnotation = vi.fn();
+  const controls = renderHarness({ currentShapeType: "polygon", addAnnotation });
+  for (const point of [
+    { x: 10, y: 10 },
+    { x: 30, y: 10 },
+    { x: 30, y: 30 },
+  ]) {
+    act(() => controls.current.handleStageMouseDown(stageEvent({ button: 0 }, point)));
+  }
+  act(() => controls.current.startPanning(stageEvent({ button: 0 }, { x: 40, y: 40 })));
+  act(() => controls.current.handleStageMouseUp());
+  act(() => controls.current.completePolygon());
+  expect(addAnnotation).toHaveBeenCalledWith(
+    "a",
+    expect.objectContaining({
+      type: "polygon",
+      points: [10, 10, 30, 10, 30, 30],
+    }),
+  );
 });
 
 it("zooms from wheel outside the image with the anchor clamped into the image rect", () => {

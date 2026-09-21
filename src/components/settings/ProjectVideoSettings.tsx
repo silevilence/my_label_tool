@@ -68,7 +68,7 @@ export function ProjectVideoSettings({
             {model.error}
           </p>
         )}
-        {unsaved && <p className="mt-2 text-xs text-amber-300">抽帧设置有未保存的修改。</p>}
+        {unsaved && <p className="mt-2 text-xs text-amber-300">{text.unsavedExtractionSettings}</p>}
         <button
           type="button"
           disabled={!folder || model.loading || model.saving || !validExtraction(interval)}

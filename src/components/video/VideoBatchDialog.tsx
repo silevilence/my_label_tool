@@ -12,7 +12,12 @@ export function VideoBatchDialog({
   onClose: () => void;
 }) {
   return (
-    <Overlay onClose={onClose} canDismiss={progress.finished} label={text.batchPrepare}>
+    <Overlay
+      operationFeedback
+      onClose={onClose}
+      canDismiss={progress.finished}
+      label={text.batchPrepare}
+    >
       <section
         aria-label={text.batchPrepare}
         className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100 shadow-2xl"
@@ -38,7 +43,9 @@ export function VideoBatchDialog({
             >
               <div
                 className="h-full bg-sky-500 transition-[width]"
-                style={{ width: `${Math.min(100, ((progress.completed + progress.failures.length) / progress.total) * 100)}%` }}
+                style={{
+                  width: `${Math.min(100, ((progress.completed + progress.failures.length) / progress.total) * 100)}%`,
+                }}
               />
             </div>
             <span className="text-xs tabular-nums text-slate-400">

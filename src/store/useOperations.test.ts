@@ -85,7 +85,39 @@ it("aggregates repeated push errors under one label and ignores empty messages",
   expect(registry.canStart("project-annotations")).toBe(true);
   registry.dismiss(card.id);
   registry.pushError("导出", "third");
-  expect(
-    useOperations.getState().operations.filter((op) => op.label === "导出"),
-  ).toHaveLength(1);
+  expect(useOperations.getState().operations.filter((op) => op.label === "导出")).toHaveLength(1);
+});
+
+it("aggregates failed retries without double-counting late terminal calls or losing resources", () => {
+  const registry = useOperations.getState();
+  const first = registry.begin({ label: "export", resource: "export-dir" });
+  first.fail("first");
+  first.fail("late duplicate");
+  const retry = registry.begin({ label: "export", resource: "export-dir" });
+  expect(registry.canStart("export-dir")).toBe(false);
+  retry.fail("second");
+  retry.complete("late success");
+  expect(useOperations.getState().operations).toHaveLength(1);
+  expect(useOperations.getState().operations[0]).toMatchObject({
+    id: retry.id,
+    status: "failed",
+    message: "second",
+    failCount: 2,
+  });
+  expect(registry.canStart("export-dir")).toBe(true);
+  registry.pushError("unrelated", "separate");
+  registry.dismiss(retry.id);
+  const fresh = registry.begin({ label: "export", resource: "export-dir" });
+  fresh.fail("fresh");
+  expect(useOperations.getState().operations.find((op) => op.id === fresh.id)?.failCount).toBe(1);
+  expect(useOperations.getState().operations.find((op) => op.label === "unrelated")).toBeDefined();
+});
+
+it("merges standalone failures with the next failed operation of the same name", () => {
+  const registry = useOperations.getState();
+  registry.pushError("download", "first");
+  registry.pushError("download", "second");
+  registry.begin({ label: "download", resource: "model-download" }).fail("third");
+  expect(useOperations.getState().operations).toHaveLength(1);
+  expect(useOperations.getState().operations[0]).toMatchObject({ message: "third", failCount: 3 });
 });

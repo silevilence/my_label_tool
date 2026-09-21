@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { generateImageThumbnail, imageFileSrc } from "../../lib/tauri-api";
 
-// Dedupes concurrent and repeated requests per source path; resolves to the
-// cached thumbnail path, or null when generation failed (fallback: filename).
+// Dedupes only in-flight requests. Completed entries live in the Rust disk cache;
+// keeping every visited path here would grow memory and bypass mtime validation.
 const requests = new Map<string, Promise<string | null>>();
 
 function requestThumbnail(path: string): Promise<string | null> {
   const pending = requests.get(path);
   if (pending) return pending;
-  const request = generateImageThumbnail(path).catch(() => null);
+  const request = generateImageThumbnail(path)
+    .catch(() => null)
+    .finally(() => {
+      requests.delete(path);
+    });
   requests.set(path, request);
   return request;
 }

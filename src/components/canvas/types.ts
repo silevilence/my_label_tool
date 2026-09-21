@@ -31,6 +31,7 @@ export interface CanvasContextMenu {
 
 export interface PanState {
   button: number;
+  moved: boolean;
   startX: number;
   startY: number;
   layoutX: number;

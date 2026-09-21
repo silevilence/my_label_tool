@@ -10,6 +10,7 @@ function formatBytes(bytes: number): string {
 }
 
 export const PRELABEL_ZH_CN = {
+  pendingSelection: "未绑定，点击绑定生效",
   pluginCancelUnavailable: "当前操作未受理取消，请稍后重试。",
   menuLabel: "预打标模型",
   title: "预打标模型库",

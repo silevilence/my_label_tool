@@ -14,6 +14,8 @@ import {
 import type { AnnotationShape } from "../types/annotation";
 import type { ExportFormatId } from "../types/export";
 import { ExportPanel } from "../components/settings/ExportPanel";
+import { OperationStatus } from "../components/operations/OperationStatus";
+import { useOperations } from "../store/useOperations";
 import { loadImageSize } from "../lib/app-utils";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/defaults/video";
 import { projectConfigTemplate, type ProjectConfig } from "../lib/importers";
@@ -111,29 +113,33 @@ function Harness({
     setSelectedExportFormatId: setSelected,
   });
   return (
-    <ExportPanel
-      hasVideos
-      videoFrameCount={pendingOnly ? 0 : 4}
-      pendingVideoCount={1}
-      customMappingText="{}"
-      disabled={false}
-      isSaving={false}
-      selectedFormatId={selected}
-      pluginFormats={[]}
-      exportError={actions.exportError}
-      pluginExportProgress={null}
-      canSaveProject
-      onChangeCustomMappingText={vi.fn()}
-      onCancelPluginExport={vi.fn()}
-      onChangeFormat={setSelected}
-      onExport={() => void actions.exportSelectedFormat()}
-      onSaveProject={() => void actions.saveProjectExport()}
-    />
+    <>
+      <ExportPanel
+        hasVideos
+        videoFrameCount={pendingOnly ? 0 : 4}
+        pendingVideoCount={1}
+        customMappingText="{}"
+        disabled={false}
+        isSaving={false}
+        selectedFormatId={selected}
+        pluginFormats={[]}
+        exportError={actions.exportError}
+        pluginExportProgress={null}
+        canSaveProject
+        onChangeCustomMappingText={vi.fn()}
+        onCancelPluginExport={vi.fn()}
+        onChangeFormat={setSelected}
+        onExport={() => void actions.exportSelectedFormat()}
+        onSaveProject={() => void actions.saveProjectExport()}
+      />
+      <OperationStatus />
+    </>
   );
 }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();
+  useOperations.setState({ operations: [] });
   vi.mocked(exportAnnotationsJson).mockResolvedValue(undefined);
   vi.mocked(loadImageSize).mockImplementation(async (path) => ({
     width: path.includes("/one/") ? 100 : 200,
@@ -159,6 +165,7 @@ beforeEach(() => {
       ),
     );
   container = document.createElement("div");
+  document.body.append(container);
   root = createRoot(container);
 });
 it("saves the selected YOLO format instead of the existing project's JSON format", async () => {
@@ -180,6 +187,7 @@ it("saves the selected YOLO format instead of the existing project's JSON format
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  container.remove();
 });
 
 it("exports separate per-video frame txt files and empty frames from the shared format selector and Save button", async () => {
@@ -224,8 +232,12 @@ it("rejects unsupported shapes before choosing a directory or dropping annotatio
   });
   await act(async () => root.render(<Harness format="yolo" />));
   await act(async () => actions.saveProjectExport());
-  // 失败统一进操作卡片与导出面板就地错误，不再重复打进全局错误条。
+  // 失败卡片只在导出面板就地呈现，不重复打进全局错误条。
   expect(container.textContent).toContain("YOLO 只支持矩形");
+  expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+  expect(
+    container.querySelector("[data-operation-error-feedback]")?.parentElement?.textContent,
+  ).toContain("YOLO 只支持矩形");
   expect(error).not.toHaveBeenCalledWith(expect.stringContaining("YOLO 只支持矩形"));
   expect(selectExportFolder).not.toHaveBeenCalled();
   expect(exportTextFiles).not.toHaveBeenCalled();

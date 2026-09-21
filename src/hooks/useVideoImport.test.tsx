@@ -47,10 +47,15 @@ it("preserves the active project after failure and permits retry", async () => {
   api.importVideo.mockRejectedValue(new Error("broken"));
   await act(async () => controls.start(5));
   expect(imported).not.toHaveBeenCalled();
-  expect(error).toHaveBeenCalledWith("Error: broken");
+  expect(error.mock.calls.filter(([message]) => message)).toEqual([]);
+  expect(useOperations.getState().operations).toMatchObject([
+    { status: "failed", message: "broken", failCount: 1 },
+  ]);
   expect(controls.busy).toBe(false);
   await act(async () => controls.start(5));
   expect(api.importVideo).toHaveBeenCalledTimes(2);
+  expect(useOperations.getState().operations).toHaveLength(1);
+  expect(useOperations.getState().operations[0].failCount).toBe(2);
 });
 it("adds a selected video to the existing project without replacement confirmation or folder chooser", async () => {
   const result = { folderPath: "project/new", video: { frames: [] } };

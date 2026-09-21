@@ -1,4 +1,5 @@
 pub mod image_deletion;
+pub mod image_listing;
 pub mod onnx_metadata;
 pub mod prelabel;
 pub mod project_media;

@@ -32,15 +32,21 @@
 }
 
 .canvas-floating-panel {
-  transition: transform 180ms ease-out;
-  will-change: transform;
+  max-height: calc(100% - 72px);
+  overflow: hidden;
+  transition:
+    top 180ms ease-out,
+    transform 180ms ease-out;
+  will-change: top, transform;
 }
 
 .canvas-floating-panel-bottom {
-  transform: translateY(calc(100vh - 100% - 1.5rem));
+  top: calc(100% - 12px);
+  transform: translateY(-100%);
 }
 
 .canvas-floating-panel-top {
+  top: 60px;
   transform: translateY(0);
 }
 

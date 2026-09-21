@@ -197,7 +197,7 @@ export function ClassMappingRow({
           ))}
         </select>
         {pendingSelection && (
-          <span className="self-center text-xs text-amber-300">未绑定，点击绑定生效</span>
+          <span className="self-center text-xs text-amber-300">{text.pendingSelection}</span>
         )}
         <button
           className="rounded border border-sky-500/50 px-3 py-2 text-xs text-sky-200 disabled:opacity-50"

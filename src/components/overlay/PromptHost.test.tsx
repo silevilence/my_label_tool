@@ -69,7 +69,10 @@ it("submits trimmed prompt text via button and Enter, null on cancel", async () 
   const input = document.body.querySelector<HTMLInputElement>('input[aria-label="新模板名称"]')!;
   expect(input.value).toBe("  草稿  ");
   await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "我的模板");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+      input,
+      "我的模板",
+    );
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await act(async () =>
@@ -99,4 +102,18 @@ it("rejects empty prompt submissions until text is entered", async () => {
   expect(button("确定").disabled).toBe(false);
   await act(async () => button("确定").click());
   await expect(pending).resolves.toBe("名称");
+});
+
+it("resets the input for queued naming requests with the same title", async () => {
+  let first!: Promise<string | null>;
+  let second!: Promise<string | null>;
+  act(() => {
+    first = promptText("新模板名称", "第一个");
+    second = promptText("新模板名称", "第二个");
+  });
+  act(() => button("确定").click());
+  await expect(first).resolves.toBe("第一个");
+  expect(document.body.querySelector<HTMLInputElement>("input")!.value).toBe("第二个");
+  act(() => button("确定").click());
+  await expect(second).resolves.toBe("第二个");
 });

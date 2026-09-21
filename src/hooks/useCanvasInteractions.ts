@@ -347,6 +347,8 @@ export function useCanvasInteractions({
     if (panState && gesture.state === "pan") {
       const deltaX = event.evt.clientX - panState.startX;
       const deltaY = event.evt.clientY - panState.startY;
+      if (Math.hypot(deltaX, deltaY) >= 3) panState.moved = true;
+      if (!panState.moved) return;
       setImageView((layout) =>
         layout ? { ...layout, x: panState.layoutX + deltaX, y: panState.layoutY + deltaY } : layout,
       );
@@ -367,9 +369,9 @@ export function useCanvasInteractions({
 
   function handleStageMouseUp() {
     if (gesture.state === "pan") {
+      const panState = panStateRef.current;
       panStateRef.current = null;
-      // 平移不产出标注；中键单击（无位移）由此等效取消草稿。
-      gesture.cancel();
+      gesture.endPan(panState?.button === 1 && !panState.moved);
       return;
     }
     if (gesture.state === "rect") commitAnnotation();
@@ -399,6 +401,7 @@ export function useCanvasInteractions({
     suppressContextMenuRef.current = true;
     panStateRef.current = {
       button: event.evt.button,
+      moved: false,
       startX: event.evt.clientX,
       startY: event.evt.clientY,
       layoutX: imageLayout.x,

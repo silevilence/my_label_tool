@@ -23,7 +23,7 @@ export function VideoImportDialog({
 }) {
   const [interval, setInterval] = useState(defaultSettings);
   return (
-    <Overlay onClose={onClose} canDismiss={!busy} label={text.add}>
+    <Overlay operationFeedback onClose={onClose} canDismiss={!busy} label={text.add}>
       <section
         aria-label={text.add}
         className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100 shadow-2xl"

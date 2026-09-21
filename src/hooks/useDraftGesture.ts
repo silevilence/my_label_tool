@@ -21,6 +21,10 @@ export function useDraftGesture() {
   const update = useCallback((point: GesturePoint) => send({ type: "update", point }), [send]);
   const interrupt = useCallback(() => send({ type: "interrupt" }), [send]);
   const cancel = useCallback(() => send({ type: "cancel" }), [send]);
+  const endPan = useCallback(
+    (cancelDraft: boolean) => send({ type: "end-pan", cancelDraft }),
+    [send],
+  );
   const commit = useCallback(() => {
     const result = finishDraft(current.current);
     if (current.current.kind !== "polygon" || result) cancel();
@@ -31,5 +35,5 @@ export function useDraftGesture() {
     send({ type: "undo" });
     return true;
   }, [send]);
-  return { state: draft.kind, draft, start, update, commit, cancel, interrupt, undoVertex };
+  return { state: draft.kind, draft, start, update, commit, cancel, endPan, interrupt, undoVertex };
 }

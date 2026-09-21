@@ -272,7 +272,7 @@ export function LabelSettings({
                     ))}
                   </select>
                   <button
-                    className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:bg-red-500 hover:text-white"
+                    className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-300 hover:bg-red-500/20"
                     type="button"
                     onClick={() => deleteLabel(label)}
                   >

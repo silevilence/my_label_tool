@@ -5,7 +5,13 @@ export interface GesturePoint {
 }
 export type Draft =
   | { kind: "idle" }
-  | { kind: "rect" | "point" | "pan"; start: GesturePoint; current: GesturePoint }
+  | { kind: "rect" | "point"; start: GesturePoint; current: GesturePoint }
+  | {
+      kind: "pan";
+      start: GesturePoint;
+      current: GesturePoint;
+      previous: Exclude<Draft, { kind: "pan" }>;
+    }
   | { kind: "polygon"; points: number[]; cursor: GesturePoint | null };
 export type DraftEvent =
   | {
@@ -16,8 +22,11 @@ export type DraftEvent =
   | { type: "update"; point: GesturePoint }
   | { type: "interrupt" }
   | { type: "cancel" }
+  | { type: "end-pan"; cancelDraft: boolean }
   | { type: "undo" };
 export function reduceDraft(draft: Draft, event: DraftEvent): Draft {
+  if (event.type === "end-pan")
+    return draft.kind === "pan" ? (event.cancelDraft ? { kind: "idle" } : draft.previous) : draft;
   if (event.type === "interrupt")
     return draft.kind === "rect"
       ? { kind: "idle" }
@@ -32,6 +41,13 @@ export function reduceDraft(draft: Draft, event: DraftEvent): Draft {
   }
   if (event.type === "start") {
     const { point, intent } = event;
+    if (intent === "pan")
+      return {
+        kind: "pan",
+        start: point,
+        current: point,
+        previous: draft.kind === "pan" ? draft.previous : draft,
+      };
     if (intent === "draw-polygon")
       return {
         kind: "polygon",
@@ -39,7 +55,7 @@ export function reduceDraft(draft: Draft, event: DraftEvent): Draft {
         cursor: point,
       };
     return {
-      kind: intent === "pan" ? "pan" : intent === "draw-rect" ? "rect" : "point",
+      kind: intent === "draw-rect" ? "rect" : "point",
       start: point,
       current: point,
     };

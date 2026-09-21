@@ -27,7 +27,12 @@ import {
   isFitScale,
   type OverlayCorner,
 } from "./canvas/CanvasChrome";
-import { getFitScale, isLargeImage, isPointNearAnnotation, type CanvasRect } from "./canvas/geometry";
+import {
+  getFitScale,
+  isLargeImage,
+  isPointNearAnnotation,
+  type CanvasRect,
+} from "./canvas/geometry";
 import { MISSING_ANNOTATION_LABEL } from "./canvas/types";
 import type { CanvasContextMenu as CanvasContextMenuState, ImageLayout } from "./canvas/types";
 import type { InteractionMode } from "./canvas/types";
@@ -40,7 +45,7 @@ import {
 import type { ExportFormatId } from "../types/export";
 import type { ProjectConfig } from "../lib/importers";
 import type { ImageFile } from "../lib/tauri-api";
-import type { ShortcutActionId, ShortcutMap } from "../lib/defaults/shortcuts";
+import type { ShortcutMap } from "../lib/defaults/shortcuts";
 import type { HelpDisplaySettings, LabelDisplaySettings } from "../lib/defaults/display";
 import type { AppUpdateProgress, AppUpdateStatus } from "../lib/updater";
 import type { PrelabelExecutionControls } from "../hooks/usePrelabelExecution";
@@ -205,7 +210,7 @@ interface AppLayoutProps {
   startPanning: (event: KonvaEventObject<MouseEvent>) => void;
   undo: () => void;
   updateLabels: (labels: LabelConfig[]) => void;
-  updateShortcut: (actionId: ShortcutActionId, shortcut: string) => void;
+  updateShortcut: (changes: Partial<ShortcutMap>) => void;
   zoomFromKeyboard: (delta: 1 | -1) => void;
 }
 

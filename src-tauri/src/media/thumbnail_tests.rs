@@ -21,11 +21,50 @@ fn write_png(path: &Path, width: u32, height: u32) {
     let image: RgbaImage = ImageBuffer::from_fn(width, height, |x, y| {
         image::Rgba([(x % 256) as u8, (y % 256) as u8, 128, 255])
     });
-    image.save_with_format(path, image::ImageFormat::Png).unwrap();
+    image
+        .save_with_format(path, image::ImageFormat::Png)
+        .unwrap();
 }
 
 fn dimensions(path: &Path) -> (u32, u32) {
     image::image_dimensions(path).unwrap()
+}
+
+#[test]
+fn creates_a_missing_cache_directory_on_first_use() {
+    let root = temp_root("cold");
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("source.png");
+    write_png(&source, 400, 200);
+    let cache = root.join("new-app-cache").join("thumbnails");
+    let thumbnail = generate(&source, &cache).unwrap();
+    assert_eq!(dimensions(&thumbnail), (256, 128));
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn simultaneous_requests_leave_one_complete_cache_file() {
+    let root = temp_root("concurrent");
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("source.png");
+    write_png(&source, 640, 400);
+    let cache = root.join("cache");
+    let barrier = std::sync::Barrier::new(8);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                scope.spawn(|| {
+                    barrier.wait();
+                    generate(&source, &cache)
+                })
+            })
+            .collect();
+        for handle in handles {
+            assert_eq!(dimensions(&handle.join().unwrap().unwrap()), (256, 160));
+        }
+    });
+    assert_eq!(fs::read_dir(&cache).unwrap().count(), 1);
+    fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]
@@ -106,7 +145,10 @@ fn cache_path_is_deterministic_for_unchanged_files() {
     let second = cache_path_for(&source, &root).unwrap();
 
     assert_eq!(first, second);
-    assert_eq!(first.extension().and_then(|value| value.to_str()), Some("png"));
+    assert_eq!(
+        first.extension().and_then(|value| value.to_str()),
+        Some("png")
+    );
     fs::remove_dir_all(&root).unwrap();
 }
 

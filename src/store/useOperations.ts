@@ -22,7 +22,7 @@ export interface OperationView {
   cancelRequested: boolean;
   startedAt: number;
   finishedAt?: number;
-  /** pushError 聚合同名失败时的累计次数。 */
+  /** 同名操作失败的累计次数。 */
   failCount?: number;
 }
 export interface OperationHandle {
@@ -103,12 +103,32 @@ export const useOperations = create<Operations>((set, get) => ({
         cancellations.delete(id);
       },
       fail: (error) => {
-        update({
-          status: "failed",
-          finishedAt: Date.now(),
-          message: error instanceof Error ? error.message : String(error),
-          kind: "error",
-          canCancel: false,
+        set((state) => {
+          const current = state.operations.find((op) => op.id === id);
+          if (!current || current.status !== "running") return state;
+          const previousFailures = state.operations.filter(
+            (op) => op.label === current.label && op.status === "failed",
+          );
+          const failedIds = new Set(previousFailures.map((op) => op.id));
+          const failCount =
+            1 + previousFailures.reduce((count, op) => count + (op.failCount ?? 1), 0);
+          return {
+            operations: state.operations
+              .filter((op) => !failedIds.has(op.id))
+              .map((op) =>
+                op.id === id
+                  ? {
+                      ...op,
+                      status: "failed",
+                      finishedAt: Date.now(),
+                      message: error instanceof Error ? error.message : String(error),
+                      kind: "error",
+                      canCancel: false,
+                      failCount,
+                    }
+                  : op,
+              ),
+          };
         });
         cancellations.delete(id);
       },
@@ -152,9 +172,7 @@ export const useOperations = create<Operations>((set, get) => ({
     })),
   pushError: (label, message) => {
     if (!message) return;
-    const existing = get().operations.find(
-      (op) => op.label === label && op.status === "failed",
-    );
+    const existing = get().operations.find((op) => op.label === label && op.status === "failed");
     if (existing) {
       const failCount = (existing.failCount ?? 1) + 1;
       set((state) => ({

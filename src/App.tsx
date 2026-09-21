@@ -1,5 +1,6 @@
 import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
+import { usePanTermination } from "./hooks/usePanTermination";
 import { useScopeEscape } from "./hooks/useScopeEscape";
 import { PromptHost } from "./components/overlay/PromptHost";
 import { useOperations } from "./store/useOperations";
@@ -190,6 +191,7 @@ function App() {
         )
       : null;
   const cancelDraft = gesture.cancel;
+  const endPan = gesture.endPan;
   const interruptDraft = gesture.interrupt;
 
   const labelById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
@@ -720,22 +722,7 @@ function App() {
     onShortcutConflict: showMessage,
   });
 
-  useEffect(() => {
-    if (!isPanning) {
-      return;
-    }
-
-    function stopPanning() {
-      panStateRef.current = null;
-      cancelDraft();
-      window.setTimeout(() => {
-        suppressContextMenuRef.current = false;
-      }, 250);
-    }
-
-    window.addEventListener("mouseup", stopPanning);
-    return () => window.removeEventListener("mouseup", stopPanning);
-  }, [isPanning, cancelDraft]);
+  usePanTermination(isPanning, panStateRef, suppressContextMenuRef, endPan);
 
   return (
     <>

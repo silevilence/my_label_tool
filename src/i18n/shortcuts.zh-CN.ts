@@ -23,4 +23,7 @@ export const SHORTCUT_ZH_CN = {
   reserved: "此按键用于输入或确认，不能绑定该动作。",
   restoreDefault: "恢复默认快捷键",
   restoreAllDefaults: "全部恢复默认",
+  restoreDefaultConfirmation: (label: string, current: string, fallback: string) =>
+    `将「${label}」从 ${current} 恢复为默认快捷键 ${fallback}？`,
+  restoreAllConfirmation: (count: number) => `将 ${count} 个已改绑的快捷键全部恢复为默认值？`,
 };

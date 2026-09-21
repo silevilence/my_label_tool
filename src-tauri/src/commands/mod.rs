@@ -20,7 +20,6 @@ pub use thumbnail::*;
 use std::{
     collections::HashMap,
     fs,
-    io::Read,
     path::{Component, Path, PathBuf},
 };
 
@@ -29,13 +28,8 @@ use serde_json::Value;
 use tauri::Manager;
 
 use crate::models::annotation::{LabelConfig, LabelTemplate};
-
-#[derive(Serialize)]
-pub struct ImageFile {
-    path: String,
-    name: String,
-    size: u64,
-}
+use crate::{i18n::zh_cn as text, media::image_listing};
+pub use image_listing::ImageFile;
 
 #[derive(Serialize)]
 pub struct TextFileEntry {
@@ -51,75 +45,10 @@ pub struct TextExportFile {
 }
 
 #[tauri::command]
-pub fn list_image_files(folder_path: PathBuf) -> Result<Vec<ImageFile>, String> {
-    if !folder_path.is_dir() {
-        return Err("请选择一个有效的文件夹".to_string());
-    }
-
-    let mut images = Vec::new();
-
-    for entry in fs::read_dir(&folder_path).map_err(|error| error.to_string())? {
-        let path = entry.map_err(|error| error.to_string())?.path();
-
-        if is_loadable_image(&path) {
-            let size = path.metadata().map_err(|error| error.to_string())?.len();
-            let name = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or_default()
-                .to_string();
-
-            images.push(ImageFile {
-                path: path.to_string_lossy().into_owned(),
-                name,
-                size,
-            });
-        }
-    }
-
-    images.sort_by_key(|image| image.name.to_lowercase());
-    Ok(images)
-}
-
-fn is_supported_image(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .map(|extension| {
-            matches!(
-                extension.to_lowercase().as_str(),
-                "jpg" | "jpeg" | "png" | "bmp"
-            )
-        })
-        .unwrap_or(false)
-}
-
-fn is_loadable_image(path: &Path) -> bool {
-    if !path.is_file() || !is_supported_image(path) {
-        return false;
-    }
-
-    let Ok(metadata) = path.metadata() else {
-        return false;
-    };
-    if metadata.len() == 0 {
-        return false;
-    }
-
-    let mut file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(_) => return false,
-    };
-    let mut signature = [0_u8; 8];
-    let Ok(read_count) = file.read(&mut signature) else {
-        return false;
-    };
-
-    matches!(
-        &signature[..read_count],
-        [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]
-            | [0xff, 0xd8, 0xff, ..]
-            | [b'B', b'M', ..]
-    )
+pub async fn list_image_files(folder_path: PathBuf) -> Result<Vec<ImageFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || image_listing::list(&folder_path))
+        .await
+        .map_err(text::image_listing_task_failed)?
 }
 
 #[tauri::command]
@@ -317,11 +246,11 @@ fn write_shortcuts(path: &Path, shortcuts: &HashMap<String, String>) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::{
-        export_annotations_json, export_text_files, is_loadable_image, is_supported_image,
-        list_image_files, list_text_files, read_label_configs, read_label_templates,
-        read_shortcuts, read_text_file, write_label_configs, write_label_templates,
-        write_shortcuts, TextExportFile,
+        export_annotations_json, export_text_files, list_image_files, list_text_files,
+        read_label_configs, read_label_templates, read_shortcuts, read_text_file,
+        write_label_configs, write_label_templates, write_shortcuts, TextExportFile,
     };
+    use crate::media::image_listing::{is_loadable_image, is_supported_image};
     use crate::models::annotation::{
         AnnotationExport, AnnotationShape, ImageAnnotations, LabelConfig, LabelTemplate,
     };
@@ -362,12 +291,37 @@ mod tests {
         )
         .unwrap();
 
-        let images = list_image_files(dir.clone()).unwrap();
+        let images = tauri::async_runtime::block_on(list_image_files(dir.clone())).unwrap();
 
         assert_eq!(images.len(), 1);
         assert_eq!(images[0].name, "image.png");
         assert_eq!(images[0].size, 8);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn listing_images_yields_to_other_work() {
+        let dir =
+            std::env::temp_dir().join(format!("my_label_tool_scan_yield_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        for index in 0..512 {
+            fs::write(
+                dir.join(format!("image-{index:04}.png")),
+                b"\x89PNG\r\n\x1a\n",
+            )
+            .unwrap();
+        }
+        let yielded = std::cell::Cell::new(false);
+        let scan = async {
+            let images = list_image_files(dir.clone()).await.unwrap();
+            assert!(
+                yielded.get(),
+                "directory I/O blocked the caller until scanning completed"
+            );
+            assert_eq!(images.len(), 512);
+        };
+        tokio::join!(biased; scan, async { yielded.set(true); });
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

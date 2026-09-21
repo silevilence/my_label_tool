@@ -15,6 +15,7 @@ export const OPERATION_ZH_CN = {
   completed: "操作完成",
   cancelled: "操作已取消",
   failed: "操作失败",
+  failureCount: (count: number) => `（共 ${count} 次）`,
   updateCancelled: "已取消更新安装。下载传输结束后释放资源。",
   updateCancelHint: "取消安装（当前下载传输结束后停止）",
 };

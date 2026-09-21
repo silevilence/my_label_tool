@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Overlay } from "./Overlay";
-import {
-  usePromptStore,
-  type ConfirmRequest,
-  type PromptRequest,
-} from "../../lib/prompts";
+import { usePromptStore, type ConfirmRequest, type PromptRequest } from "../../lib/prompts";
 import { PROMPTS_ZH_CN as text } from "../../i18n/prompts.zh-CN";
 
 // 应用内「确认」与「命名输入」原语的宿主：挂在 App 根部一次，
@@ -66,7 +62,8 @@ function PromptCard({ request }: { request: PromptRequest }) {
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     inputRef.current?.select();
-  }, []);
+    setValue(request.initial ?? "");
+  }, [request]);
   function submit() {
     const trimmed = value.trim();
     if (!trimmed) return;

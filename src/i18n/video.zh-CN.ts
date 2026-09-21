@@ -1,4 +1,6 @@
 export const VIDEO_ZH_CN = {
+  discardSettingsConfirmation: "项目设置有未保存的修改，关闭将丢弃这些修改。确定关闭？",
+  unsavedExtractionSettings: "抽帧设置有未保存的修改。",
   distribution: "帧标注分布",
   distributionLegend: "蓝：已标注 · 黄：关键帧",
   frameStatus: (frame: number, annotated: boolean, keyframe: boolean) =>

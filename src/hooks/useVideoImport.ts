@@ -82,7 +82,6 @@ export function useVideoImport(
       if (cancelled.current) handle.complete(operationText.cancelled, "warning");
       else {
         handle.fail(error);
-        setError(String(error));
       }
     } finally {
       pending.current = false;
@@ -124,7 +123,6 @@ export function useVideoImport(
       if (cancelled.current) handle.complete(operationText.cancelled, "warning");
       else {
         handle.fail(error);
-        setError(String(error));
       }
     } finally {
       pending.current = false;

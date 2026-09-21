@@ -850,6 +850,10 @@ pub const VIDEO_REEXTRACT_PATH: &str =
 pub const VIDEO_REEXTRACT_CHANGED: &str = "视频帧元数据已变化，请重新打开项目后重试。";
 
 pub const THUMBNAIL_SOURCE_INVALID: &str = "图片不存在或不是普通文件，无法生成缩略图";
+pub const IMAGE_FOLDER_INVALID: &str = "请选择一个有效的文件夹";
+pub fn image_listing_task_failed(error: impl std::fmt::Display) -> String {
+    format!("图片目录扫描任务失败：{error}")
+}
 pub fn thumbnail_cache_dir_failed(error: impl std::fmt::Display) -> String {
     format!("无法确定缩略图缓存目录：{error}")
 }

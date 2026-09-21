@@ -22,7 +22,7 @@ interface ShortcutSettingsProps {
   shortcuts: ShortcutMap;
   onChangeHelpDisplaySetting: (setting: keyof HelpDisplaySettings, visible: boolean) => void;
   onChangeLabelDisplaySetting: (mode: InteractionMode, visible: boolean) => void;
-  onChangeShortcut: (actionId: ShortcutActionId, shortcut: string) => void;
+  onChangeShortcut: (changes: Partial<ShortcutMap>) => void;
   onClose: () => void;
 }
 
@@ -73,7 +73,7 @@ export function ShortcutSettings({
       }
 
       setRecordError("");
-      onChangeShortcut(actionId, shortcut);
+      onChangeShortcut({ [actionId]: shortcut });
       setRecordingActionId(null);
     }
 
@@ -81,17 +81,37 @@ export function ShortcutSettings({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [labelShortcuts, onChangeShortcut, recordingActionId, shortcuts]);
 
+  function applyRestoredShortcuts(changes: Partial<ShortcutMap>) {
+    const conflict = detectConflicts(
+      { ...shortcuts, ...changes },
+      labelShortcuts.map((key, index) => ({
+        id: String(index),
+        name: shortcutText.labelBinding(key),
+        shortcut: key,
+      })),
+    ).find((item) => item.ids.some((id) => Object.keys(changes).includes(id)));
+    if (conflict) {
+      setRecordError(conflict.message);
+      return;
+    }
+    setRecordError("");
+    onChangeShortcut(changes);
+  }
+
   async function restoreDefault(action: ShortcutAction) {
     const current = formatShortcut(shortcutKey(action, shortcuts));
     const fallback = formatShortcut(action.defaultKey);
     if (current === fallback) return;
     if (
-      !(await confirmAction(`将「${action.label}」从 ${current} 恢复为默认快捷键 ${fallback}？`, {
-        confirmLabel: shortcutText.restoreDefault,
-      }))
+      !(await confirmAction(
+        shortcutText.restoreDefaultConfirmation(action.label, current, fallback),
+        {
+          confirmLabel: shortcutText.restoreDefault,
+        },
+      ))
     )
       return;
-    onChangeShortcut(action.id, action.defaultKey);
+    applyRestoredShortcuts({ [action.id]: action.defaultKey });
   }
 
   async function restoreAllDefaults() {
@@ -100,13 +120,14 @@ export function ShortcutSettings({
     );
     if (rebindable.length === 0) return;
     if (
-      !(await confirmAction(
-        `将 ${rebindable.length} 个已改绑的快捷键全部恢复为默认值？`,
-        { confirmLabel: shortcutText.restoreAllDefaults },
-      ))
+      !(await confirmAction(shortcutText.restoreAllConfirmation(rebindable.length), {
+        confirmLabel: shortcutText.restoreAllDefaults,
+      }))
     )
       return;
-    rebindable.forEach((action) => onChangeShortcut(action.id, action.defaultKey));
+    applyRestoredShortcuts(
+      Object.fromEntries(rebindable.map((action) => [action.id, action.defaultKey])),
+    );
   }
 
   const hasCustomized = SHORTCUT_ACTIONS.some(
@@ -144,7 +165,10 @@ export function ShortcutSettings({
         </div>
 
         {recordError && (
-          <p role="alert" className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-300">
+          <p
+            role="alert"
+            className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-300"
+          >
             {recordError}
           </p>
         )}
@@ -273,18 +297,17 @@ export function ShortcutSettings({
                     ? "按键中..."
                     : formatShortcut(shortcutKey(action, shortcuts))}
                 </kbd>
-                {action.rebindable &&
-                  shortcutKey(action, shortcuts) !== action.defaultKey && (
-                    <button
-                      aria-label={`${shortcutText.restoreDefault}：${action.label}`}
-                      className="rounded border border-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
-                      title={shortcutText.restoreDefault}
-                      type="button"
-                      onClick={() => void restoreDefault(action)}
-                    >
-                      ↺
-                    </button>
-                  )}
+                {action.rebindable && shortcutKey(action, shortcuts) !== action.defaultKey && (
+                  <button
+                    aria-label={`${shortcutText.restoreDefault}：${action.label}`}
+                    className="rounded border border-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+                    title={shortcutText.restoreDefault}
+                    type="button"
+                    onClick={() => void restoreDefault(action)}
+                  >
+                    ↺
+                  </button>
+                )}
               </div>
               <button
                 className="rounded bg-sky-500 px-3 py-1 text-sm font-medium text-white hover:bg-sky-400"

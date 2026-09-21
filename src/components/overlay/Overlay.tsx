@@ -53,6 +53,8 @@ interface OverlayProps {
   anchor?: { x: number; y: number };
   /** 居中遮罩对话框：点击背板（面板外）触发 onClose；锚定菜单默认即支持。 */
   closeOnBackdrop?: boolean;
+  /** 将单一操作状态区置于当前工作弹窗内，保持反馈可见及按钮可聚焦。 */
+  operationFeedback?: boolean;
   children: ReactNode;
 }
 
@@ -72,6 +74,7 @@ function MountedOverlay({
   pointerOnly = false,
   anchor,
   closeOnBackdrop = false,
+  operationFeedback = false,
   children,
 }: Omit<OverlayProps, "open">) {
   const id = useId();
@@ -201,6 +204,7 @@ function MountedOverlay({
           onContextMenu={(event) => event.preventDefault()}
         >
           {children}
+          {operationFeedback && <div data-operation-feedback={id} />}
         </div>
       </div>
     </ParentOverlay.Provider>,

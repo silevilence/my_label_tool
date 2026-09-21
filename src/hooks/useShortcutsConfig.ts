@@ -1,12 +1,7 @@
 import { useShortcutStore } from "../store/useShortcutStore";
 import { useEffect, useState } from "react";
 import { mergeShortcuts } from "../lib/app-utils";
-import {
-  DEFAULT_SHORTCUTS,
-  SHORTCUT_ACTIONS,
-  type ShortcutActionId,
-  type ShortcutMap,
-} from "../lib/defaults/shortcuts";
+import { DEFAULT_SHORTCUTS, SHORTCUT_ACTIONS, type ShortcutMap } from "../lib/defaults/shortcuts";
 import { loadShortcuts, saveShortcuts } from "../lib/tauri-api";
 
 export function useShortcutsConfig(setError: (message: string) => void) {
@@ -34,9 +29,14 @@ export function useShortcutsConfig(setError: (message: string) => void) {
 
   useEffect(() => useShortcutStore.getState().configure(shortcuts), [shortcuts]);
 
-  function updateShortcut(actionId: ShortcutActionId, shortcut: string) {
-    if (!SHORTCUT_ACTIONS.find((action) => action.id === actionId)?.rebindable) return;
-    const nextShortcuts = { ...shortcuts, [actionId]: shortcut };
+  function updateShortcut(changes: Partial<ShortcutMap>) {
+    const nextShortcuts = { ...shortcuts };
+    for (const action of SHORTCUT_ACTIONS) {
+      const value = changes[action.id];
+      if (action.rebindable && value !== undefined) nextShortcuts[action.id] = value;
+    }
+    if (SHORTCUT_ACTIONS.every((action) => nextShortcuts[action.id] === shortcuts[action.id]))
+      return;
     setShortcuts(nextShortcuts);
     saveShortcuts(nextShortcuts).catch((caughtError: unknown) => {
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));

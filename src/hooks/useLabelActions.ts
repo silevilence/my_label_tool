@@ -1,4 +1,5 @@
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "../lib/defaults/labels";
+import { LABEL_DRAFT_ZH_CN } from "../i18n/label-draft.zh-CN";
 import { newTemplateId, isUserTemplate, saveProjectConfig } from "../lib/app-utils";
 import { confirmAction, promptText } from "../lib/prompts";
 import { saveLabelConfigs, saveLabelTemplates } from "../lib/tauri-api";
@@ -85,7 +86,7 @@ export function useLabelActions({
   function selectCurrentLabel(labelId: string) {
     const label = labels.find((item) => item.id === labelId);
     if (label && !savedLabels.some((item) => item.id === labelId)) {
-      showMessage(`标签「${label.name}」尚未保存，保存模板后才会生效`);
+      showMessage(LABEL_DRAFT_ZH_CN.unsavedSelection(label.name));
     }
     setCurrentLabelId(labelId);
     const selectedAnnotation = (annotationsByImage[selectedPath] ?? []).find(
@@ -105,7 +106,16 @@ export function useLabelActions({
   }
 
   function updateLabels(nextLabels: LabelConfig[]) {
-    const safeLabels = nextLabels.length > 0 ? nextLabels : DEFAULT_LABELS;
+    // 已用于标注的草稿标签必须留到取消修改时统一处理，不能先删掉其恢复信息。
+    const retained = labels.filter(
+      (label) =>
+        usedLabelIds.has(label.id) &&
+        !savedLabels.some((saved) => saved.id === label.id) &&
+        !nextLabels.some((next) => next.id === label.id),
+    );
+    const merged = [...nextLabels, ...retained];
+    const safeLabels = merged.length > 0 ? merged : DEFAULT_LABELS;
+    if (retained.length > 0) showMessage(LABEL_DRAFT_ZH_CN.keepReferencedDraftLabels);
     setLabels(safeLabels);
     if (!safeLabels.some((label) => label.id === currentLabelId)) {
       setCurrentLabelId(safeLabels[0].id);
@@ -182,7 +192,7 @@ export function useLabelActions({
     const danglingDraftLabels = findDanglingDraftLabels(labels, savedLabels, usedLabelIds);
     let keptDraftLabels: LabelConfig[] = [];
     if (danglingDraftLabels.length > 0) {
-      const names = danglingDraftLabels.map((label) => `「${label.name}」`).join("、");
+      const names = danglingDraftLabels.map((label) => label.name);
       const usageCount = Object.values(annotationsByImage).reduce(
         (sum, items) =>
           sum +
@@ -192,7 +202,8 @@ export function useLabelActions({
         0,
       );
       const removeAnnotations = await confirmAction(
-        `取消修改将移除未保存标签 ${names}，${usageCount} 个标注正在使用。\n\n确定：移除这些标注；取消：保留这些标签继续编辑（其余修改仍放弃）。`,
+        LABEL_DRAFT_ZH_CN.cancelReferenced(names, usageCount),
+        { danger: true },
       );
       if (removeAnnotations) {
         const safeIds = new Set(savedLabels.map((label) => label.id));
@@ -218,8 +229,7 @@ export function useLabelActions({
       return;
     }
 
-    const merged =
-      keptDraftLabels.length > 0 ? [...savedLabels, ...keptDraftLabels] : savedLabels;
+    const merged = keptDraftLabels.length > 0 ? [...savedLabels, ...keptDraftLabels] : savedLabels;
     replaceMissingAnnotationLabels(merged);
     setLabels(merged);
     setSavedLabels(savedLabels);
@@ -365,11 +375,9 @@ export function useLabelActions({
 
   function persistUserTemplates(nextTemplates: LabelTemplate[]) {
     saveLabelTemplates(
-      nextTemplates.filter(
-        (template) => isUserTemplate(template.id) && template.id !== projectTemplateId,
-      ).filter(
-        (template) => !readOnlyTemplateIds.has(template.id),
-      ),
+      nextTemplates
+        .filter((template) => isUserTemplate(template.id) && template.id !== projectTemplateId)
+        .filter((template) => !readOnlyTemplateIds.has(template.id)),
     ).catch(reportError);
   }
 

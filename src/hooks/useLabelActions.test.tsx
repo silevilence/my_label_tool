@@ -1,11 +1,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi, beforeEach } from "vitest";
-import {
-  useLabelActions,
-  type LabelActions,
-  type UseLabelActionsParams,
-} from "./useLabelActions";
+import { useLabelActions, type LabelActions, type UseLabelActionsParams } from "./useLabelActions";
 import type { AnnotationShape, LabelConfig } from "../types/annotation";
 
 const promptsApi = vi.hoisted(() => ({
@@ -75,7 +71,41 @@ function renderHarness(overrides: Partial<UseLabelActionsParams> = {}): LabelAct
 }
 
 beforeEach(() => {
+  promptsApi.confirmAction.mockClear();
   for (const mock of Object.values(tauriApi)) mock.mockClear();
+});
+
+it("retains a referenced draft label when deleted so cancel can still resolve its annotations", () => {
+  const setLabels = vi.fn();
+  const showMessage = vi.fn();
+  const replaceLabel = vi.fn();
+  const controls = renderHarness({
+    labels: [savedA, draftC],
+    savedLabels: [savedA],
+    usedLabelIds: new Set(["c"]),
+    annotationsByImage: { p1: [annotation("s1", "c")] },
+    setLabels,
+    showMessage,
+    replaceLabel,
+  });
+  act(() => controls.updateLabels([savedA]));
+  expect(setLabels).toHaveBeenCalledWith([savedA, draftC]);
+  expect(showMessage).toHaveBeenCalledWith(expect.stringContaining("取消修改"));
+  expect(replaceLabel).not.toHaveBeenCalled();
+});
+
+it("still permits removing an unreferenced draft label", () => {
+  const setLabels = vi.fn();
+  const showMessage = vi.fn();
+  const controls = renderHarness({
+    labels: [savedA, draftC],
+    savedLabels: [savedA],
+    setLabels,
+    showMessage,
+  });
+  act(() => controls.updateLabels([savedA]));
+  expect(setLabels).toHaveBeenCalledWith([savedA]);
+  expect(showMessage).not.toHaveBeenCalled();
 });
 
 it("cancels cleanly when no annotation references draft-only labels", async () => {

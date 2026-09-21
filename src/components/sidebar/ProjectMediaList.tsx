@@ -170,23 +170,22 @@ export function ProjectMediaList({
 }
 
 /** 测量滚动容器的视口与滚动位置，驱动窗口化渲染。 */
-function useScroller(ref: RefObject<HTMLElement | null>) {
+function useScroller(ref: RefObject<HTMLElement | null>, active = true) {
   const [state, setState] = useState({ scrollTop: 0, viewportHeight: 0 });
   useEffect(() => {
     const element = ref.current;
-    if (!element) return;
+    if (!active || !element) return;
     const measure = () =>
       setState({ scrollTop: element.scrollTop, viewportHeight: element.clientHeight });
     measure();
     element.addEventListener("scroll", measure, { passive: true });
-    const observer =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(element);
     return () => {
       element.removeEventListener("scroll", measure);
       observer?.disconnect();
     };
-  }, [ref]);
+  }, [ref, active]);
   return state;
 }
 
@@ -212,7 +211,7 @@ function VideoItem({
     [navigation.frames],
   );
   const frameScrollerRef = useRef<HTMLDivElement>(null);
-  const { scrollTop, viewportHeight } = useScroller(frameScrollerRef);
+  const { scrollTop, viewportHeight } = useScroller(frameScrollerRef, active);
   const range = visibleRows(frameOffsets, scrollTop, viewportHeight, OVERSCAN_ROWS);
 
   // 帧子列表是独立嵌套滚动容器，同样窗口化；选中帧按索引对齐到嵌套视口。
@@ -264,10 +263,7 @@ function VideoItem({
           className="scrollbar-dark ml-4 mt-1 shrink-0 overflow-auto border-l border-slate-700 pl-2"
           style={{ height: frameListHeight(navigation.frames.length) }}
         >
-          <div
-            className="relative"
-            style={{ height: frameOffsets[frameOffsets.length - 1] ?? 0 }}
-          >
+          <div className="relative" style={{ height: frameOffsets[frameOffsets.length - 1] ?? 0 }}>
             {navigation.frames.slice(range.start, range.end + 1).map((frame, position) => {
               const index = range.start + position;
               return (
@@ -302,7 +298,9 @@ function VideoItem({
                     >
                       {frame.keyframe ? "◆" : "●"}
                     </span>{" "}
-                    <span className="min-w-0 truncate">{text.frameLabel(frame.frameIndex + 1)}</span>
+                    <span className="min-w-0 truncate">
+                      {text.frameLabel(frame.frameIndex + 1)}
+                    </span>
                     <span className="ml-auto pl-2 tabular-nums">
                       {text.time(frame.timestampSeconds)}
                     </span>

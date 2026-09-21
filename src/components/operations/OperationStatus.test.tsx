@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { OperationStatus } from "./OperationStatus";
 import { useOperations } from "../../store/useOperations";
+import { Overlay } from "../overlay/Overlay";
 
 it("shows new results first, expires completed cards, and keeps failures and active cancellations", () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -70,4 +71,73 @@ it("shares the status area with update content and keeps cancellation operationa
     operation.complete();
     root.unmount();
   });
+});
+
+it("moves a single feedback region into the active work dialog and returns it when closed", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  useOperations.setState({ operations: [] });
+  const host = document.createElement("div"),
+    root = createRoot(host);
+  document.body.append(host);
+  const render = (open: boolean) =>
+    act(async () =>
+      root.render(
+        <>
+          <OperationStatus />
+          {open && (
+            <Overlay operationFeedback label="work" onClose={vi.fn()}>
+              <button>Work</button>
+            </Overlay>
+          )}
+        </>,
+      ),
+    );
+  await render(true);
+  await act(async () =>
+    useOperations
+      .getState()
+      .begin({ label: "model", resource: "model-download" })
+      .fail("broken model"),
+  );
+  expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.querySelector('[role="alert"]')?.textContent).toContain("broken model");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await render(false);
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("broken model");
+  await act(async () => root.unmount());
+  host.remove();
+});
+
+it("routes matching failures into one inline slot while keeping aggregation and dismissal", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  useOperations.setState({ operations: [] });
+  const host = document.createElement("div"),
+    root = createRoot(host);
+  document.body.append(host);
+  await act(async () =>
+    root.render(
+      <>
+        <div data-operation-error-feedback='export["special"]' />
+        <OperationStatus />
+      </>,
+    ),
+  );
+  await act(async () => {
+    useOperations
+      .getState()
+      .begin({ label: 'export["special"]', resource: "export-dir" })
+      .fail("first");
+    useOperations
+      .getState()
+      .begin({ label: 'export["special"]', resource: "export-dir" })
+      .fail("second");
+  });
+  expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+  const slot = host.querySelector("[data-operation-error-feedback]")!;
+  expect(slot.querySelector('[role="alert"]')?.textContent).toContain("second（共 2 次）");
+  await act(async () => slot.querySelector<HTMLButtonElement>("button")!.click());
+  expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+  await act(async () => root.unmount());
+  host.remove();
 });
