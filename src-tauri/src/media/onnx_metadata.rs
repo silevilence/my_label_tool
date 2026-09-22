@@ -1,3 +1,4 @@
+use super::onnx_wire::{bytes_field, first_string, first_varint};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -61,95 +62,7 @@ pub fn inspect_onnx_bytes(bytes: &[u8], file_name: &str) -> Result<OnnxModelSumm
     })
 }
 
-#[derive(Clone, Copy)]
-enum WireValue<'a> {
-    Varint(u64),
-    Bytes(&'a [u8]),
-}
-
-fn protobuf_fields(data: &[u8]) -> Result<Vec<(u32, WireValue<'_>)>, String> {
-    let mut fields = Vec::new();
-    let mut cursor = 0;
-    while cursor < data.len() {
-        let key = read_varint(data, &mut cursor)?;
-        let field = (key >> 3) as u32;
-        match key & 0x07 {
-            0 => fields.push((field, WireValue::Varint(read_varint(data, &mut cursor)?))),
-            1 => {
-                cursor = cursor
-                    .checked_add(8)
-                    .filter(|value| *value <= data.len())
-                    .ok_or_else(|| text::ONNX_FIXED_FIELD_OUT_OF_BOUNDS.to_string())?;
-            }
-            2 => {
-                let length = usize::try_from(read_varint(data, &mut cursor)?)
-                    .map_err(|_| text::ONNX_FIELD_TOO_LARGE.to_string())?;
-                let end = cursor
-                    .checked_add(length)
-                    .filter(|value| *value <= data.len())
-                    .ok_or_else(|| text::ONNX_FIELD_OUT_OF_BOUNDS.to_string())?;
-                fields.push((field, WireValue::Bytes(&data[cursor..end])));
-                cursor = end;
-            }
-            5 => {
-                cursor = cursor
-                    .checked_add(4)
-                    .filter(|value| *value <= data.len())
-                    .ok_or_else(|| text::ONNX_FIXED_FIELD_OUT_OF_BOUNDS.to_string())?;
-            }
-            _ => return Err(text::ONNX_UNSUPPORTED_WIRE_TYPE.to_string()),
-        }
-    }
-    Ok(fields)
-}
-
-fn read_varint(data: &[u8], cursor: &mut usize) -> Result<u64, String> {
-    let mut value = 0_u64;
-    for shift in (0..70).step_by(7) {
-        let byte = *data
-            .get(*cursor)
-            .ok_or_else(|| text::ONNX_TRUNCATED_VARINT.to_string())?;
-        *cursor += 1;
-        value |= u64::from(byte & 0x7f) << shift;
-        if byte & 0x80 == 0 {
-            return Ok(value);
-        }
-    }
-    Err(text::ONNX_INVALID_VARINT.to_string())
-}
-
-fn bytes_field(data: &[u8], expected: u32) -> Result<Vec<&[u8]>, String> {
-    Ok(protobuf_fields(data)?
-        .into_iter()
-        .filter_map(|(field, value)| match (field, value) {
-            (field, WireValue::Bytes(bytes)) if field == expected => Some(bytes),
-            _ => None,
-        })
-        .collect())
-}
-
-fn first_varint(data: &[u8], expected: u32) -> Result<Option<u64>, String> {
-    Ok(protobuf_fields(data)?
-        .into_iter()
-        .find_map(|(field, value)| match (field, value) {
-            (field, WireValue::Varint(value)) if field == expected => Some(value),
-            _ => None,
-        }))
-}
-
-fn first_string(data: &[u8], expected: u32) -> Result<Option<String>, String> {
-    bytes_field(data, expected)?
-        .into_iter()
-        .next()
-        .map(|bytes| {
-            std::str::from_utf8(bytes)
-                .map(str::to_owned)
-                .map_err(|_| text::ONNX_METADATA_INVALID_UTF8.to_string())
-        })
-        .transpose()
-}
-
-fn metadata_properties(model: &[u8]) -> Result<BTreeMap<String, String>, String> {
+pub(crate) fn metadata_properties(model: &[u8]) -> Result<BTreeMap<String, String>, String> {
     let mut properties = BTreeMap::new();
     for entry in bytes_field(model, 14)? {
         if let (Some(key), Some(value)) = (first_string(entry, 1)?, first_string(entry, 2)?) {

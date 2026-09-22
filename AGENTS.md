@@ -129,6 +129,7 @@ my_label_tool/
 | `load_label_configs` / `save_label_configs` | 标签配置持久化（app data 目录 `labels.json`） |
 | `load_label_templates` / `save_label_templates` | 标签模板持久化（`label-templates.json`） |
 | `load_shortcuts` / `save_shortcuts` | 快捷键配置持久化（`shortcuts.json`） |
+| `inspect_onnx_graph` | 宿主专用离线 ONNX 结构查看：节点、张量边、权重概要与展示用静态形状推导；不加载 Runtime、不向插件开放，不参与模型校验与推理 |
 | `inspect_onnx_model` / `find_converted_onnx` | 解析 YOLO ONNX 元数据；为 `.pt` 查找同目录转换产物 |
 | `load_prelabel_model_library` / `save_prelabel_model_library` | 预打标模型库持久化（`prelabel-models.json`）；原子保存成功后才清理已替换且不再被引用的受管模型文件 |
 | `load_prelabel_resource_limits` / `save_prelabel_resource_limits` | 宿主全局 ONNX 输出内存预算与原始候选框上限（`prelabel-resource-limits.json`）；校验和推理共用，不向插件开放，见 docs/prelabel-resource-limits.md |

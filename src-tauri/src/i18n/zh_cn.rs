@@ -904,3 +904,16 @@ pub fn thumbnail_write_failed(error: impl std::fmt::Display) -> String {
 pub fn thumbnail_task_failed(error: impl std::fmt::Display) -> String {
     format!("缩略图生成任务失败：{error}")
 }
+pub const ONNX_GRAPH_INVALID_FIELD: &str = "ONNX 字段编号或编码无效";
+pub const ONNX_GRAPH_CYCLE: &str = "图结构包含循环依赖";
+pub const ONNX_GRAPH_INVALID_MODEL: &str = "不是有效的 ONNX 模型（缺少 IR 版本或图输出）";
+pub const ONNX_GRAPH_DUPLICATE: &str = "张量存在重复的生产者";
+pub const ONNX_GRAPH_MISSING_TENSOR: &str = "图引用了不存在的张量";
+pub const ONNX_GRAPH_MISSING_OPERATOR: &str = "节点缺少算子类型";
+pub const ONNX_GRAPH_INVALID_SHAPE: &str = "张量形状无效或体积溢出";
+pub fn onnx_graph_error(context: &str, offset: usize, reason: &str) -> String {
+    format!("ONNX 结构解析失败 [{context}，位置 {offset}]：{reason}")
+}
+pub fn onnx_graph_task_failed(error: impl std::fmt::Display) -> String {
+    format!("ONNX 结构解析任务失败：{error}")
+}

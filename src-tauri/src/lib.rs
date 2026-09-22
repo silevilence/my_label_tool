@@ -1,6 +1,8 @@
 mod commands;
 mod i18n;
 mod media;
+// Read-only developer verification seam; not a plugin API.
+pub use media::onnx_graph::inspect_file as inspect_onnx_graph_file;
 mod models;
 pub mod plugins;
 mod process_control;
@@ -37,6 +39,7 @@ pub fn run() {
             commands::load_shortcuts,
             commands::save_shortcuts,
             commands::inspect_onnx_model,
+            commands::inspect_onnx_graph,
             commands::find_converted_onnx,
             commands::load_prelabel_model_library,
             commands::load_prelabel_resource_limits,

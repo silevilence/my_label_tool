@@ -1,0 +1,378 @@
+2026-09-22 final validation
+
+COMMAND: npm run test:coverage
+
+> my_label_tool@0.9.0 test:coverage
+> vitest run --coverage
+
+
+ RUN  v4.1.10 C:/code/rust/my_label_tool
+      Coverage enabled with v8
+
+
+ Test Files  87 passed (87)
+      Tests  509 passed (509)
+   Start at  09:08:37
+   Duration  50.47s (transform 56.86s, setup 0ms, import 83.54s, tests 41.71s, environment 381.56s)
+
+ % Coverage report from v8
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   95.63 |    90.71 |   98.73 |   95.73 |
+ components/canvas |   98.91 |    94.59 |     100 |   98.83 |
+  geometry.ts      |   98.79 |    94.59 |     100 |   98.73 | 231
+ lib               |   95.13 |    90.59 |   99.07 |   95.05 |
+  app-utils.ts     |     100 |    97.67 |     100 |     100 | 112
+  draft-gesture.ts |     100 |       98 |     100 |     100 | 49
+  image-search.ts  |   87.89 |    82.35 |     100 |   88.46 | ...80,330,336-337
+  importers.ts     |   90.32 |    84.29 |     100 |   89.88 | ...85,663,671,681
+  ...plate-sync.ts |   93.82 |    78.57 |   92.59 |   92.95 | ...10,115-117,122
+  ...aph-layout.ts |     100 |       75 |     100 |     100 | 17,26-27,37
+  ...el-presets.ts |   96.15 |     87.5 |   85.71 |     100 | 22
+  ...conversion.ts |     100 |    97.29 |     100 |     100 | 78
+  ...-execution.ts |   96.66 |      100 |     100 |   96.55 | 91
+  ...el-mapping.ts |     100 |    92.59 |     100 |     100 | 28,104
+  ...bel-models.ts |     100 |    89.47 |     100 |     100 | ...06,111-112,131
+  ...el-sources.ts |   95.65 |       88 |     100 |     100 | 39,52-59
+  shortcuts.ts     |     100 |    97.91 |     100 |     100 | 100
+  ...erpolation.ts |    97.5 |    97.29 |     100 |     100 | 42
+  ...abel-merge.ts |     100 |    94.87 |     100 |     100 | 41,117
+ lib/exporters     |   96.34 |    84.61 |   97.22 |   97.22 |
+  coco.ts          |     100 |     87.5 |     100 |     100 | 51
+  custom.ts        |   83.33 |       75 |      75 |     100 | 18
+  video.ts         |     100 |     87.5 |     100 |     100 | 24
+  voc.ts           |    87.5 |    57.14 |     100 |   85.71 | 53-55
+  yolo.ts          |     100 |       92 |     100 |     100 | 41,68
+ store             |   97.98 |    91.54 |   97.69 |   99.17 |
+  ...ationStore.ts |    98.1 |    91.59 |   98.43 |   99.27 | 287
+  useOperations.ts |   97.46 |    90.78 |   95.23 |   98.27 | 119
+  ...erlayStore.ts |   94.73 |       75 |     100 |     100 | 22
+ types             |   93.69 |    91.32 |     100 |   93.66 |
+  plugin.ts        |   93.56 |    91.23 |     100 |   93.51 | ...68-774,842-843
+-------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+Statements   : 95.63% ( 1839/1923 )
+Branches     : 90.71% ( 1387/1529 )
+Functions    : 98.73% ( 546/553 )
+Lines        : 95.73% ( 1640/1713 )
+================================================================================
+
+COMMAND: cargo test --manifest-path src-tauri/Cargo.toml -- --test-threads=1
+   Compiling my_label_tool v0.9.0 (C:\code\rust\my_label_tool\src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 27s
+     Running unittests src\lib.rs (src-tauri\target\debug\deps\my_label_tool_lib-9ad84f5d222905e4.exe)
+
+running 272 tests
+test commands::plugin::tests::cancellation_command_error_preserves_frontend_prefix ... ok
+test commands::prelabel::tests::a_failed_library_write_preserves_the_previous_config_and_model ... ok
+test commands::prelabel::tests::cleans_up_old_models_only_after_persisting_a_valid_replacement ... ok
+test commands::prelabel::tests::cleanup_keeps_external_files_and_models_referenced_by_another_entry ... ok
+test commands::prelabel::tests::model_library_accepts_dynamic_metadata_with_a_concrete_override ... ok
+test commands::prelabel::tests::model_library_accepts_legacy_json_without_update_fields ... ok
+test commands::prelabel::tests::model_library_rejects_a_missing_current_model ... ok
+test commands::prelabel::tests::model_library_rejects_a_non_http_source_url ... ok
+test commands::prelabel::tests::model_library_rejects_non_file_update_urls_before_writing ... ok
+test commands::prelabel::tests::model_library_round_trips_all_configuration ... ok
+test commands::prelabel::tests::recommends_an_existing_onnx_file_next_to_a_pt_model ... ok
+test commands::tests::detects_supported_image_extensions ... ok
+test commands::tests::exports_annotations_json ... ok
+test commands::tests::exports_text_files ... ok
+test commands::tests::list_image_files_skips_empty_images ... ok
+test commands::tests::listing_images_yields_to_other_work ... ok
+test commands::tests::reads_and_lists_text_files ... ok
+test commands::tests::rejects_empty_image_files ... ok
+test commands::tests::rejects_unsafe_text_export_paths ... ok
+test commands::tests::saves_and_loads_label_configs ... ok
+test commands::tests::saves_and_loads_label_templates ... ok
+test commands::tests::saves_and_loads_shortcuts ... ok
+test media::image_deletion::platform::tests::refuses_permanent_delete_callbacks ... ok
+test media::image_deletion::tests::locked_file_is_not_deleted ... ok
+test media::image_deletion::tests::recycle_and_restore_real_file ... ignored, requires an interactive Windows user profile with a Recycle Bin
+test media::image_deletion::tests::validates_only_direct_regular_image_files ... ok
+test media::onnx_graph::shapes::tests::follows_topology_and_leaves_dynamic_and_custom_domains_unknown ... ok
+test media::onnx_graph::shapes::tests::infers_resize_split_slice_and_reduce ... ok
+test media::onnx_graph::shapes::tests::infers_spatial_broadcast_and_reshape_with_validated_dimensions ... ok
+test media::onnx_graph::shapes::tests::refuses_invalid_or_unsupported_inference_instead_of_guessing ... ok
+test media::onnx_graph::tests::graph_io_agrees_with_existing_official_model_metadata ... ignored, requires external official YOLO11 and YOLOv8 fixtures
+test media::onnx_graph::tests::parses_topology_names_and_shapes_without_runtime ... ok
+test media::onnx_graph::tests::rejects_damage_missing_operators_and_dangling_edges ... ok
+test media::onnx_graph::tests::summarizes_packed_weights_attributes_and_dynamic_shapes ... ok
+test media::onnx_metadata::tests::infers_yolov5_classes_and_uses_placeholders_without_names ... ok
+test media::onnx_metadata::tests::inspects_official_ultralytics_model_when_fixture_is_available ... ignored, requires an external official Ultralytics ONNX fixture
+test media::onnx_metadata::tests::inspects_three_branch_yolov5_exports ... ok
+test media::onnx_metadata::tests::inspects_ultralytics_yolo11_metadata ... ok
+test media::onnx_metadata::tests::inspects_ultralytics_yolov8_metadata ... ok
+test media::onnx_metadata::tests::preserves_dynamic_input_dimensions_for_an_import_override ... ok
+test media::onnx_metadata::tests::rejects_embedded_nms_during_metadata_only_import ... ok
+test media::onnx_metadata::tests::rejects_names_that_disagree_with_the_detection_tensor ... ok
+test media::onnx_metadata::tests::rejects_non_detection_output_shapes ... ok
+test media::prelabel::execution::tests::cancelled_outcome_flags_cancelled ... ok
+test media::prelabel::execution::tests::changing_resource_limits_invalidates_the_cached_session ... ok
+test media::prelabel::execution::tests::pre_cancelled_token_returns_empty_cancelled_outcome ... ok
+test media::prelabel::execution::tests::progress_events_round_trip_a_completed_image ... ok
+test media::prelabel::execution::tests::reuses_a_cached_session_until_its_model_key_changes ... ok
+test media::prelabel::execution::tests::reuses_the_session_cache_across_frontend_chunks ... ignored, requires external ONNX Runtime and ignored official YOLOv8/image fixtures
+test media::prelabel::inference::tests::auto_device_prefers_gpu_but_falls_back_to_cpu ... ignored, requires a DirectML ONNX Runtime build and official YOLOv8/image fixtures
+test media::prelabel::inference::tests::gpu_device_runs_inference_with_directml_when_available ... ignored, requires a DirectML ONNX Runtime build, a usable GPU, and official fixtures
+test media::prelabel::inference::tests::matches_the_yolov5_fixture_expectations ... ignored, requires external ONNX Runtime and official YOLOv5 ONNX/image fixtures
+test media::prelabel::inference::tests::rejects_invalid_thresholds_and_class_tables_before_loading_a_model ... ok
+test media::prelabel::inference::tests::rejects_oversized_encoded_images_before_allocating_or_decoding ... ok
+test media::prelabel::inference::tests::resolves_dynamic_input_overrides_but_rejects_static_dimension_changes ... ok
+test media::prelabel::inference::tests::reuses_a_session_and_matches_official_yolov8_expectations ... ignored, requires external ONNX Runtime and ignored official YOLOv8/image fixtures
+test media::prelabel::model_download::tests::aborts_when_the_content_length_exceeds_the_size_limit ... ok
+test media::prelabel::model_download::tests::cancellation_before_download_returns_none ... ok
+test media::prelabel::model_download::tests::derives_and_validates_the_target_file_name_from_the_url ... ok
+test media::prelabel::model_download::tests::downloads_validates_and_installs_the_model ... ok
+test media::prelabel::model_download::tests::install_retains_previous_models_until_the_library_is_saved ... ok
+test media::prelabel::model_download::tests::rejects_a_payload_that_is_not_an_onnx_model ... ok
+test media::prelabel::model_download::tests::rejects_non_http_source_urls ... ok
+test media::prelabel::pipeline::tests::applies_sigmoid_consistently_when_single_output_contains_logits ... ok
+test media::prelabel::pipeline::tests::decodes_v8_output_runs_class_aware_nms_and_restores_pixel_coordinates ... ok
+test media::prelabel::pipeline::tests::decodes_yolov5_anchor_branches ... ok
+test media::prelabel::pipeline::tests::letterbox_centers_gray_padding_and_emits_normalized_chw ... ok
+test media::prelabel::pipeline::tests::one_outlier_does_not_flip_probability_outputs_to_sigmoid ... ok
+test media::prelabel::pipeline::tests::rejects_non_singleton_output_batches ... ok
+test media::prelabel::pipeline::tests::rejects_oversized_inputs_before_decoding_or_allocating ... ok
+test media::prelabel::pipeline::tests::rejects_source_dimensions_that_would_expand_past_rgb_budget ... ok
+test media::prelabel::resource_limits::tests::converts_memory_for_both_copies_and_rejects_invalid_limits ... ok
+test media::prelabel::resource_limits::tests::loads_defaults_round_trips_and_preserves_saved_settings_on_invalid_write ... ok
+test media::prelabel::runtime::tests::accepts_dynamic_spatial_inputs_for_a_runtime_override ... ok
+test media::prelabel::runtime::tests::accepts_output_counts_at_the_limits ... ok
+test media::prelabel::runtime::tests::configurable_limits_allow_2560_and_enforce_memory_and_candidates_independently ... ok
+test media::prelabel::runtime::tests::distinguishes_output_size_overflow_from_a_resource_limit ... ok
+test media::prelabel::runtime::tests::missing_runtime_error_is_actionable ... ok
+test media::prelabel::runtime::tests::rejects_dynamic_or_oversized_output_resources ... ok
+test media::prelabel::runtime::tests::rejects_models_with_embedded_nms ... ok
+test media::prelabel::runtime::tests::rejects_non_float_or_non_nchw_inputs ... ok
+test media::prelabel::runtime::tests::reports_both_limits_for_eighty_class_yolov8_at_2560 ... ok
+test media::prelabel::runtime::tests::reports_candidate_limit_for_single_class_yolov8_at_2560 ... ok
+test media::prelabel::runtime::tests::reports_element_limit_without_claiming_a_candidate_limit ... ok
+test media::prelabel::runtime::tests::reports_total_candidate_count_across_yolov5_branches ... ok
+test media::prelabel::runtime::tests::validates_a_standard_yolov8_or_yolo11_output ... ok
+test media::prelabel::runtime::tests::validates_three_yolov5_anchor_branches ... ok
+test media::prelabel::runtime_download::tests::body_stall_is_interrupted_by_cancellation ... ok
+test media::prelabel::runtime_download::tests::body_stall_is_interrupted_by_timeout ... ok
+test media::prelabel::runtime_download::tests::header_stall_is_interrupted_by_cancellation ... ok
+test media::prelabel::runtime_download::tests::header_stall_is_interrupted_by_timeout ... ok
+test media::prelabel::runtime_download::tests::missing_manual_provider_has_an_actionable_file_error ... ok
+test media::prelabel::runtime_download::tests::runtime_set_is_verified_before_existing_files_are_replaced ... ok
+test media::prelabel::runtime_download::tests::validates_official_v8_and_yolo11_models_through_the_media_seam ... ignored, requires external ONNX Runtime and ignored official ONNX fixtures
+test media::prelabel::runtime_download::tests::validates_yolov5_model_through_the_media_seam ... ignored, requires external ONNX Runtime and an official YOLOv5 ONNX fixture
+test media::prelabel::runtime_download::tests::verifies_runtime_download_sha256 ... ok
+test media::prelabel::task::tests::async_cancellation_wakes_and_announces_already_cancelled ... ok
+test media::prelabel::task::tests::cancel_all_flags_every_token ... ok
+test media::prelabel::task::tests::cancel_flags_token ... ok
+test media::prelabel::task::tests::cancel_unknown_or_removed_id_reports_already_completed ... ok
+test media::prelabel::task::tests::register_rejects_duplicate_and_cancel_reports_status ... ok
+test media::project_media::tests::lists_unprepared_videos_without_treating_images_as_videos ... ok
+test media::project_media::tests::restores_multiple_prepared_assets_and_deduplicates_local_sources ... ok
+test media::pt_conversion::tests::applies_confirmed_parameters_to_the_export_and_validated_metadata ... ok
+test media::pt_conversion::tests::backend_plan_previews_the_exact_isolated_command_path ... ok
+test media::pt_conversion::tests::builds_argument_vectors_from_confirmed_parameters_without_shell_interpolation ... ok
+test media::pt_conversion::tests::cancellation_after_publish_reports_completion_without_marking_the_task_cancelled ... ok
+test media::pt_conversion::tests::cancellation_during_validation_prevents_publishing_an_onnx ... ok
+test media::pt_conversion::tests::cancellation_terminates_the_conversion_process_tree_and_releases_control ... ok
+test media::pt_conversion::tests::cleans_staging_after_process_failure_missing_output_and_invalid_output ... ok
+test media::pt_conversion::tests::conversion_command_errors_serialize_a_stable_code_separate_from_the_message ... ok
+test media::pt_conversion::tests::converts_in_a_temporary_directory_and_publishes_only_after_validation ... ok
+test media::pt_conversion::tests::converts_official_pt_with_real_ultralytics_when_fixture_available ... ignored, requires MY_LABEL_TOOL_ULTRALYTICS_PYTHON and MY_LABEL_TOOL_YOLO_PT
+test media::pt_conversion::tests::detects_real_environment_and_runs_the_complete_conversion_command_path ... ignored, requires a real yolo/Python executable on PATH and MY_LABEL_TOOL_YOLO_PT
+test media::pt_conversion::tests::detects_yolo_cli_before_python ... ok
+test media::pt_conversion::tests::falls_back_to_a_python_ultralytics_import_probe ... ok
+test media::pt_conversion::tests::falls_back_to_uv_without_installing_ultralytics_during_detection ... ok
+test media::pt_conversion::tests::keeps_local_conversion_offline_but_allows_uvx_dependency_downloads ... ok
+test media::pt_conversion::tests::keeps_partial_stdout_and_stderr_lines_separate ... ok
+test media::pt_conversion::tests::never_overwrites_a_target_created_while_conversion_is_running ... ok
+test media::pt_conversion::tests::prevents_two_conversions_for_the_same_target ... ok
+test media::pt_conversion::tests::process_guard_drop_reaps_the_tree_on_an_early_error_path ... ok
+test media::pt_conversion::tests::registered_conversion_can_be_cancelled_and_is_released_for_retry ... ok
+test media::pt_conversion::tests::rejects_an_existing_target_without_running_conversion ... ok
+test media::pt_conversion::tests::rejects_imgsz_that_is_not_a_positive_multiple_of_32 ... ok
+test media::pt_conversion::tests::reports_unavailable_when_all_probes_fail ... ok
+test media::pt_conversion::tests::reports_uvx_missing_instead_of_selecting_an_unrunnable_uv_fallback ... ok
+test media::pt_conversion::tests::serializes_stream_events_with_the_frontend_channel_contract ... ok
+test media::pt_conversion::tests::streams_carriage_return_progress_as_normalized_lines_across_chunks ... ok
+test media::pt_conversion::tests::streams_normalized_output_from_a_real_conversion_process ... ok
+test media::pt_conversion::tests::uses_a_longer_timeout_for_uvx_first_run ... ok
+test media::thumbnail::tests::cache_hit_returns_without_decoding_the_source ... ok
+test media::thumbnail::tests::cache_key_tracks_mtime_changes ... ok
+test media::thumbnail::tests::cache_path_is_deterministic_for_unchanged_files ... ok
+test media::thumbnail::tests::creates_a_missing_cache_directory_on_first_use ... ok
+test media::thumbnail::tests::keeps_images_at_or_below_the_cap_unscaled ... ok
+test media::thumbnail::tests::missing_or_unreadable_sources_fail_without_panicking ... ok
+test media::thumbnail::tests::scales_long_edge_to_the_cap_preserving_aspect ... ok
+test media::thumbnail::tests::simultaneous_requests_leave_one_complete_cache_file ... ok
+test media::video::tests::bundled_video_tools_take_precedence_over_development_path ... ok
+test media::video::tests::fps_sampling_uses_time_buckets_without_duplicate_source_frames ... ok
+test media::video::tests::missing_manifest_is_an_image_project ... ok
+test media::video::tests::real_video_extract_reload_cancel_and_failure_cleanup ... ignored, requires local FFmpeg and FFprobe; run in video verification
+test media::video::tests::timestamps_use_decoded_order_and_actual_presentation_time ... ok
+test media::video_reextract::tests::changed_metadata_aborts_before_removal ... ok
+test media::video_reextract::tests::extraction_failure_leaves_old_frames_unchanged ... ok
+test media::video_reextract::tests::partial_staging_failure_rolls_back_already_moved_files ... ok
+test media::video_reextract::tests::real_ffmpeg_reextract_recycles_old_frame_directory ... ignored, requires FFmpeg and Windows recycle bin; creates only temporary fixture media
+test media::video_reextract::tests::rejects_outside_folder_and_mismatched_source_before_extraction ... ok
+test media::video_reextract::tests::replaces_only_manifest_frames_and_preserves_other_files_and_legacy_root ... ok
+test media::video_reextract::tests::restores_old_frames_and_discards_new_frames_if_recycling_fails ... ok
+test plugins::config_tests::keeps_original_config_when_a_step_fails_or_returns_an_invalid_shape ... ok
+test plugins::config_tests::marks_missing_capability_and_newer_project_config_pending_without_calling ... ok
+test plugins::config_tests::migrates_each_version_in_order_and_preserves_uninstalled_configs ... ok
+test plugins::config_tests::migration_contract_uses_the_public_camel_case_fields ... ok
+test plugins::developer_tools::tests::label_preset_validator_requires_and_parses_root_data_file ... ok
+test plugins::developer_tools::tests::malformed_manifest_is_a_validation_failure ... ok
+test plugins::developer_tools::tests::repository_examples_match_the_manifest_contract ... ok
+test plugins::developer_tools::tests::validates_archive_and_reports_missing_entry ... ok
+test plugins::developer_tools::tests::validates_directory_and_previews_permissions ... ok
+test plugins::exporter::tests::cancellation_after_response_removes_staging_without_target_files ... ok
+test plugins::exporter::tests::cancellation_and_publication_have_one_atomic_winner ... ok
+test plugins::exporter::tests::host_runtime_writes_a_labelme_document_from_an_exporter_plugin ... ok
+test plugins::exporter::tests::rejects_escape_duplicate_wrong_extension_and_ambiguous_content ... ok
+test plugins::exporter::tests::rejects_windows_ads_devices_and_ambiguous_segments ... ok
+test plugins::exporter::tests::request_rejects_non_schema_label_color_and_shortcut ... ok
+test plugins::exporter::tests::serialized_export_params_match_schema_optional_field_semantics ... ok
+test plugins::exporter::tests::staged_publication_writes_valid_nested_files ... ok
+test plugins::exporter::tests::unsafe_later_path_is_rejected_before_any_target_file_is_written ... ok
+test plugins::exporter::tests::validates_the_typed_annotation_export_contract ... ok
+test plugins::exporter::tests::validates_utf8_and_base64_files_before_writing ... ok
+test plugins::label_preset::tests::parses_strict_namespaced_template ... ok
+test plugins::label_preset::tests::rejects_duplicate_ids_and_shortcuts ... ok
+test plugins::label_preset::tests::rejects_unknown_fields_and_invalid_semantics ... ok
+test plugins::manifest::tests::collects_manifest_validation_errors ... ok
+test plugins::manifest::tests::normalized_manifest_serializes_public_camel_case_fields ... ok
+test plugins::manifest::tests::normalizes_valid_code_plugin_manifest ... ok
+test plugins::manifest::tests::rejects_invalid_or_misplaced_exporter_options ... ok
+test plugins::manifest::tests::rejects_unsafe_paths_versions_and_permission_placeholders ... ok
+test plugins::manifest::tests::treats_normalized_permission_targets_as_duplicates ... ok
+test plugins::manifest::tests::validates_optional_prelabel_class_names ... ok
+test plugins::permissions::tests::default_deny_and_directory_boundaries_are_pure_and_access_specific ... ok
+test plugins::permissions::tests::dispatcher_waits_for_a_commit_that_won_the_timeout_race ... ok
+test plugins::permissions::tests::file_proxy_accepts_a_request_through_the_granted_junction_alias ... ok
+test plugins::permissions::tests::file_proxy_compares_windows_paths_without_case_sensitivity ... ok
+test plugins::permissions::tests::file_proxy_does_not_follow_a_dangling_write_symlink ... ok
+test plugins::permissions::tests::file_proxy_reads_and_writes_only_through_matching_grants ... ok
+test plugins::permissions::tests::file_proxy_reads_binary_project_relative_paths_as_base64 ... ok
+test plugins::permissions::tests::file_proxy_validates_the_opened_write_handle_before_modifying_content ... ok
+test plugins::permissions::tests::install_resolution_rejects_a_symlink_escape ... ok
+test plugins::permissions::tests::invalid_and_duplicate_persisted_grants_fail_closed ... ok
+test plugins::permissions::tests::project_placeholder_requires_an_open_project ... ok
+test plugins::permissions::tests::proxy_worker_timeout_returns_without_waiting_for_the_worker ... ok
+test plugins::permissions::tests::resolves_placeholders_to_absolute_preview_and_persisted_grants ... ok
+test plugins::permissions::tests::timed_out_proxy_job_cancels_before_commit_and_releases_its_worker_slot ... ok
+test plugins::permissions::tests::typed_file_proxy_payloads_round_trip_with_the_public_field_names ... ok
+test plugins::prelabel::tests::cancelled_batch_keeps_only_valid_completed_images ... ok
+test plugins::prelabel::tests::host_runtime_reads_project_image_and_validates_plugin_shapes ... ok
+test plugins::prelabel::tests::project_read_grant_must_match_the_current_project_exactly ... ok
+test plugins::prelabel::tests::rejects_unknown_labels_invalid_coordinates_and_ambiguous_batch_routes ... ok
+test plugins::prelabel::tests::rejects_unsafe_input_paths_and_duplicate_operations ... ok
+test plugins::prelabel::tests::validates_and_routes_single_and_batch_shapes ... ok
+test plugins::process_environment::tests::command_environment_removes_all_proxy_spellings_and_sets_offline_flags ... ok
+test plugins::protocol::tests::a_valid_line_at_the_exact_size_limit_is_accepted ... ok
+test plugins::protocol::tests::all_ten_standard_error_codes_are_stable_and_documented ... ok
+test plugins::protocol::tests::decoder_handles_chunk_boundaries_crlf_and_unterminated_final_lines ... ok
+test plugins::protocol::tests::encoder_enforces_baseline_and_capability_scoped_line_limits ... ok
+test plugins::protocol::tests::four_message_shapes_round_trip_as_ndjson_objects ... ok
+test plugins::protocol::tests::hello_declares_supported_versions_and_caches_only_actual_capabilities ... ok
+test plugins::protocol::tests::hello_rejects_wrong_ids_versions_and_plugin_errors ... ok
+test plugins::protocol::tests::message_specific_validation_rejects_ambiguous_or_unknown_shapes ... ok
+test plugins::protocol::tests::oversized_line_is_discarded_and_the_next_line_is_decoded ... ok
+test plugins::protocol::tests::parser_produces_only_parse_or_protocol_errors ... ok
+test plugins::protocol::tests::progress_accepts_optional_percent_and_cancel_targets_a_request_id ... ok
+test plugins::registry::tests::archive_size_and_compression_guards_enforce_exact_limits ... ok
+test plugins::registry::tests::authorization_rejects_a_changed_pending_package_and_cleans_it ... ok
+test plugins::registry::tests::cancelling_authorization_removes_the_pending_package ... ok
+test plugins::registry::tests::concurrent_runtime_failures_preserve_updates_for_every_plugin ... ok
+test plugins::registry::tests::enable_disable_status_and_failure_clear_round_trip ... ok
+test plugins::registry::tests::enabled_label_presets_restore_after_restart_and_follow_plugin_lifecycle ... ok
+test plugins::registry::tests::enabling_safe_mode_after_preview_blocks_authorization ... ok
+test plugins::registry::tests::executable_probe_cannot_modify_the_package_that_is_published ... ok
+test plugins::registry::tests::five_install_failures_are_actionable_repeatable_and_clean ... ok
+test plugins::registry::tests::independent_executable_must_pass_the_shared_runtime_probe ... ok
+test plugins::registry::tests::label_preset_install_requires_valid_root_labels_file ... ok
+test plugins::registry::tests::legacy_placeholder_grants_load_disabled_and_require_reauthorization ... ok
+test plugins::registry::tests::mismatched_code_plugin_grants_never_execute_the_runtime_probe ... ok
+test plugins::registry::tests::mismatched_grants_fail_without_leaving_an_unregistered_package ... ok
+test plugins::registry::tests::negotiates_supported_overall_and_exporter_versions ... ok
+test plugins::registry::tests::package_digest_has_unambiguous_file_and_content_boundaries ... ok
+test plugins::registry::tests::packaged_executable_is_checked_without_running_an_undeclared_argument ... ok
+test plugins::registry::tests::path_traversal_and_symlink_entries_are_rejected ... ok
+test plugins::registry::tests::pending_migration_state_can_be_persisted_and_completed ... ok
+test plugins::registry::tests::permission_preview_and_registry_store_resolved_absolute_targets ... ok
+test plugins::registry::tests::prepares_authorizes_and_enables_a_python_plugin ... ok
+test plugins::registry::tests::prepares_authorizes_and_persists_a_valid_archive ... ok
+test plugins::registry::tests::registry_entries_without_timeout_use_the_backward_compatible_default ... ok
+test plugins::registry::tests::rejects_an_unsupported_business_capability_version_with_actionable_context ... ok
+test plugins::registry::tests::safe_mode_rejects_code_plugins_but_keeps_label_presets_available ... ok
+test plugins::registry::tests::semantically_invalid_registry_is_protected_from_path_and_grant_use ... ok
+test plugins::registry::tests::uninstall_cleanup_failure_restores_package_and_registry ... ok
+test plugins::registry::tests::uninstall_removes_only_package_and_registry_entry ... ok
+test plugins::registry::tests::unloadable_registry_does_not_block_startup ... ok
+test plugins::registry::tests::update_preserves_install_time_and_marks_changed_config_for_migration ... ok
+test plugins::runtime::tests::cancellation_aware_prelabel_can_return_partial_result_before_termination ... ok
+test plugins::runtime::tests::concurrent_settings_updates_remain_valid_and_fail_closed_during_replacement ... ok
+test plugins::runtime::tests::control_generation_prevents_a_waiting_call_from_spawning_after_state_change ... ok
+test plugins::runtime::tests::exited_process_restarts_on_the_next_call ... ok
+test plugins::runtime::tests::failures_auto_disable_and_a_later_success_clears_the_counter ... ok
+test plugins::runtime::tests::file_proxy_returns_only_authorized_content_and_denies_outside_paths ... ok
+test plugins::runtime::tests::maintenance_aborts_and_releases_the_gate_when_termination_fails ... ok
+test plugins::runtime::tests::maintenance_gate_serializes_termination_and_the_whole_package_transaction ... ok
+test plugins::runtime::tests::negotiated_capabilities_gate_calls_and_business_errors_do_not_break_the_session ... ok
+test plugins::runtime::tests::out_of_band_termination_interrupts_a_long_call_without_waiting_for_timeout ... ok
+test plugins::runtime::tests::pending_migration_allows_only_the_config_migration_entry_point ... ok
+test plugins::runtime::tests::process_session_handshakes_reuses_and_exposes_plugin_directory ... ok
+test plugins::runtime::tests::progress_hook_can_cancel_exporter_and_prelabel_processes ... ok
+test plugins::runtime::tests::reverse_file_proxy_budget_is_bounded_per_host_call ... ok
+test plugins::runtime::tests::runtime_test_fixture_does_not_depend_on_powershell_modules ... ok
+test plugins::runtime::tests::safe_mode_defaults_off_and_round_trips ... ok
+test plugins::runtime::tests::stderr_ring_keeps_only_the_last_five_hundred_lines ... ok
+test plugins::runtime::tests::stdout_reader_applies_backpressure_when_the_bounded_queue_is_full ... ok
+test plugins::runtime::tests::timeout_covers_a_blocked_stdin_write_after_hello ... ok
+test plugins::runtime::tests::timeout_crash_and_garbage_remove_the_session ... ok
+test plugins::runtime::tests::timeout_terminates_the_parent_and_descendant_processes ... ok
+test plugins::runtime_probe::tests::declared_waiting_process_is_reaped ... ok
+test plugins::runtime_probe::tests::early_exit_parent_cannot_leave_a_background_child ... ok
+test process_control::app_container::tests::profile_name_is_stable_valid_and_bounded ... ok
+test process_control::app_container::tests::trusted_runtime_tree_tolerates_an_internal_file_symlink ... ok
+test process_control::environment_tests::filtered_environment_removes_proxy_variables_case_insensitively ... ok
+test process_control::piped::tests::appcontainer_denies_direct_file_escape_and_unauthorized_network ... ok
+test process_control::piped::tests::appcontainer_runs_system_python_without_host_secrets ... ok
+
+test result: ok. 258 passed; 0 failed; 14 ignored; 0 measured; 0 filtered out; finished in 61.51s
+
+     Running unittests src\bin\inspect_onnx_graph.rs (src-tauri\target\debug\deps\inspect_onnx_graph-6a7c93ac2c3a6b29.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (src-tauri\target\debug\deps\my_label_tool-1ea67c5524a8db06.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\plugin-conformance-stub.rs (src-tauri\target\debug\deps\plugin_conformance_stub-eb18d4f72fbaf82a.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\plugin-validator.rs (src-tauri\target\debug\deps\plugin_validator-fe157e484bad07d5.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\plugin_conformance.rs (src-tauri\target\debug\deps\plugin_conformance-273274b48460daf3.exe)
+
+running 1 test
+test independent_stub_covers_the_public_protocol_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s
+
+   Doc-tests my_label_tool_lib
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

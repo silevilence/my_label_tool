@@ -74,6 +74,8 @@ import type {
   PtConversionResult,
 } from "../types/prelabel";
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
+import { ONNX_GRAPH_ZH_CN } from "../i18n/onnx-graph.zh-CN";
+import type { OnnxGraph } from "../types/onnx-graph";
 import type {
   PluginInstallPreview,
   PluginExportFormatSnapshot,
@@ -235,6 +237,18 @@ export function saveShortcuts(shortcuts: ShortcutMap): Promise<void> {
 
 export function inspectOnnxModel(path: string): Promise<OnnxModelSummary> {
   return invoke<OnnxModelSummary>("inspect_onnx_model", { path });
+}
+
+export function inspectOnnxGraph(path: string): Promise<OnnxGraph> {
+  return invoke<OnnxGraph>("inspect_onnx_graph", { path });
+}
+
+export async function selectOnnxGraphFile(): Promise<string | null> {
+  const path = await open({
+    multiple: false,
+    filters: [{ name: ONNX_GRAPH_ZH_CN.fileFilter, extensions: ["onnx"] }],
+  });
+  return typeof path === "string" ? path : null;
 }
 
 export function findConvertedOnnx(ptPath: string): Promise<string | null> {

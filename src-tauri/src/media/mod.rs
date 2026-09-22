@@ -10,3 +10,6 @@ pub mod video_reextract;
 
 #[cfg(test)]
 pub(crate) mod test_support;
+
+pub mod onnx_graph;
+pub(crate) mod onnx_wire;

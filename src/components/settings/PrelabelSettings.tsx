@@ -1,3 +1,5 @@
+import { OnnxGraphDialog } from "./OnnxGraphDialog";
+import { ONNX_GRAPH_ZH_CN as graphText } from "../../i18n/onnx-graph.zh-CN";
 import { tryBeginOperation, useOperations, type OperationHandle } from "../../store/useOperations";
 import { OPERATION_ZH_CN as operationText } from "../../i18n/operations.zh-CN";
 import { Overlay } from "../overlay/Overlay";
@@ -20,6 +22,7 @@ import {
   installOnnxRuntimeFromFile,
   previewPtConversionCommand,
   selectOnnxRuntimeDll,
+  selectOnnxGraphFile,
   selectPrelabelModelFile,
   validatePrelabelModel,
 } from "../../lib/tauri-api";
@@ -97,6 +100,7 @@ export function PrelabelSettings({
     () => library.models.find((model) => model.id === library.currentModelId) ?? null,
     [library],
   );
+  const [graphPath, setGraphPath] = useState<string | null>(null);
   const [draft, setDraft] = useState<PrelabelModelConfig | null>(null);
   const [editingModel, setEditingModel] = useState<PrelabelModelConfig | null>(currentModel);
   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
@@ -546,6 +550,19 @@ export function PrelabelSettings({
             >
               {isBusy ? text.reading : text.addModel}
             </button>
+            <button
+              type="button"
+              className="mt-2 w-full rounded border border-slate-600 px-3 py-2 text-sm text-sky-300 hover:bg-slate-800"
+              onClick={() => {
+                void selectOnnxGraphFile()
+                  .then((path) => {
+                    if (path) setGraphPath(path);
+                  })
+                  .catch((reason: unknown) => setError(String(reason)));
+              }}
+            >
+              {graphText.open}
+            </button>
             {!isLoaded && <p className="mt-3 text-xs text-slate-500">{text.loadingLibrary}</p>}
             {isLoaded && library.models.length === 0 && (
               <p className="mt-3 rounded border border-dashed border-slate-700 p-3 text-xs text-slate-500">
@@ -554,28 +571,36 @@ export function PrelabelSettings({
             )}
             <div className="mt-3 space-y-2">
               {library.models.map((model) => (
-                <button
-                  className={`w-full rounded border p-3 text-left ${
-                    model.id === library.currentModelId
-                      ? "border-sky-500 bg-sky-500/10"
-                      : "border-slate-800 bg-slate-950 hover:border-slate-600"
-                  }`}
-                  key={model.id}
-                  disabled={isBusy}
-                  type="button"
-                  onClick={() => {
-                    setSelectedPluginId(null);
-                    void runLibraryMutation(() => onSelectModel(model.id));
-                  }}
-                >
-                  <span className="block truncate text-sm font-medium text-slate-100">
-                    {model.name}
-                  </span>
-                  <span className="mt-1 block text-xs text-slate-500">
-                    {formatLabel(model.format)} ·{" "}
-                    {text.modelSummary(model.classCount, model.inputWidth, model.inputHeight)}
-                  </span>
-                </button>
+                <div key={model.id}>
+                  <button
+                    className={`w-full rounded border p-3 text-left ${
+                      model.id === library.currentModelId
+                        ? "border-sky-500 bg-sky-500/10"
+                        : "border-slate-800 bg-slate-950 hover:border-slate-600"
+                    }`}
+                    disabled={isBusy}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPluginId(null);
+                      void runLibraryMutation(() => onSelectModel(model.id));
+                    }}
+                  >
+                    <span className="block truncate text-sm font-medium text-slate-100">
+                      {model.name}
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      {formatLabel(model.format)} ·{" "}
+                      {text.modelSummary(model.classCount, model.inputWidth, model.inputHeight)}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-1 px-2 py-1 text-xs text-sky-300 hover:text-sky-200"
+                    onClick={() => setGraphPath(model.path)}
+                  >
+                    {graphText.view}
+                  </button>
+                </div>
               ))}
             </div>
             {pluginSources.length > 0 && (
@@ -760,6 +785,7 @@ export function PrelabelSettings({
           </main>
         </div>
       </section>
+      {graphPath && <OnnxGraphDialog path={graphPath} onClose={() => setGraphPath(null)} />}
       {ptGuidance && ptConversionSession && (
         <PtConversionDialog
           environment={ptGuidance.environment}

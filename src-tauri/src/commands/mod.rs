@@ -1,4 +1,6 @@
 mod image_deletion;
+mod onnx_graph;
+pub use onnx_graph::*;
 mod video;
 pub use video::*;
 mod plugin;
