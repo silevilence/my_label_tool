@@ -1,9 +1,11 @@
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { OnnxGraphDialog } from "./OnnxGraphDialog";
 import type { OnnxGraph } from "../../types/onnx-graph";
 import { ONNX_GRAPH_ZH_CN as text } from "../../i18n/onnx-graph.zh-CN";
+import { useOperations } from "../../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../../i18n/operations.zh-CN";
 const api = vi.hoisted(() => ({ inspectOnnxGraph: vi.fn() }));
 vi.mock("../../lib/tauri-api", () => api);
 const data: OnnxGraph = {
@@ -11,6 +13,7 @@ const data: OnnxGraph = {
   producer: "test",
   irVersion: 8,
   opsets: { "": 17 },
+  shapeInference: { opset: 17, supported: true, minOpset: 11, maxOpset: 23 },
   metadata: {},
   inputs: ["input"],
   outputs: ["output"],
@@ -39,6 +42,7 @@ let root: ReturnType<typeof createRoot>;
 let host: HTMLDivElement;
 const close = vi.fn();
 beforeEach(() => {
+  useOperations.setState({ operations: [] });
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal(
     "ResizeObserver",
@@ -84,6 +88,8 @@ it("shows real graph data without requiring any runtime API and distinguishes sh
   await render();
   expect(api.inspectOnnxGraph).toHaveBeenCalledWith("model.onnx");
   expect(document.querySelectorAll("[data-node-id]")).toHaveLength(1);
+  expect(document.querySelector("details")?.open).toBe(true);
+  expect(document.querySelector("details")?.textContent).toContain("Conv 1");
   await act(async () =>
     document
       .querySelector("[data-node-id]")!
@@ -129,12 +135,60 @@ it("keeps failures visible, supports retry, and ignores stale results after a fi
   );
   await act(async () => button(text.retry).click());
   expect(document.querySelector('[role="status"]')?.textContent).toBe(text.loading);
-  api.inspectOnnxGraph.mockResolvedValueOnce({ ...data, nodes: [], initializers: [], edges: [] });
   await render("new.onnx");
+  // The previous host read still owns the resource after a path change.
+  expect(document.querySelector('[role="alert"]')?.textContent).toBe(operationText.busy);
   await act(async () => finish(data));
   expect(document.querySelectorAll("[data-node-id]")).toHaveLength(0);
+  api.inspectOnnxGraph.mockResolvedValueOnce({ ...data, nodes: [], initializers: [], edges: [] });
+  await act(async () => button(text.retry).click());
+  expect(api.inspectOnnxGraph).toHaveBeenLastCalledWith("new.onnx");
   act(() => button(text.close).click());
   expect(close).toHaveBeenCalledOnce();
+});
+
+it.each([null, 10, 24])("explains why inference is unavailable for opset %s", async (opset) => {
+  const shapeInference = { opset, supported: false, minOpset: 11, maxOpset: 23 };
+  api.inspectOnnxGraph.mockResolvedValue({ ...data, shapeInference });
+  await render();
+  expect(document.querySelector('[role="status"]')?.textContent).toBe(
+    text.inferenceUnavailable(shapeInference),
+  );
+  expect(document.querySelectorAll("[data-node-id]")).toHaveLength(1);
+});
+
+it("does not conflict with its own resource during StrictMode effect replay", async () => {
+  api.inspectOnnxGraph.mockResolvedValue(data);
+  await act(async () =>
+    root.render(
+      <StrictMode>
+        <OnnxGraphDialog path="model.onnx" onClose={close} />
+      </StrictMode>,
+    ),
+  );
+  expect(api.inspectOnnxGraph).toHaveBeenCalledOnce();
+  expect(document.querySelector('[role="alert"]')).toBeNull();
+  expect(document.querySelectorAll("[data-node-id]")).toHaveLength(1);
+});
+
+it("prevents reads during a model update and retains the resource after closing a pending read", async () => {
+  const update = useOperations.getState().begin({ label: "update", resource: "model-download" });
+  await render();
+  expect(api.inspectOnnxGraph).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="alert"]')?.textContent).toBe(operationText.busy);
+  act(() => update.complete());
+  let finish!: (graph: OnnxGraph) => void;
+  api.inspectOnnxGraph.mockReturnValue(
+    new Promise<OnnxGraph>((resolve) => {
+      finish = resolve;
+    }),
+  );
+  await act(async () => button(text.retry).click());
+  expect(useOperations.getState().canStart("model-download")).toBe(false);
+  act(() => root.render(null));
+  expect(useOperations.getState().canStart("model-download")).toBe(false);
+  await act(async () => finish(data));
+  expect(useOperations.getState().canStart("model-download")).toBe(true);
 });
 
 it("pans without selecting a node, then allows the next click to select", async () => {

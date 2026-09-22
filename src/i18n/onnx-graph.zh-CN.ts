@@ -1,7 +1,15 @@
 export const ONNX_GRAPH_ZH_CN = {
   title: "ONNX 模型结构",
-  previewTitle: "开发验收 · 真实解析结果回放 · IPC 替身",
-  previewMissing: "先运行 verify-onnx-graph.py，再将 .graph.json 放入 .local-models/",
+  inferenceUnavailable: ({
+    opset,
+    minOpset,
+    maxOpset,
+  }: {
+    opset: number | null;
+    minOpset: number;
+    maxOpset: number;
+  }) =>
+    `本模型${opset === null ? "未声明标准算子集版本" : `使用 opset ${opset}`}，展示推导未启用（支持 opset ${minOpset}–${maxOpset}）。仍可查看图结构与模型记录的形状，其他形状显示未知。`,
   view: "查看模型结构",
   open: "打开 ONNX 文件查看",
   fileFilter: "ONNX 模型",

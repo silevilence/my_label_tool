@@ -1,5 +1,6 @@
 //! Offline, host-only graph inspection. No runtime session and no weight payload in IPC.
 mod attributes;
+mod proto_types;
 mod shapes;
 #[cfg(test)]
 mod tests;
@@ -7,7 +8,9 @@ mod types;
 pub use types::*;
 
 use super::onnx_metadata::metadata_properties;
-use super::onnx_wire::{bytes_field, first_string, first_varint};
+use super::onnx_wire::{
+    bytes_field, first_string, first_varint, tensor_dimensions, TensorDimension,
+};
 use crate::i18n::zh_cn as text;
 use serde_json::Value;
 use std::{
@@ -27,7 +30,7 @@ pub fn inspect_file(path: &Path) -> Result<Graph, String> {
 }
 
 pub fn inspect_bytes(bytes: &[u8]) -> Result<Graph, String> {
-    parse(bytes).map_err(|error| text::onnx_graph_error("ModelProto", 0, &error))
+    parse(bytes).map_err(|error| text::onnx_graph_error(text::ONNX_CONTEXT_MODEL, 0, &error))
 }
 
 fn parse(bytes: &[u8]) -> Result<Graph, String> {
@@ -39,11 +42,19 @@ fn parse(bytes: &[u8]) -> Result<Graph, String> {
         return Err(text::ONNX_MISSING_GRAPH.into());
     }
     let raw = graphs[0];
+    let mut opsets = BTreeMap::new();
+    for entry in bytes_field(bytes, 8)? {
+        opsets.insert(
+            first_string(entry, 1)?.unwrap_or_default(),
+            first_varint(entry, 2)?.ok_or(text::ONNX_GRAPH_INVALID_MODEL)?,
+        );
+    }
     let mut graph = Graph {
         name: first_string(raw, 2)?.unwrap_or_default(),
         ir_version,
         producer: first_string(bytes, 2)?.unwrap_or_default(),
-        opsets: BTreeMap::new(),
+        shape_inference: shapes::support(&opsets),
+        opsets,
         metadata: metadata_properties(bytes)?,
         nodes: vec![],
         edges: vec![],
@@ -52,18 +63,12 @@ fn parse(bytes: &[u8]) -> Result<Graph, String> {
         tensors: vec![],
         initializers: vec![],
     };
-    for entry in bytes_field(bytes, 8)? {
-        graph.opsets.insert(
-            first_string(entry, 1)?.unwrap_or_default(),
-            first_varint(entry, 2)?.ok_or(text::ONNX_GRAPH_INVALID_MODEL)?,
-        );
-    }
     let mut tensors = BTreeMap::new();
     let mut constants = BTreeMap::new();
     for field in [11, 12, 13] {
         for (index, info) in bytes_field(raw, field)?.into_iter().enumerate() {
             let tensor = value_info(info)
-                .map_err(|e| text::onnx_graph_error("ValueInfoProto", index, &e))?;
+                .map_err(|e| text::onnx_graph_error(text::ONNX_CONTEXT_VALUE_INFO, index, &e))?;
             if field == 11 {
                 graph.inputs.push(tensor.name.clone());
             }
@@ -75,10 +80,10 @@ fn parse(bytes: &[u8]) -> Result<Graph, String> {
     }
     for (index, initializer) in bytes_field(raw, 5)?.into_iter().enumerate() {
         let weight = attributes::weight(initializer)
-            .map_err(|e| text::onnx_graph_error("TensorProto", index, &e))?;
+            .map_err(|e| text::onnx_graph_error(text::ONNX_CONTEXT_TENSOR, index, &e))?;
         if weight.name.is_empty() || graph.initializers.iter().any(|w| w.name == weight.name) {
             return Err(text::onnx_graph_error(
-                "TensorProto",
+                text::ONNX_CONTEXT_TENSOR,
                 index,
                 text::ONNX_GRAPH_DUPLICATE,
             ));
@@ -98,8 +103,8 @@ fn parse(bytes: &[u8]) -> Result<Graph, String> {
         graph.initializers.push(weight);
     }
     for (id, raw_node) in bytes_field(raw, 1)?.into_iter().enumerate() {
-        let node =
-            parse_node(raw_node, id).map_err(|e| text::onnx_graph_error("NodeProto", id, &e))?;
+        let node = parse_node(raw_node, id)
+            .map_err(|e| text::onnx_graph_error(text::ONNX_CONTEXT_NODE, id, &e))?;
         if node.op_type == "Constant" && (node.domain.is_empty() || node.domain == "ai.onnx") {
             if let Some(output) = node.outputs.first() {
                 for attr in bytes_field(raw_node, 5)? {
@@ -227,13 +232,13 @@ fn value_info(raw: &[u8]) -> Result<Tensor, String> {
             tensor.data_type = first_varint(t, 1)?;
             if let Some(shape) = bytes_field(t, 2)?.first() {
                 let mut dims = vec![];
-                for dim in bytes_field(shape, 1)? {
-                    dims.push(if let Some(v) = first_varint(dim, 1)? {
-                        Value::from(i64::try_from(v).map_err(|_| text::ONNX_GRAPH_INVALID_SHAPE)?)
-                    } else {
-                        first_string(dim, 2)?
-                            .map(Value::from)
-                            .unwrap_or(Value::Null)
+                for dim in tensor_dimensions(shape)? {
+                    dims.push(match dim {
+                        TensorDimension::Known(v) => Value::from(
+                            i64::try_from(v).map_err(|_| text::ONNX_GRAPH_INVALID_SHAPE)?,
+                        ),
+                        TensorDimension::Symbol(v) => Value::from(v),
+                        TensorDimension::Unknown => Value::Null,
                     });
                 }
                 tensor.shape = Some(dims);

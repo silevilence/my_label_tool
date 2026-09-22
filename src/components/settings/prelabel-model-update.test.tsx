@@ -8,6 +8,7 @@ import { PrelabelSettings } from "./PrelabelSettings";
 import { usePrelabelModels } from "../../hooks/usePrelabelModels";
 import { createPrelabelModelConfig } from "../../lib/prelabel-models";
 import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
+import { ONNX_GRAPH_ZH_CN as graphText } from "../../i18n/onnx-graph.zh-CN";
 import type { ModelDownloadResult, PrelabelModelLibrary } from "../../types/prelabel";
 
 const api = vi.hoisted(() => ({
@@ -16,6 +17,8 @@ const api = vi.hoisted(() => ({
     .mockResolvedValue({ maxMemoryMiB: 80, maxCandidates: 100_000 }),
   getOnnxRuntimeStatus: vi.fn(),
   selectPrelabelModelFile: vi.fn(),
+  selectOnnxGraphFile: vi.fn(),
+  inspectOnnxGraph: vi.fn(),
   findConvertedOnnx: vi.fn(),
   detectPtConversionEnvironment: vi.fn(),
   previewPtConversionCommand: vi.fn(),
@@ -162,6 +165,12 @@ it("locks library edits and closing from confirmation through persistence", asyn
   expect(button(text.saveModel).disabled).toBe(true);
   expect(button(text.close).disabled).toBe(true);
   expect(button(text.updateModel).disabled).toBe(true);
+  expect(button(graphText.open).disabled).toBe(true);
+  expect(button(graphText.view).disabled).toBe(true);
+  await click(graphText.open);
+  await click(graphText.view);
+  expect(api.selectOnnxGraphFile).not.toHaveBeenCalled();
+  expect(api.inspectOnnxGraph).not.toHaveBeenCalled();
   await click(text.removeModel);
   await click(text.close);
   expect(onClose).not.toHaveBeenCalled();
@@ -177,11 +186,25 @@ it("locks library edits and closing from confirmation through persistence", asyn
   ).toBe(true);
   await act(async () => download.resolve(result));
   expect(button(text.removeModel).disabled).toBe(true);
+  expect(button(graphText.view).disabled).toBe(true);
   await act(async () => persistence.resolve());
   expect(saved.models[0].path).toBe(result.path);
   expect(button(text.removeModel).disabled).toBe(false);
+  expect(button(graphText.view).disabled).toBe(false);
+  expect(button(graphText.open).disabled).toBe(false);
   await click(text.removeModel);
   expect(saved.models).toHaveLength(0);
+});
+
+it("does not read a file if a model update starts while the native selector is open", async () => {
+  const selection = deferred<string | null>();
+  api.selectOnnxGraphFile.mockReturnValueOnce(selection.promise);
+  await click(graphText.open);
+  await click(text.updateModel);
+  await act(async () => selection.resolve(model.path));
+  expect(api.inspectOnnxGraph).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain(operationText.busy);
+  await act(async () => download.resolve(null));
 });
 
 it.each(["accepted", "already-completed", "failed"])(

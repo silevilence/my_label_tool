@@ -4,6 +4,8 @@ import type { OnnxGraph, OnnxTensor } from "../../types/onnx-graph";
 import { ONNX_GRAPH_ZH_CN as text } from "../../i18n/onnx-graph.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 import { OnnxGraphCanvas } from "./OnnxGraphCanvas";
+import { tryBeginOperation, useOperations } from "../../store/useOperations";
+import { OPERATION_ZH_CN as operationText } from "../../i18n/operations.zh-CN";
 
 function TensorInfo({ tensor, name }: { tensor?: OnnxTensor; name: string }) {
   const origin = tensor?.origin ?? "unknown";
@@ -36,13 +38,26 @@ export function OnnxGraphDialog({ path, onClose }: { path: string; onClose: () =
     setGraph(null);
     setError("");
     setSelected(null);
-    void inspectOnnxGraph(path)
-      .then((value) => {
+    void (async () => {
+      // Let StrictMode's setup/cleanup probe finish before acquiring a real host resource.
+      await Promise.resolve();
+      if (!active) return;
+      const operation = tryBeginOperation({ label: text.title, resource: "model-download" });
+      if (!operation) {
+        setError(operationText.busy);
+        return;
+      }
+      try {
+        const value = await inspectOnnxGraph(path);
         if (active) setGraph(value);
-      })
-      .catch((reason: unknown) => {
+      } catch (reason: unknown) {
         if (active) setError(String(reason));
-      });
+      } finally {
+        // Closing the view does not cancel the host read; retain its resource until it settles.
+        operation.complete();
+        useOperations.getState().dismiss(operation.id);
+      }
+    })();
     return () => {
       active = false;
     };
@@ -125,6 +140,11 @@ function GraphContent({
         <p className="font-mono text-sky-200">
           {text.summary(graph.nodes.length, graph.edges.length, text.bytes(total))}
         </p>
+        {!graph.shapeInference.supported && (
+          <p role="status" className="mt-2 text-amber-300">
+            {text.inferenceUnavailable(graph.shapeInference)}
+          </p>
+        )}
         <div className="mt-2 grid max-h-28 grid-cols-2 gap-5 overflow-y-auto">
           <div>
             <h3 className="text-slate-500">{text.inputs}</h3>
@@ -143,7 +163,7 @@ function GraphContent({
             </ul>
           </div>
         </div>
-        <details className="mt-2 text-slate-400">
+        <details open className="mt-2 text-slate-400">
           <summary className="cursor-pointer">{text.operators}</summary>
           <p className="mt-2 leading-5">
             {operators.map(([op, count]) => `${op} ${count}`).join(" · ")}

@@ -163,3 +163,62 @@ fn graph_io_agrees_with_existing_official_model_metadata() {
         assert_eq!(output.shape.as_ref().unwrap()[1], summary.class_count + 4);
     }
 }
+
+#[test]
+fn metadata_and_graph_share_dimensions_without_erasing_symbols() {
+    use crate::media::onnx_metadata::inspect_onnx_bytes;
+    for dynamic in [false, true] {
+        let dims = [
+            msg(1, &int(1, 1)),
+            msg(1, &int(1, 3)),
+            msg(
+                1,
+                &if dynamic {
+                    msg(2, b"height")
+                } else {
+                    int(1, 320)
+                },
+            ),
+            msg(1, &if dynamic { vec![] } else { int(1, 640) }),
+        ]
+        .concat();
+        let input = [
+            msg(1, b"images"),
+            msg(2, &msg(1, &[int(1, 1), msg(2, &dims)].concat())),
+        ]
+        .concat();
+        let graph = [
+            msg(11, &input),
+            msg(12, &info("output", &[1, 84, 8400])),
+            msg(
+                1,
+                &[
+                    node("Detector", &["images"], &["output"]),
+                    msg(7, b"custom"),
+                ]
+                .concat(),
+            ),
+        ]
+        .concat();
+        let bytes = [int(1, 8), msg(8, &int(2, 17)), msg(7, &graph)].concat();
+        let g = inspect_bytes(&bytes).unwrap();
+        let summary = inspect_onnx_bytes(&bytes, "yolo11n.onnx").unwrap();
+        let input = g.tensors.iter().find(|t| t.name == "images").unwrap();
+        let expected = if dynamic {
+            serde_json::json!([1, 3, "height", null])
+        } else {
+            serde_json::json!([1, 3, 320, 640])
+        };
+        assert_eq!(serde_json::json!(input.shape), expected);
+        assert_eq!(
+            (summary.input_height, summary.input_width),
+            if dynamic { (0, 0) } else { (320, 640) }
+        );
+        let output = g.tensors.iter().find(|t| t.name == "output").unwrap();
+        assert_eq!(
+            serde_json::json!(output.shape),
+            serde_json::json!([1, 84, 8400])
+        );
+        assert_eq!(summary.class_count, 80);
+    }
+}

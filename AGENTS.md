@@ -103,7 +103,7 @@ my_label_tool/
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── examples/plugins/               # 插件开发示例（label-preset-demo / exporter-labelme-demo / prelabel-demo）
-├── scripts/                        # 插件打包与验证脚本（package-plugin.mjs、verify-plugin-*.ps1）
+├── scripts/                        # 插件打包/验证与一次性 ONNX 核对脚本（verify-onnx-graph.py）
 ├── .github/workflows/              # GitHub Actions：ci.yml、official-models.yml、release.yml
 ├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、frontend-interaction.md、架构评审报告目录、插件 JSON Schema、verification/、adr/）
 ├── ROADMAP.md                      # 产品路线图

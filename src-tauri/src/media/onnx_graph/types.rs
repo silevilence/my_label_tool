@@ -9,6 +9,7 @@ pub struct Graph {
     pub ir_version: u64,
     pub producer: String,
     pub opsets: BTreeMap<String, u64>,
+    pub shape_inference: ShapeInference,
     pub metadata: BTreeMap<String, String>,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
@@ -16,6 +17,15 @@ pub struct Graph {
     pub outputs: Vec<String>,
     pub tensors: Vec<Tensor>,
     pub initializers: Vec<Weight>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShapeInference {
+    pub opset: Option<u64>,
+    pub supported: bool,
+    pub min_opset: u64,
+    pub max_opset: u64,
 }
 
 #[derive(Debug, Serialize)]

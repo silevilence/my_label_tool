@@ -124,6 +124,7 @@ export function PrelabelSettings({
   const isBusy = operations.some(
     (op) => op.id === modelOperation.current?.id && op.status === "running",
   );
+  const canInspectGraph = !isBusy && useOperations.getState().canStart("model-download");
   const [runtimeStatus, setRuntimeStatus] = useState<OnnxRuntimeStatus | null>(null);
   const isRuntimeBusy = operations.some(
     (op) => op.id === runtimeOperation.current?.id && op.status === "running",
@@ -552,11 +553,14 @@ export function PrelabelSettings({
             </button>
             <button
               type="button"
+              disabled={!canInspectGraph}
               className="mt-2 w-full rounded border border-slate-600 px-3 py-2 text-sm text-sky-300 hover:bg-slate-800"
               onClick={() => {
                 void selectOnnxGraphFile()
                   .then((path) => {
-                    if (path) setGraphPath(path);
+                    if (!path) return;
+                    if (useOperations.getState().canStart("model-download")) setGraphPath(path);
+                    else setError(operationText.busy);
                   })
                   .catch((reason: unknown) => setError(String(reason)));
               }}
@@ -595,6 +599,7 @@ export function PrelabelSettings({
                   </button>
                   <button
                     type="button"
+                    disabled={!canInspectGraph}
                     className="mt-1 px-2 py-1 text-xs text-sky-300 hover:text-sky-200"
                     onClick={() => setGraphPath(model.path)}
                   >

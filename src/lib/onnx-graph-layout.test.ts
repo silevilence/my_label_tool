@@ -8,6 +8,7 @@ function graph(count: number): OnnxGraph {
     irVersion: 8,
     producer: "",
     opsets: { "": 17 },
+    shapeInference: { opset: 17, supported: true, minOpset: 11, maxOpset: 23 },
     metadata: {},
     inputs: [],
     outputs: [],

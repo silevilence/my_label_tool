@@ -275,3 +275,62 @@ fn follows_topology_and_leaves_dynamic_and_custom_domains_unknown() {
         .shape
         .is_none());
 }
+
+#[test]
+fn reports_opset_limits_and_keeps_unsupported_shapes_unknown() {
+    use crate::media::onnx_graph::{
+        inspect_bytes,
+        tests::{model, node as raw_node},
+    };
+    for version in [None, Some(10), Some(11), Some(23), Some(24)] {
+        let mut g = inspect_bytes(&model(&[
+            raw_node("Relu", &["x"], &["a"]),
+            raw_node("Relu", &["a"], &["y"]),
+        ]))
+        .unwrap();
+        g.opsets = version
+            .map(|v| BTreeMap::from([("".into(), v)]))
+            .unwrap_or_default();
+        g.shape_inference = support(&g.opsets);
+        let supported = matches!(version, Some(11 | 23));
+        assert_eq!(g.shape_inference.opset, version);
+        assert_eq!(g.shape_inference.supported, supported);
+        for t in &mut g.tensors {
+            if t.name == "a" {
+                t.shape = None;
+                t.origin = "unknown".into();
+            }
+        }
+        infer(&mut g, BTreeMap::new(), &[0, 1]);
+        assert_eq!(
+            g.tensors
+                .iter()
+                .find(|t| t.name == "a")
+                .unwrap()
+                .shape
+                .is_some(),
+            supported
+        );
+        assert_eq!(
+            g.tensors.iter().find(|t| t.name == "y").unwrap().origin,
+            "disk"
+        );
+    }
+}
+
+#[test]
+fn shape_bounds_and_constant_evaluation_use_the_same_clamping() {
+    let s = BTreeMap::from([("x".into(), vec![2, 3, 5, 7])]);
+    for (start, end, expected) in [
+        (-3, -1, vec![3., 5.]),
+        (i64::MIN, i64::MAX, vec![2., 3., 5., 7.]),
+        (3, 1, vec![]),
+    ] {
+        let n = node("Shape", json!({"start": start, "end": end}), 1);
+        assert_eq!(
+            infer_node(&n, &s, &BTreeMap::new(), 17),
+            Some(vec![vec![expected.len() as i64]])
+        );
+        assert_eq!(evaluate(&n, &s, &BTreeMap::new(), true), Some(expected));
+    }
+}

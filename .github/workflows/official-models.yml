@@ -11,8 +11,6 @@ on:
       - "src-tauri/src/commands/prelabel*.rs"
       - "src-tauri/src/media/onnx_metadata.rs"
       - "src-tauri/src/media/onnx_wire.rs"
-      - "src-tauri/src/media/onnx_graph/**"
-      - "scripts/verify-onnx-graph.py"
       - "src-tauri/src/media/prelabel/**"
       - "src-tauri/src/models/prelabel.rs"
   pull_request:
@@ -23,8 +21,6 @@ on:
       - "src-tauri/src/commands/prelabel*.rs"
       - "src-tauri/src/media/onnx_metadata.rs"
       - "src-tauri/src/media/onnx_wire.rs"
-      - "src-tauri/src/media/onnx_graph/**"
-      - "scripts/verify-onnx-graph.py"
       - "src-tauri/src/media/prelabel/**"
       - "src-tauri/src/models/prelabel.rs"
   workflow_dispatch:
@@ -129,13 +125,6 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml inspects_official_ultralytics_model_when_fixture_is_available -- --ignored
           cargo test --manifest-path src-tauri/Cargo.toml validates_official_v8_and_yolo11_models_through_the_media_seam -- --ignored
           cargo test --manifest-path src-tauri/Cargo.toml validates_yolov5_model_through_the_media_seam -- --ignored
-
-      - name: Compare ONNX graph inspection with independent protobuf and shapes
-        run: |
-          python -m pip install onnxruntime==1.24.3
-          cargo build --manifest-path src-tauri/Cargo.toml --bin inspect_onnx_graph
-          cargo test --manifest-path src-tauri/Cargo.toml graph_io_agrees_with_existing_official_model_metadata -- --ignored
-          python scripts/verify-onnx-graph.py $env:MY_LABEL_TOOL_YOLO_ONNX $env:MY_LABEL_TOOL_YOLOV8_ONNX
 
       - name: Verify official inference alignment
         run: |

@@ -1,3 +1,4 @@
+use super::proto_types::{attribute as attr_type, tensor as data_type};
 use super::Weight;
 use crate::{i18n::zh_cn as text, media::onnx_wire::*};
 use serde_json::{json, Value};
@@ -47,16 +48,7 @@ pub(super) fn weight(raw: &[u8]) -> Result<Weight, String> {
         return Err(text::ONNX_GRAPH_INVALID_SHAPE.into());
     }
     let data_type = first_varint(raw, 2)?.ok_or(text::ONNX_GRAPH_INVALID_FIELD)?;
-    let bits = match data_type {
-        1 | 6 | 12 => Some(32),
-        2 | 3 | 9 | 17..=20 | 24 => Some(8),
-        4 | 5 | 10 | 16 => Some(16),
-        7 | 11 | 13 | 14 => Some(64),
-        15 => Some(128),
-        21..=23 => Some(4),
-        25 | 26 => Some(2),
-        _ => None,
-    };
+    let bits = data_type::bits(data_type);
     let count = shape.iter().try_fold(1u64, |n, v| n.checked_mul(*v as u64));
     let byte_size = count
         .zip(bits)
@@ -80,22 +72,22 @@ pub(super) fn weight(raw: &[u8]) -> Result<Weight, String> {
 
 pub(super) fn attribute(raw: &[u8]) -> Result<Value, String> {
     Ok(match first_varint(raw, 20)?.unwrap_or(0) {
-        1 => floats(raw, 2)?
+        attr_type::FLOAT => floats(raw, 2)?
             .first()
             .map(|v| json!(v))
             .unwrap_or(Value::Null),
-        2 => first_varint(raw, 3)?
+        attr_type::INT => first_varint(raw, 3)?
             .map(|v| json!(v as i64))
             .unwrap_or(Value::Null),
-        3 => json!(first_string(raw, 4)?),
-        4 => match bytes_field(raw, 5)?.first() {
+        attr_type::STRING => json!(first_string(raw, 4)?),
+        attr_type::TENSOR => match bytes_field(raw, 5)?.first() {
             Some(t) => json!(weight(t)?),
             None => Value::Null,
         },
-        6 => json!(floats(raw, 7)?),
-        7 => json!(ints(raw, 8)?),
-        8 => json!(super::strings(raw, 9)?),
-        9 => json!(bytes_field(raw, 10)?
+        attr_type::FLOATS => json!(floats(raw, 7)?),
+        attr_type::INTS => json!(ints(raw, 8)?),
+        attr_type::STRINGS => json!(super::strings(raw, 9)?),
+        attr_type::TENSORS => json!(bytes_field(raw, 10)?
             .iter()
             .map(|t| weight(t))
             .collect::<Result<Vec<_>, _>>()?),
@@ -119,14 +111,14 @@ pub(super) fn numbers(raw: &[u8]) -> Result<Option<Vec<f64>>, String> {
     }
     let values = if let Some(data) = bytes_field(raw, 9)?.first() {
         let size = match w.data_type {
-            1 | 6 => 4,
-            7 | 11 => 8,
+            data_type::FLOAT | data_type::INT32 => 4,
+            data_type::INT64 | data_type::DOUBLE => 8,
             _ => return Ok(None),
         };
         if data.len() != count * size {
             return Err(text::ONNX_GRAPH_INVALID_FIELD.into());
         }
-        if w.data_type == 7
+        if w.data_type == data_type::INT64
             && data.chunks_exact(8).any(|chunk| {
                 let mut bytes = [0; 8];
                 bytes.copy_from_slice(chunk);
@@ -140,25 +132,29 @@ pub(super) fn numbers(raw: &[u8]) -> Result<Option<Vec<f64>>, String> {
                 let mut bytes = [0; 8];
                 bytes[..size].copy_from_slice(chunk);
                 match w.data_type {
-                    1 => f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as f64,
-                    6 => i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as f64,
-                    7 => i64::from_le_bytes(bytes) as f64,
+                    data_type::FLOAT => {
+                        f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as f64
+                    }
+                    data_type::INT32 => {
+                        i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as f64
+                    }
+                    data_type::INT64 => i64::from_le_bytes(bytes) as f64,
                     _ => f64::from_le_bytes(bytes),
                 }
             })
             .collect::<Vec<_>>()
     } else {
         match w.data_type {
-            1 => floats(raw, 4)?.into_iter().map(f64::from).collect(),
-            6 => ints(raw, 5)?.into_iter().map(|v| v as f64).collect(),
-            7 => {
+            data_type::FLOAT => floats(raw, 4)?.into_iter().map(f64::from).collect(),
+            data_type::INT32 => ints(raw, 5)?.into_iter().map(|v| v as f64).collect(),
+            data_type::INT64 => {
                 let values = ints(raw, 7)?;
                 if values.iter().any(|v| v.unsigned_abs() > 1u64 << 53) {
                     return Ok(None);
                 }
                 values.into_iter().map(|v| v as f64).collect()
             }
-            11 => {
+            data_type::DOUBLE => {
                 let mut values = vec![];
                 for (key, value) in protobuf_fields(raw)? {
                     if key == 10 {

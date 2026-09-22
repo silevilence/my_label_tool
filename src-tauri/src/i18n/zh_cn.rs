@@ -905,6 +905,11 @@ pub fn thumbnail_task_failed(error: impl std::fmt::Display) -> String {
     format!("缩略图生成任务失败：{error}")
 }
 pub const ONNX_GRAPH_INVALID_FIELD: &str = "ONNX 字段编号或编码无效";
+pub const ONNX_CONTEXT_MODEL: &str = "模型 ModelProto";
+pub const ONNX_CONTEXT_VALUE_INFO: &str = "张量声明 ValueInfoProto";
+pub const ONNX_CONTEXT_TENSOR: &str = "权重 TensorProto";
+pub const ONNX_CONTEXT_NODE: &str = "节点 NodeProto";
+pub const ONNX_CONTEXT_WIRE: &str = "protobuf 字段";
 pub const ONNX_GRAPH_CYCLE: &str = "图结构包含循环依赖";
 pub const ONNX_GRAPH_INVALID_MODEL: &str = "不是有效的 ONNX 模型（缺少 IR 版本或图输出）";
 pub const ONNX_GRAPH_DUPLICATE: &str = "张量存在重复的生产者";

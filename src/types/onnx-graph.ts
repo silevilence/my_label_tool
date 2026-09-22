@@ -26,6 +26,7 @@ export interface OnnxGraph {
   irVersion: number;
   producer: string;
   opsets: Record<string, number>;
+  shapeInference: { opset: number | null; supported: boolean; minOpset: number; maxOpset: number };
   metadata: Record<string, string>;
   nodes: OnnxNode[];
   edges: { tensor: string; source: number | null; target: number; inputIndex: number }[];

@@ -2,6 +2,7 @@ mod commands;
 mod i18n;
 mod media;
 // Read-only developer verification seam; not a plugin API.
+#[cfg(feature = "onnx-graph-dev")]
 pub use media::onnx_graph::inspect_file as inspect_onnx_graph_file;
 mod models;
 pub mod plugins;

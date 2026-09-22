@@ -1,5 +1,6 @@
 //! Conservative static shape propagation for display only. Unknown never means zero.
-use super::{Graph, Node};
+use super::proto_types::tensor as data_type;
+use super::{Graph, Node, ShapeInference};
 use serde_json::Value;
 #[cfg(test)]
 #[path = "shapes_tests.rs"]
@@ -8,6 +9,18 @@ use std::collections::{BTreeMap, VecDeque};
 
 type Shapes = BTreeMap<String, Vec<i64>>;
 type Constants = BTreeMap<String, Vec<f64>>;
+
+pub(super) fn support(opsets: &BTreeMap<String, u64>) -> ShapeInference {
+    let opset = opsets.get("").or_else(|| opsets.get("ai.onnx")).copied();
+    const MIN: u64 = 11;
+    const MAX: u64 = 23;
+    ShapeInference {
+        opset,
+        supported: opset.is_some_and(|v| (MIN..=MAX).contains(&v)),
+        min_opset: MIN,
+        max_opset: MAX,
+    }
+}
 
 pub(super) fn topological_order(graph: &Graph) -> Option<Vec<usize>> {
     let mut degrees = vec![0usize; graph.nodes.len()];
@@ -38,15 +51,13 @@ pub(super) fn topological_order(graph: &Graph) -> Option<Vec<usize>> {
 }
 
 pub(super) fn infer(graph: &mut Graph, mut constants: Constants, order: &[usize]) {
-    let version = graph
-        .opsets
-        .get("")
-        .or_else(|| graph.opsets.get("ai.onnx"))
-        .copied()
-        .unwrap_or(0);
-    if !(11..=23).contains(&version) {
+    let Some(version) = graph
+        .shape_inference
+        .opset
+        .filter(|_| graph.shape_inference.supported)
+    else {
         return;
-    }
+    };
     let mut shapes: Shapes = graph
         .tensors
         .iter()
@@ -66,7 +77,7 @@ pub(super) fn infer(graph: &mut Graph, mut constants: Constants, order: &[usize]
     let mut integer_tensors: std::collections::HashSet<String> = graph
         .tensors
         .iter()
-        .filter(|t| matches!(t.data_type, Some(6 | 7)))
+        .filter(|t| matches!(t.data_type, Some(data_type::INT32 | data_type::INT64)))
         .map(|t| t.name.clone())
         .collect();
     for &id in order {
@@ -81,7 +92,7 @@ pub(super) fn infer(graph: &mut Graph, mut constants: Constants, order: &[usize]
                     .get("value")
                     .and_then(|v| v.get("dataType"))
                     .and_then(Value::as_u64)
-                    .is_some_and(|v| v == 6 || v == 7)
+                    .is_some_and(|v| matches!(v, data_type::INT32 | data_type::INT64))
             || matches!(
                 node.op_type.as_str(),
                 "Add"
@@ -151,6 +162,14 @@ fn axis(value: i64, rank: usize) -> Option<usize> {
 }
 fn product(dims: &[i64]) -> Option<i64> {
     dims.iter().try_fold(1i64, |a, b| a.checked_mul(*b))
+}
+// Shape and positive-step Slice both clamp negative/end positions to [0, length].
+fn clamp_position(value: i64, length: i64) -> i64 {
+    if value < 0 {
+        value.saturating_add(length).clamp(0, length)
+    } else {
+        value.min(length)
+    }
 }
 fn integer_values(values: &[f64]) -> Option<Vec<i64>> {
     values
@@ -337,14 +356,9 @@ fn infer_node(n: &Node, s: &Shapes, c: &Constants, version: u64) -> Option<Vec<V
         }
         "Shape" => {
             let rank = x.len() as i64;
-            let norm = |v: i64| {
-                if v < 0 {
-                    (v + rank).clamp(0, rank)
-                } else {
-                    v.min(rank)
-                }
-            };
-            vec![(norm(attr(n, "end", rank)) - norm(attr(n, "start", 0))).max(0)]
+            vec![(clamp_position(attr(n, "end", rank), rank)
+                - clamp_position(attr(n, "start", 0), rank))
+            .max(0)]
         }
         "Gather" => {
             let a = axis(attr(n, "axis", 0), x.len())?;
@@ -454,10 +468,11 @@ fn spatial(n: &Node, x: &[i64], s: &Shapes) -> Option<Vec<i64>> {
         return None;
     }
     let rank = x.len() - 2;
-    let kernel = if n.op_type == "Conv" {
-        s.get(n.inputs.get(1)?)?.get(2..)?.to_vec()
+    let (kernel, channels) = if n.op_type == "Conv" {
+        let weight = s.get(n.inputs.get(1)?)?;
+        (weight.get(2..)?.to_vec(), *weight.first()?)
     } else {
-        list(n, "kernel_shape")?
+        (list(n, "kernel_shape")?, x[1])
     };
     let stride = list(n, "strides").unwrap_or(vec![1; rank]);
     let dilation = list(n, "dilations").unwrap_or(vec![1; rank]);
@@ -475,9 +490,7 @@ fn spatial(n: &Node, x: &[i64], s: &Shapes) -> Option<Vec<i64>> {
         .and_then(Value::as_str)
         .unwrap_or("NOTSET");
     let mut out = x[..2].to_vec();
-    if n.op_type == "Conv" {
-        out[1] = *s.get(n.inputs.get(1)?)?.first()?;
-    }
+    out[1] = channels;
     for i in 0..rank {
         if kernel[i] <= 0 || stride[i] <= 0 || dilation[i] <= 0 || pads[i] < 0 || pads[i + rank] < 0
         {
@@ -537,15 +550,8 @@ fn slice(n: &Node, x: &[i64], c: &Constants) -> Option<Vec<i64>> {
             return None;
         }
         seen.push(a);
-        let norm = |v: i64| {
-            if v < 0 {
-                v.saturating_add(x[a]).clamp(0, x[a])
-            } else {
-                v.min(x[a])
-            }
-        };
-        out[a] = norm(ends[i])
-            .saturating_sub(norm(starts[i]))
+        out[a] = clamp_position(ends[i], x[a])
+            .saturating_sub(clamp_position(starts[i], x[a]))
             .max(0)
             .checked_add(steps[i] - 1)?
             / steps[i];
@@ -582,9 +588,8 @@ fn evaluate(n: &Node, s: &Shapes, c: &Constants, integer_output: bool) -> Option
         "Shape" => {
             let dims = s.get(x)?;
             let rank = dims.len() as i64;
-            let norm=|v:i64| if v<0 {(v+rank).clamp(0,rank)}else{v.min(rank)} as usize;
-            let start = norm(attr(n, "start", 0));
-            let end = norm(attr(n, "end", rank)).max(start);
+            let start = clamp_position(attr(n, "start", 0), rank) as usize;
+            let end = (clamp_position(attr(n, "end", rank), rank) as usize).max(start);
             Some(dims[start..end].iter().map(|d| *d as f64).collect())
         }
         "Gather" if s.get(x)?.len() == 1 && attr(n, "axis", 0) == 0 => {

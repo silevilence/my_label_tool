@@ -1,4 +1,4 @@
-use super::onnx_wire::{bytes_field, first_string, first_varint};
+use super::onnx_wire::{bytes_field, first_string, tensor_dimensions, TensorDimension};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -88,9 +88,14 @@ fn value_info_shapes(graph: &[u8], field: u32) -> Result<Vec<Vec<u64>>, String> 
                 .into_iter()
                 .next()
                 .ok_or_else(|| text::ONNX_TENSOR_MISSING_SHAPE.to_string())?;
-            bytes_field(shape, 1)?
+            tensor_dimensions(shape)?
                 .into_iter()
-                .map(|dimension| Ok(first_varint(dimension, 1)?.unwrap_or(0)))
+                .map(|dimension| {
+                    Ok(match dimension {
+                        TensorDimension::Known(value) => value,
+                        TensorDimension::Symbol(_) | TensorDimension::Unknown => 0,
+                    })
+                })
                 .collect()
         })
         .collect()

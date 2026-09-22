@@ -1,7 +1,7 @@
 """One-shot independent protobuf/shape comparison. Not an application dependency.
 
 Usage: python scripts/verify-onnx-graph.py model.onnx [model.onnx ...]
-Build first: cargo build --manifest-path src-tauri/Cargo.toml --bin inspect_onnx_graph
+Build first: cargo build --manifest-path src-tauri/Cargo.toml --features onnx-graph-dev --bin inspect_onnx_graph
 """
 import hashlib
 import json

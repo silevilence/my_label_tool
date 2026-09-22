@@ -16,7 +16,7 @@ pub(crate) fn protobuf_fields(data: &[u8]) -> Result<Vec<(u32, WireValue<'_>)>, 
         let key = read_varint(data, &mut cursor)?;
         if key >> 3 == 0 || key >> 3 > 0x1fff_ffff {
             return Err(text::onnx_graph_error(
-                "protobuf",
+                text::ONNX_CONTEXT_WIRE,
                 cursor,
                 text::ONNX_GRAPH_INVALID_FIELD,
             ));
@@ -30,7 +30,7 @@ pub(crate) fn protobuf_fields(data: &[u8]) -> Result<Vec<(u32, WireValue<'_>)>, 
                     .filter(|end| *end <= data.len())
                     .ok_or_else(|| {
                         text::onnx_graph_error(
-                            "protobuf",
+                            text::ONNX_CONTEXT_WIRE,
                             cursor,
                             text::ONNX_FIXED_FIELD_OUT_OF_BOUNDS,
                         )
@@ -56,7 +56,7 @@ pub(crate) fn protobuf_fields(data: &[u8]) -> Result<Vec<(u32, WireValue<'_>)>, 
                     .filter(|end| *end <= data.len())
                     .ok_or_else(|| {
                         text::onnx_graph_error(
-                            "protobuf",
+                            text::ONNX_CONTEXT_WIRE,
                             cursor,
                             text::ONNX_FIXED_FIELD_OUT_OF_BOUNDS,
                         )
@@ -119,4 +119,28 @@ pub(crate) fn first_string(data: &[u8], expected: u32) -> Result<Option<String>,
                 .map_err(|_| text::ONNX_METADATA_INVALID_UTF8.to_string())
         })
         .transpose()
+}
+
+/// Preserve the protobuf distinction between a known value, a symbol and an absent value.
+/// Import metadata may project unknown dimensions to its existing zero sentinel;
+/// the inspector retains symbols for display. Both consume this same decoder.
+pub(crate) enum TensorDimension {
+    Known(u64),
+    Symbol(String),
+    Unknown,
+}
+
+pub(crate) fn tensor_dimensions(shape: &[u8]) -> Result<Vec<TensorDimension>, String> {
+    bytes_field(shape, 1)?
+        .into_iter()
+        .map(|dimension| {
+            Ok(if let Some(value) = first_varint(dimension, 1)? {
+                TensorDimension::Known(value)
+            } else if let Some(symbol) = first_string(dimension, 2)? {
+                TensorDimension::Symbol(symbol)
+            } else {
+                TensorDimension::Unknown
+            })
+        })
+        .collect()
 }
