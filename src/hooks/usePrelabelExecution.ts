@@ -19,6 +19,7 @@ import type { ProjectConfig } from "../lib/importers";
 import type { PrelabelModelLibrary, PrelabelModelConfig } from "../types/prelabel";
 import { PRELABEL_ZH_CN as text } from "../i18n/prelabel.zh-CN";
 import { annotationShapesSnapshot } from "../lib/annotation-utils";
+import { prelabelFormatLabel } from "../lib/prelabel-models";
 import {
   mapPluginPrelabelResults,
   toPluginPrelabelClassMappings,
@@ -145,27 +146,27 @@ export function usePrelabelExecution({
   annotationsByImageRef.current = annotationsByImage;
   imagesRef.current = images;
   labelsRef.current = labels;
-  const currentModel = useMemo(
-    () => library.models.find((model) => model.id === library.currentModelId) ?? null,
-    [library],
-  );
-  const currentModelRef = useRef(currentModel);
-  currentModelRef.current = currentModel;
+  const libraryRef = useRef(library);
+  libraryRef.current = library;
   const sources = useMemo<PrelabelExecutionSource[]>(
     () => [
-      ...(currentModel
-        ? [
-            {
-              selectionId: "builtin",
-              kind: "builtin" as const,
-              name: text.builtinSourceName(currentModel.name),
-              classNames: currentModel.classNames,
-              enabled: true,
-              disabledReason: null,
-              supportsCancel: true,
-            },
-          ]
-        : []),
+      ...library.models.map((model) => ({
+        selectionId: builtinSourceId(model.id),
+        kind: "builtin" as const,
+        name: text.builtinModelSourceName(
+          model.name,
+          prelabelFormatLabel(model.format),
+          text.modelSummary(
+            model.classCount,
+            model.inputSizeOverride?.[0] ?? model.inputWidth,
+            model.inputSizeOverride?.[1] ?? model.inputHeight,
+          ),
+        ),
+        classNames: model.classNames,
+        enabled: true,
+        disabledReason: null,
+        supportsCancel: true,
+      })),
       ...pluginSources.map((source) => ({
         selectionId: source.selectionId,
         kind: "plugin" as const,
@@ -177,11 +178,22 @@ export function usePrelabelExecution({
         supportsCancel: source.supportsCancel,
       })),
     ],
-    [currentModel, labels, pluginSources],
+    [library, labels, pluginSources],
   );
-  const [currentSourceId, setCurrentSourceId] = useState("builtin");
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const defaultSourceId = library.currentModelId ? builtinSourceId(library.currentModelId) : null;
   const currentSource =
-    sources.find((source) => source.selectionId === currentSourceId) ?? sources[0] ?? null;
+    sources.find((source) => source.selectionId === selectedSourceId) ??
+    sources.find((source) => source.selectionId === defaultSourceId) ??
+    sources[0] ??
+    null;
+  const currentModel =
+    currentSource?.kind === "builtin"
+      ? (library.models.find((model) => builtinSourceId(model.id) === currentSource.selectionId) ??
+        null)
+      : null;
+  const currentModelRef = useRef(currentModel);
+  currentModelRef.current = currentModel;
   const currentSourceRef = useRef(currentSource);
   currentSourceRef.current = currentSource;
   const currentMappings = useMemo(
@@ -206,6 +218,7 @@ export function usePrelabelExecution({
       activeProjectConfig,
       images,
       labels,
+      library,
       model: currentModel,
       source: currentSource,
     };
@@ -275,6 +288,7 @@ export function usePrelabelExecution({
       activeProjectConfig,
       images,
       labels,
+      library,
       model: currentModel,
       source: currentSource,
     };
@@ -544,6 +558,7 @@ export function usePrelabelExecution({
     activeProjectConfig: ProjectConfig | null;
     images: ImageFile[];
     labels: LabelConfig[];
+    library: PrelabelModelLibrary;
     model: PrelabelModelConfig | null;
     source: PrelabelExecutionSource;
   }): boolean {
@@ -551,8 +566,10 @@ export function usePrelabelExecution({
       activeProjectConfigRef.current === taskContext.activeProjectConfig &&
       imagesRef.current === taskContext.images &&
       labelsRef.current === taskContext.labels &&
+      libraryRef.current === taskContext.library &&
       currentModelRef.current === taskContext.model &&
-      currentSourceRef.current === taskContext.source
+      // A registry refresh rebuilds descriptors even when the source is unchanged.
+      JSON.stringify(currentSourceRef.current) === JSON.stringify(taskContext.source)
     );
   }
 
@@ -566,10 +583,16 @@ export function usePrelabelExecution({
     progress,
     runBatch,
     runSingle,
-    selectSource: setCurrentSourceId,
+    selectSource: (sourceId: string) => {
+      if (!runningRef.current) setSelectedSourceId(sourceId);
+    },
     sources,
     unmatchedClassCount,
   };
+}
+
+function builtinSourceId(modelId: string): string {
+  return `builtin:${modelId}`;
 }
 
 function isMethodUnavailable(reason: unknown): boolean {

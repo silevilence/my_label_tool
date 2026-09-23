@@ -3,9 +3,7 @@ import { ONNX_GRAPH_ZH_CN as graphText } from "../../i18n/onnx-graph.zh-CN";
 import { tryBeginOperation, useOperations, type OperationHandle } from "../../store/useOperations";
 import { OPERATION_ZH_CN as operationText } from "../../i18n/operations.zh-CN";
 import { Overlay } from "../overlay/Overlay";
-// This settings workspace keeps model-library, runtime, and PT-conversion orchestration together
-// because they share one guarded mutation lifecycle and active selection. The import form
-// (PrelabelModelForm) and class-mapping panel (PrelabelClassMapping) live in their own modules.
+import { usePrelabelLibraryMutation } from "../../hooks/usePrelabelLibraryMutation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { confirmAction } from "../../lib/prompts";
 import {
@@ -31,6 +29,7 @@ import {
   createPrelabelModelConfig,
   isValidModelSourceUrl,
   prelabelFormatLabel as formatLabel,
+  requireValidPrelabelModel,
 } from "../../lib/prelabel-models";
 import {
   createPtConversionSession,
@@ -109,22 +108,33 @@ export function PrelabelSettings({
   const [ptGuidance, setPtGuidance] = useState<PtGuidance | null>(null);
   const [ptConversionSession, setPtConversionSession] = useState<PtConversionSession | null>(null);
   const [ptConversionNotice, setPtConversionNotice] = useState("");
-  // 设置错误独立于推理操作，重试设置时只清理本面板的失败消息。
-  const setError = (message: string) => {
-    const registry = useOperations.getState();
-    if (message) registry.pushError(operationText.prelabelSettings, message);
-    else
-      registry.operations
-        .filter((op) => op.label === operationText.prelabelSettings && op.status === "failed")
-        .forEach((op) => registry.dismiss(op.id));
-  };
-  const modelOperation = useRef<OperationHandle | null>(null);
+  const {
+    runLibraryMutation,
+    reportBusy,
+    busyNotice,
+    retryLibraryAction,
+    retryLibraryBlocked,
+    isLibraryBusy,
+    modelOperation,
+    mutationInFlight,
+    setError,
+  } = usePrelabelLibraryMutation({
+    draft,
+    editingModel,
+    onAddModel,
+    onUpdateModel,
+    onSelectModel,
+    onDeleteModel,
+    onSaveMappings,
+  });
   const runtimeOperation = useRef<OperationHandle | null>(null);
   const operations = useOperations((state) => state.operations);
-  const isBusy = operations.some(
+
+  const isModelBusy = operations.some(
     (op) => op.id === modelOperation.current?.id && op.status === "running",
   );
-  const canInspectGraph = !isBusy && useOperations.getState().canStart("model-download");
+  const isBusy = isLibraryBusy || isModelBusy;
+  const canInspectGraph = !isModelBusy && useOperations.getState().canStart("model-download");
   const [runtimeStatus, setRuntimeStatus] = useState<OnnxRuntimeStatus | null>(null);
   const isRuntimeBusy = operations.some(
     (op) => op.id === runtimeOperation.current?.id && op.status === "running",
@@ -145,7 +155,7 @@ export function PrelabelSettings({
     message: string;
   } | null>(null);
   const [isModelUpdating, setIsModelUpdating] = useState(false);
-  const mutationInFlight = useRef(false);
+
   const cancelledConversions = useRef(new Set<string>());
   const activeDownloadId = useRef<string | null>(null);
   const activeModelDownloadId = useRef<string | null>(null);
@@ -166,64 +176,35 @@ export function PrelabelSettings({
   }
 
   async function inspectPath(path: string) {
-    await runLibraryMutation(async () => {
-      try {
-        await loadOnnxDraft(path);
-      } catch (reason) {
-        modelOperation.current?.fail(text.importFailed(reason));
-      }
-    });
+    await runLibraryMutation(() => loadOnnxDraft(path), { formatError: text.importFailed });
   }
 
   async function chooseModel() {
-    await runLibraryMutation(async () => {
-      const path = await selectPrelabelModelFile();
-      if (!path) {
-        return;
-      }
-      if (/\.pt$/i.test(path)) {
-        setDraft(null);
-        const [suggestedOnnxPath, environment] = await Promise.all([
-          findConvertedOnnx(path),
-          detectPtConversionEnvironment(),
-        ]);
-        setPtGuidance({ path, suggestedOnnxPath, environment });
-        return;
-      }
-      try {
+    await runLibraryMutation(
+      async () => {
+        const path = await selectPrelabelModelFile();
+        if (!path) {
+          return;
+        }
+        if (/\.pt$/i.test(path)) {
+          setDraft(null);
+          const [suggestedOnnxPath, environment] = await Promise.all([
+            findConvertedOnnx(path),
+            detectPtConversionEnvironment(),
+          ]);
+          setPtGuidance({ path, suggestedOnnxPath, environment });
+          return;
+        }
         await loadOnnxDraft(path);
-      } catch (reason) {
-        modelOperation.current?.fail(text.importFailed(reason));
-      }
-    });
-  }
-
-  async function runLibraryMutation(action: () => Promise<void>) {
-    if (mutationInFlight.current) {
-      return;
-    }
-    const operation = tryBeginOperation({ label: operationText.model, resource: "model-download" });
-    if (!operation) {
-      setError(operationText.busy);
-      return;
-    }
-    modelOperation.current = operation;
-    mutationInFlight.current = true;
-    setError("");
-    try {
-      await action();
-    } catch (reason) {
-      operation.fail(reason);
-    } finally {
-      mutationInFlight.current = false;
-      operation.complete();
-    }
+      },
+      { formatError: text.importFailed },
+    );
   }
 
   async function runRuntimeAction(action: () => Promise<OnnxRuntimeStatus>) {
     const operation = tryBeginOperation({ label: operationText.runtime, resource: "onnx-runtime" });
     if (!operation) {
-      setError(operationText.busy);
+      reportBusy("onnx-runtime");
       return;
     }
     runtimeOperation.current = operation;
@@ -256,7 +237,7 @@ export function PrelabelSettings({
     activeDownloadId.current = downloadId;
     const operation = tryBeginOperation({ label: operationText.runtime, resource: "onnx-runtime" });
     if (!operation) {
-      setError(operationText.busy);
+      reportBusy("onnx-runtime");
       return;
     }
     runtimeOperation.current = operation;
@@ -306,49 +287,54 @@ export function PrelabelSettings({
   }
 
   /** 从模型配置的更新地址手动拉取新版本：下载、校验 ONNX、落盘到受管目录并更新配置。 */
-  async function updateModelFromUrl(model: PrelabelModelConfig) {
-    const sourceUrl = (model.sourceUrl ?? "").trim();
-    if (!isValidModelSourceUrl(sourceUrl)) {
-      setError(text.modelUpdateUnavailable);
-      return;
-    }
-    await runLibraryMutation(async () => {
-      if (!(await confirmAction(text.updateModelConfirm(sourceUrl)))) {
-        return;
-      }
-      const downloadId = crypto.randomUUID();
-      activeModelDownloadId.current = downloadId;
-      modelOperation.current?.setCancel(cancelModelDownload);
-      setIsModelUpdating(true);
-      setModelUpdateNotice(null);
-      setModelUpdateProgress(null);
-      try {
-        const result = await downloadPrelabelModel(sourceUrl, downloadId, (event) => {
-          if (event.event === "progress") {
-            modelOperation.current?.progress(
-              event.total ? (event.downloaded / event.total) * 100 : null,
-            );
-            setModelUpdateProgress({ downloaded: event.downloaded, total: event.total });
-          }
-        });
-        // A cancellation request may lose the race to installation. Only the backend's
-        // terminal result determines whether the downloaded model needs to be persisted.
-        if (!result) {
+  async function updateModelFromUrl(modelId: string) {
+    await runLibraryMutation(
+      async (current) => {
+        const model = requireValidPrelabelModel(current.editingModel, modelId);
+        const sourceUrl = (model.sourceUrl ?? "").trim();
+        if (!isValidModelSourceUrl(sourceUrl)) throw new Error(text.modelUpdateUnavailable);
+        if (!(await confirmAction(text.updateModelConfirm(sourceUrl)))) {
           modelOperation.current?.complete(text.modelUpdateCancelled, "warning");
-          setModelUpdateNotice({ tone: "warning", message: text.modelUpdateCancelled });
-        } else {
-          await onUpdateModel(applyModelDownloadResult({ ...model, sourceUrl }, result));
-          modelOperation.current?.complete(text.modelUpdateCompleted(model.name));
-          setModelUpdateNotice({ tone: "success", message: text.modelUpdateCompleted(model.name) });
+          return;
         }
-      } catch (reason) {
-        modelOperation.current?.fail(text.modelUpdateFailed(reason));
-      } finally {
-        activeModelDownloadId.current = null;
-        setIsModelUpdating(false);
+        const downloadId = crypto.randomUUID();
+        activeModelDownloadId.current = downloadId;
+        modelOperation.current?.setCancel(cancelModelDownload);
+        setIsModelUpdating(true);
+        setModelUpdateNotice(null);
         setModelUpdateProgress(null);
-      }
-    });
+        try {
+          const result = await downloadPrelabelModel(sourceUrl, downloadId, (event) => {
+            if (event.event === "progress") {
+              modelOperation.current?.progress(
+                event.total ? (event.downloaded / event.total) * 100 : null,
+              );
+              setModelUpdateProgress({ downloaded: event.downloaded, total: event.total });
+            }
+          });
+          // A cancellation request may lose the race to installation. Only the backend's
+          // terminal result determines whether the downloaded model needs to be persisted.
+          if (!result) {
+            modelOperation.current?.complete(text.modelUpdateCancelled, "warning");
+            setModelUpdateNotice({ tone: "warning", message: text.modelUpdateCancelled });
+          } else {
+            await current.onUpdateModel(applyModelDownloadResult({ ...model, sourceUrl }, result));
+            modelOperation.current?.complete(text.modelUpdateCompleted(model.name));
+            setModelUpdateNotice({
+              tone: "success",
+              message: text.modelUpdateCompleted(model.name),
+            });
+          }
+        } catch (reason) {
+          modelOperation.current?.fail(text.modelUpdateFailed(reason));
+        } finally {
+          activeModelDownloadId.current = null;
+          setIsModelUpdating(false);
+          setModelUpdateProgress(null);
+        }
+      },
+      { download: true },
+    );
   }
 
   async function cancelModelDownload() {
@@ -366,7 +352,7 @@ export function PrelabelSettings({
   async function validateModel(model: PrelabelModelConfig) {
     const operation = tryBeginOperation({ label: operationText.runtime, resource: "onnx-runtime" });
     if (!operation) {
-      setError(operationText.busy);
+      reportBusy("onnx-runtime");
       return;
     }
     runtimeOperation.current = operation;
@@ -433,7 +419,7 @@ export function PrelabelSettings({
     }
     const operation = tryBeginOperation({ label: operationText.model, resource: "model-download" });
     if (!operation) {
-      setError(operationText.busy);
+      reportBusy("model-download");
       return;
     }
     modelOperation.current = operation;
@@ -560,7 +546,7 @@ export function PrelabelSettings({
                   .then((path) => {
                     if (!path) return;
                     if (useOperations.getState().canStart("model-download")) setGraphPath(path);
-                    else setError(operationText.busy);
+                    else reportBusy("model-download");
                   })
                   .catch((reason: unknown) => setError(String(reason)));
               }}
@@ -577,6 +563,11 @@ export function PrelabelSettings({
               {library.models.map((model) => (
                 <div key={model.id}>
                   <button
+                    aria-label={text.selectLibraryModel(
+                      model.name,
+                      formatLabel(model.format),
+                      text.modelSummary(model.classCount, model.inputWidth, model.inputHeight),
+                    )}
                     className={`w-full rounded border p-3 text-left ${
                       model.id === library.currentModelId
                         ? "border-sky-500 bg-sky-500/10"
@@ -586,7 +577,7 @@ export function PrelabelSettings({
                     type="button"
                     onClick={() => {
                       setSelectedPluginId(null);
-                      void runLibraryMutation(() => onSelectModel(model.id));
+                      void runLibraryMutation((current) => current.onSelectModel(model.id));
                     }}
                   >
                     <span className="block truncate text-sm font-medium text-slate-100">
@@ -643,6 +634,21 @@ export function PrelabelSettings({
           </aside>
 
           <main className="overflow-y-auto p-5">
+            <p role="status" className="text-sm text-amber-200">
+              {busyNotice}
+            </p>
+            <div data-operation-error-feedback={operationText.prelabelSettings} />
+            {retryLibraryAction && (
+              <button
+                type="button"
+                className="my-2 rounded border border-red-400/60 px-3 py-1 text-xs text-red-100 hover:bg-red-500/20 disabled:opacity-50"
+                disabled={isBusy || retryLibraryBlocked}
+                title={retryLibraryBlocked ? operationText.busy : undefined}
+                onClick={() => void retryLibraryAction()}
+              >
+                {text.retrySettings}
+              </button>
+            )}
             {ptConversionNotice && (
               <p className="mb-4 rounded border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-100">
                 {ptConversionNotice}
@@ -697,8 +703,9 @@ export function PrelabelSettings({
                 onChange={setDraft}
                 onValidate={() => void validateModel(draft)}
                 onSubmit={() =>
-                  void runLibraryMutation(async () => {
-                    await onAddModel(draft);
+                  void runLibraryMutation(async (current) => {
+                    const next = requireValidPrelabelModel(current.draft, draft.id);
+                    await current.onAddModel(next);
                     setDraft(null);
                   })
                 }
@@ -722,7 +729,7 @@ export function PrelabelSettings({
                     if (modelOperation.current)
                       void useOperations.getState().cancel(modelOperation.current.id);
                   }}
-                  onUpdateFromUrl={() => void updateModelFromUrl(editingModel)}
+                  onUpdateFromUrl={() => void updateModelFromUrl(editingModel.id)}
                   onValidate={() => void validateModel(editingModel)}
                   onDelete={() => {
                     void (async () => {
@@ -732,11 +739,19 @@ export function PrelabelSettings({
                           confirmLabel: text.removeModel,
                         })
                       ) {
-                        await runLibraryMutation(() => onDeleteModel(editingModel.id));
+                        await runLibraryMutation((current) =>
+                          current.onDeleteModel(editingModel.id),
+                        );
                       }
                     })();
                   }}
-                  onSubmit={() => void runLibraryMutation(() => onUpdateModel(editingModel))}
+                  onSubmit={() =>
+                    void runLibraryMutation((current) =>
+                      current.onUpdateModel(
+                        requireValidPrelabelModel(current.editingModel, editingModel.id),
+                      ),
+                    )
+                  }
                 />
                 {currentModel && (
                   <ClassMappingPanel
@@ -747,8 +762,8 @@ export function PrelabelSettings({
                     classNames={currentModel.classNames}
                     sourceId={currentModel.id}
                     onSave={(mappings, nextLabels) =>
-                      runLibraryMutation(() =>
-                        onSaveMappings(currentModel.id, mappings, nextLabels),
+                      runLibraryMutation((current) =>
+                        current.onSaveMappings(currentModel.id, mappings, nextLabels),
                       )
                     }
                   />
@@ -775,8 +790,8 @@ export function PrelabelSettings({
                   labels={labels}
                   sourceId={selectedPlugin.selectionId}
                   onSave={(mappings, nextLabels) =>
-                    runLibraryMutation(() =>
-                      onSaveMappings(selectedPlugin.selectionId, mappings, nextLabels),
+                    runLibraryMutation((current) =>
+                      current.onSaveMappings(selectedPlugin.selectionId, mappings, nextLabels),
                     )
                   }
                 />

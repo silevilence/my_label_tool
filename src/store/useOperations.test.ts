@@ -3,6 +3,47 @@ import { tryBeginOperation, useOperations } from "./useOperations";
 beforeEach(() => {
   for (const op of useOperations.getState().operations) useOperations.getState().dismiss(op.id);
 });
+it("keeps only the latest completion of the same label", () => {
+  const registry = useOperations.getState();
+  const first = registry.begin({ label: "download", resource: "model-download" });
+  first.complete("first");
+  const second = registry.begin({ label: "download", resource: "model-download" });
+  second.complete("second");
+  first.complete("late");
+  expect(useOperations.getState().operations).toHaveLength(1);
+  expect(useOperations.getState().operations[0]).toMatchObject({
+    id: second.id,
+    message: "second",
+  });
+});
+
+it("deduplicates only completed cards and preserves concurrent work and failures", () => {
+  const registry = useOperations.getState();
+  const slow = registry.begin({ label: "download", resource: "export-dir" });
+  registry.begin({ label: "download", resource: "model-download" }).complete("earlier completion");
+  const running = registry.begin({ label: "download", resource: "model-download" });
+  registry.pushError("download", "independent failure");
+  registry.begin({ label: "other", resource: "app-update" }).complete("unrelated");
+  slow.complete("latest completion", "warning");
+  expect(
+    useOperations
+      .getState()
+      .operations.filter((op) => op.label === "download" && op.status === "completed"),
+  ).toEqual([
+    expect.objectContaining({ id: slow.id, message: "latest completion", kind: "warning" }),
+  ]);
+  expect(
+    useOperations
+      .getState()
+      .operations.some((op) => op.id === running.id && op.status === "running"),
+  ).toBe(true);
+  expect(useOperations.getState().operations.some((op) => op.status === "failed")).toBe(true);
+  expect(useOperations.getState().operations.some((op) => op.label === "other")).toBe(true);
+  running.fail("another failure");
+  expect(useOperations.getState().operations.find((op) => op.status === "failed")?.failCount).toBe(
+    2,
+  );
+});
 it("atomically excludes overlapping resources while allowing independent operations", () => {
   const registry = useOperations.getState();
   const prelabel = registry.begin({ label: "prelabel", resource: "project-annotations" });

@@ -170,3 +170,54 @@ export function applyModelDownloadResult(
     updatedAt,
   };
 }
+
+export function prelabelModelFieldErrors(model: PrelabelModelConfig) {
+  return {
+    name: !model.name.trim() ? PRELABEL_ZH_CN.fieldNameRequired : "",
+    classNames: model.classNames.some((name) => !name.trim())
+      ? PRELABEL_ZH_CN.fieldClassNamesBlank
+      : "",
+    confidence:
+      !Number.isFinite(model.confidenceThreshold) ||
+      model.confidenceThreshold < 0 ||
+      model.confidenceThreshold > 1
+        ? PRELABEL_ZH_CN.fieldThresholdRange
+        : "",
+    iou:
+      !Number.isFinite(model.iouThreshold) || model.iouThreshold < 0 || model.iouThreshold > 1
+        ? PRELABEL_ZH_CN.fieldThresholdRange
+        : "",
+    inputWidth:
+      Number.isSafeInteger(model.inputSizeOverride?.[0] ?? model.inputWidth) &&
+      (model.inputSizeOverride?.[0] ?? model.inputWidth) > 0
+        ? ""
+        : PRELABEL_ZH_CN.fieldSizePositive,
+    inputHeight:
+      Number.isSafeInteger(model.inputSizeOverride?.[1] ?? model.inputHeight) &&
+      (model.inputSizeOverride?.[1] ?? model.inputHeight) > 0
+        ? ""
+        : PRELABEL_ZH_CN.fieldSizePositive,
+    sourceUrl:
+      Boolean(model.sourceUrl?.trim()) && !isValidModelSourceUrl(model.sourceUrl ?? "")
+        ? PRELABEL_ZH_CN.fieldSourceUrlInvalid
+        : "",
+  };
+}
+
+/** The original editing target no longer exists; retrying cannot repair this context. */
+export class PrelabelModelContextChangedError extends Error {
+  constructor() {
+    super(PRELABEL_ZH_CN.retryModelChanged);
+    this.name = "PrelabelModelContextChangedError";
+  }
+}
+
+export function requireValidPrelabelModel(
+  model: PrelabelModelConfig | null,
+  expectedId: string,
+): PrelabelModelConfig {
+  if (!model || model.id !== expectedId) throw new PrelabelModelContextChangedError();
+  const error = Object.values(prelabelModelFieldErrors(model)).find(Boolean);
+  if (error) throw new Error(error);
+  return model;
+}

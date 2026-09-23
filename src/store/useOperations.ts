@@ -102,7 +102,26 @@ export const useOperations = create<Operations>((set, get) => ({
           ...(message === undefined ? {} : { message }),
         }),
       complete: (message = text.completed, kind = "success") => {
-        update({ status: "completed", message, kind, canCancel: false, finishedAt: Date.now() });
+        set((state) => {
+          const current = state.operations.find((op) => op.id === id);
+          if (!current || current.status !== "running") return state;
+          return {
+            operations: state.operations
+              .filter((op) => op.label !== current.label || op.status !== "completed")
+              .map((op) =>
+                op.id === id
+                  ? {
+                      ...op,
+                      status: "completed",
+                      message,
+                      kind,
+                      canCancel: false,
+                      finishedAt: Date.now(),
+                    }
+                  : op,
+              ),
+          };
+        });
         cancellations.delete(id);
       },
       fail: (error) => {

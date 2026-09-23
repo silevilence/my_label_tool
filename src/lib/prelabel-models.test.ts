@@ -7,6 +7,9 @@ import {
   isValidModelSourceUrl,
   modelNameFromPath,
   prelabelFormatLabel,
+  requireValidPrelabelModel,
+  PrelabelModelContextChangedError,
+  prelabelModelFieldErrors,
   selectModelInLibrary,
   updateInputSizeOverride,
   updateModelInLibrary,
@@ -16,6 +19,34 @@ import {
   type ModelDownloadResult,
   type PrelabelModelConfig,
 } from "../types/prelabel";
+import { PRELABEL_ZH_CN as text } from "../i18n/prelabel.zh-CN";
+
+it("rejects a switched editing object even when its form is valid", () => {
+  const selected = model("model-b", "same-name");
+  expect(() => requireValidPrelabelModel(selected, "model-a")).toThrow(text.retryModelChanged);
+  expect(() => requireValidPrelabelModel(selected, "model-a")).toThrow(
+    PrelabelModelContextChangedError,
+  );
+  expect(requireValidPrelabelModel(selected, "model-b")).toBe(selected);
+});
+
+it("reports each invalid field and distinguishes repairable fields from changed context", () => {
+  const invalid = {
+    ...model("model-a", "invalid"),
+    iouThreshold: 2,
+    inputWidth: 0,
+    sourceUrl: "not-a-url",
+  };
+  expect(prelabelModelFieldErrors(invalid)).toMatchObject({
+    iou: text.fieldThresholdRange,
+    inputWidth: text.fieldSizePositive,
+    sourceUrl: text.fieldSourceUrlInvalid,
+  });
+  expect(() => requireValidPrelabelModel(invalid, "model-a")).toThrow(text.fieldThresholdRange);
+  expect(() => requireValidPrelabelModel(invalid, "model-a")).not.toThrow(
+    PrelabelModelContextChangedError,
+  );
+});
 
 describe("prelabel model imports", () => {
   it("formats persisted YOLO variants for user-visible summaries", () => {

@@ -147,9 +147,15 @@ export const PRELABEL_ZH_CN = {
   mappingConfigMissingLabelId: (field: string) => `${field} 缺少 labelId`,
   executionTitle: "预打标执行",
   executionNoModel: "请先在模型库中添加并选择模型。",
-  executionModel: (name: string) => `当前模型：${name}`,
   sourceLabel: "模型来源",
-  builtinSourceName: (name: string) => name,
+  settingsOperationFailed: (reason: unknown) =>
+    `预打标模型设置失败：${reason instanceof Error ? reason.message : String(reason)}`,
+  retryModelChanged: "待保存模型已切换或关闭，请重新选择模型后保存。",
+  retrySettings: "重试设置操作",
+  builtinModelSourceName: (name: string, format: string, summary: string) =>
+    `${name} · ${format} · ${summary}`,
+  selectLibraryModel: (name: string, format: string, summary: string) =>
+    `选择模型：${name} · ${format} · ${summary}`,
   sourceBuiltinOption: (name: string) => `内置模型：${name}`,
   sourcePluginOption: (name: string) => `插件：${name}`,
   executionSource: (name: string) => `当前来源：${name}`,

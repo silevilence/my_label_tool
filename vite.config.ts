@@ -39,6 +39,7 @@ export default defineConfig(async () => ({
         "src/components/canvas/transform.ts",
         "src/lib/**/*.ts",
         "src/store/**/*.ts",
+        "src/hooks/usePrelabelLibraryMutation.ts",
         "src/types/annotation.ts",
         "src/types/plugin.ts",
       ],

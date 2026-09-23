@@ -3,6 +3,7 @@ import { PRELABEL_ZH_CN as text } from "../../i18n/prelabel.zh-CN";
 import {
   isValidModelSourceUrl,
   prelabelFormatLabel as formatLabel,
+  prelabelModelFieldErrors,
   updateInputSizeOverride,
 } from "../../lib/prelabel-models";
 
@@ -40,34 +41,7 @@ export function ModelImportForm({
   onUpdateFromUrl?: () => void;
   onValidate: () => void;
 }) {
-  const fieldErrors = {
-    name: !model.name.trim() ? text.fieldNameRequired : "",
-    classNames: model.classNames.some((name) => !name.trim()) ? text.fieldClassNamesBlank : "",
-    confidence:
-      !Number.isFinite(model.confidenceThreshold) ||
-      model.confidenceThreshold < 0 ||
-      model.confidenceThreshold > 1
-        ? text.fieldThresholdRange
-        : "",
-    iou:
-      !Number.isFinite(model.iouThreshold) || model.iouThreshold < 0 || model.iouThreshold > 1
-        ? text.fieldThresholdRange
-        : "",
-    inputWidth:
-      Number.isSafeInteger(model.inputSizeOverride?.[0] ?? model.inputWidth) &&
-      (model.inputSizeOverride?.[0] ?? model.inputWidth) > 0
-        ? ""
-        : text.fieldSizePositive,
-    inputHeight:
-      Number.isSafeInteger(model.inputSizeOverride?.[1] ?? model.inputHeight) &&
-      (model.inputSizeOverride?.[1] ?? model.inputHeight) > 0
-        ? ""
-        : text.fieldSizePositive,
-    sourceUrl:
-      Boolean(model.sourceUrl?.trim()) && !isValidModelSourceUrl(model.sourceUrl ?? "")
-        ? text.fieldSourceUrlInvalid
-        : "",
-  };
+  const fieldErrors = prelabelModelFieldErrors(model);
   const invalid = Object.values(fieldErrors).some(Boolean);
   const firstFieldError = Object.values(fieldErrors).find(Boolean) ?? "";
   const sourceUrl = model.sourceUrl ?? "";
