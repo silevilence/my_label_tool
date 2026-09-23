@@ -32,8 +32,8 @@ pub(super) fn floats(raw: &[u8], field: u32) -> Result<Vec<f32>, String> {
         match value {
             WireValue::Fixed32(v) => result.push(f32::from_le_bytes(v)),
             WireValue::Bytes(bytes) if bytes.len() % 4 == 0 => {
-                for chunk in bytes.chunks_exact(4) {
-                    result.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+                for chunk in bytes.as_chunks::<4>().0 {
+                    result.push(f32::from_le_bytes(*chunk));
                 }
             }
             _ => return Err(text::ONNX_GRAPH_INVALID_FIELD.into()),
@@ -119,11 +119,11 @@ pub(super) fn numbers(raw: &[u8]) -> Result<Option<Vec<f64>>, String> {
             return Err(text::ONNX_GRAPH_INVALID_FIELD.into());
         }
         if w.data_type == data_type::INT64
-            && data.chunks_exact(8).any(|chunk| {
-                let mut bytes = [0; 8];
-                bytes.copy_from_slice(chunk);
-                i64::from_le_bytes(bytes).unsigned_abs() > 1u64 << 53
-            })
+            && data
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .any(|chunk| i64::from_le_bytes(*chunk).unsigned_abs() > 1u64 << 53)
         {
             return Ok(None);
         }
@@ -161,10 +161,8 @@ pub(super) fn numbers(raw: &[u8]) -> Result<Option<Vec<f64>>, String> {
                         match value {
                             WireValue::Fixed64(v) => values.push(f64::from_le_bytes(v)),
                             WireValue::Bytes(bytes) if bytes.len() % 8 == 0 => {
-                                for chunk in bytes.chunks_exact(8) {
-                                    let mut bytes = [0; 8];
-                                    bytes.copy_from_slice(chunk);
-                                    values.push(f64::from_le_bytes(bytes));
+                                for chunk in bytes.as_chunks::<8>().0 {
+                                    values.push(f64::from_le_bytes(*chunk));
                                 }
                             }
                             _ => return Err(text::ONNX_GRAPH_INVALID_FIELD.into()),
