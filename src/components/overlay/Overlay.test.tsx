@@ -8,6 +8,7 @@ import { DEFAULT_SHORTCUTS } from "../../lib/defaults/shortcuts";
 import {
   DEFAULT_HELP_DISPLAY_SETTINGS,
   DEFAULT_LABEL_DISPLAY_SETTINGS,
+  DEFAULT_RECT_SIZE_DISPLAY_SETTINGS,
 } from "../../lib/defaults/display";
 
 let root: Root;
@@ -90,10 +91,12 @@ it("cancels shortcut recording before closing its nested settings overlay", () =
         <ShortcutSettings
           helpDisplaySettings={DEFAULT_HELP_DISPLAY_SETTINGS}
           labelDisplaySettings={DEFAULT_LABEL_DISPLAY_SETTINGS}
+          rectSizeDisplaySettings={DEFAULT_RECT_SIZE_DISPLAY_SETTINGS}
           labelShortcuts={[]}
           shortcuts={DEFAULT_SHORTCUTS}
           onChangeHelpDisplaySetting={vi.fn()}
           onChangeLabelDisplaySetting={vi.fn()}
+          onChangeRectSizeDisplaySetting={vi.fn()}
           onChangeShortcut={change}
           onClose={close}
         />

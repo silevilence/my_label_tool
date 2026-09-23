@@ -1,6 +1,13 @@
 import type { InteractionMode } from "../../components/canvas/types";
 
 export type LabelDisplaySettings = Record<InteractionMode, boolean>;
+export type RectSizeDisplaySettings = Record<InteractionMode, boolean>;
+
+export const DEFAULT_RECT_SIZE_DISPLAY_SETTINGS: RectSizeDisplaySettings = {
+  default: false,
+  select: false,
+  annotate: true,
+};
 
 export interface HelpDisplaySettings {
   showAnnotationCrosshairCursor: boolean;
@@ -23,12 +30,39 @@ export const DEFAULT_HELP_DISPLAY_SETTINGS: HelpDisplaySettings = {
 };
 
 const LABEL_DISPLAY_SETTINGS_KEY = "my-label-tool.label-display-settings";
+const RECT_SIZE_DISPLAY_SETTINGS_KEY = "my-label-tool.rect-size-display-settings";
 const HELP_DISPLAY_SETTINGS_KEY = "my-label-tool.help-display-settings";
+
+export function loadRectSizeDisplaySettings(): RectSizeDisplaySettings {
+  try {
+    const raw = window.localStorage.getItem(RECT_SIZE_DISPLAY_SETTINGS_KEY);
+    const value: unknown = raw ? JSON.parse(raw) : null;
+    if (!value || typeof value !== "object") return DEFAULT_RECT_SIZE_DISPLAY_SETTINGS;
+    const record = value as Record<string, unknown>;
+    return {
+      default: readBoolean(record.default, DEFAULT_RECT_SIZE_DISPLAY_SETTINGS.default),
+      select: readBoolean(record.select, DEFAULT_RECT_SIZE_DISPLAY_SETTINGS.select),
+      annotate: readBoolean(record.annotate, DEFAULT_RECT_SIZE_DISPLAY_SETTINGS.annotate),
+    };
+  } catch {
+    return DEFAULT_RECT_SIZE_DISPLAY_SETTINGS;
+  }
+}
+
+export function saveRectSizeDisplaySettings(settings: RectSizeDisplaySettings) {
+  try {
+    window.localStorage.setItem(RECT_SIZE_DISPLAY_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Keep the setting usable for this session if storage is unavailable.
+  }
+}
 
 export function loadLabelDisplaySettings(): LabelDisplaySettings {
   try {
     const raw = window.localStorage.getItem(LABEL_DISPLAY_SETTINGS_KEY);
-    return raw ? parseLabelDisplaySettings(JSON.parse(raw) as unknown) : DEFAULT_LABEL_DISPLAY_SETTINGS;
+    return raw
+      ? parseLabelDisplaySettings(JSON.parse(raw) as unknown)
+      : DEFAULT_LABEL_DISPLAY_SETTINGS;
   } catch {
     return DEFAULT_LABEL_DISPLAY_SETTINGS;
   }
@@ -37,7 +71,9 @@ export function loadLabelDisplaySettings(): LabelDisplaySettings {
 export function loadHelpDisplaySettings(): HelpDisplaySettings {
   try {
     const raw = window.localStorage.getItem(HELP_DISPLAY_SETTINGS_KEY);
-    return raw ? parseHelpDisplaySettings(JSON.parse(raw) as unknown) : DEFAULT_HELP_DISPLAY_SETTINGS;
+    return raw
+      ? parseHelpDisplaySettings(JSON.parse(raw) as unknown)
+      : DEFAULT_HELP_DISPLAY_SETTINGS;
   } catch {
     return DEFAULT_HELP_DISPLAY_SETTINGS;
   }

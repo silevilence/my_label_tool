@@ -2,23 +2,35 @@ import { useEffect, useRef, useState } from "react";
 import {
   loadHelpDisplaySettings,
   loadLabelDisplaySettings,
+  loadRectSizeDisplaySettings,
   saveHelpDisplaySettings,
   saveLabelDisplaySettings,
+  saveRectSizeDisplaySettings,
   type HelpDisplaySettings,
   type LabelDisplaySettings,
+  type RectSizeDisplaySettings,
 } from "../lib/defaults/display";
 import type { InteractionMode } from "../components/canvas/types";
 import type { LabelConfig } from "../types/annotation";
 
 export function useLabelDisplaySettings(labelById: Map<string, LabelConfig>) {
   const timeoutRef = useRef<number | null>(null);
-  const [labelDisplaySettings, setLabelDisplaySettings] = useState<LabelDisplaySettings>(
-    loadLabelDisplaySettings,
-  );
-  const [helpDisplaySettings, setHelpDisplaySettings] = useState<HelpDisplaySettings>(
-    loadHelpDisplaySettings,
-  );
+  const [labelDisplaySettings, setLabelDisplaySettings] =
+    useState<LabelDisplaySettings>(loadLabelDisplaySettings);
+  const [helpDisplaySettings, setHelpDisplaySettings] =
+    useState<HelpDisplaySettings>(loadHelpDisplaySettings);
   const [labelSwitchHint, setLabelSwitchHint] = useState<LabelConfig | null>(null);
+  const [rectSizeDisplaySettings, setRectSizeDisplaySettings] = useState<RectSizeDisplaySettings>(
+    loadRectSizeDisplaySettings,
+  );
+
+  useEffect(() => {
+    saveRectSizeDisplaySettings(rectSizeDisplaySettings);
+  }, [rectSizeDisplaySettings]);
+
+  function setRectSizeDisplaySetting(mode: InteractionMode, visible: boolean) {
+    setRectSizeDisplaySettings((settings) => ({ ...settings, [mode]: visible }));
+  }
 
   useEffect(
     () => () => {
@@ -58,6 +70,8 @@ export function useLabelDisplaySettings(labelById: Map<string, LabelConfig>) {
   }
 
   return {
+    rectSizeDisplaySettings,
+    setRectSizeDisplaySetting,
     helpDisplaySettings,
     labelDisplaySettings,
     labelSwitchHint,

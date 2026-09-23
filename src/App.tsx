@@ -278,9 +278,11 @@ function App() {
   const {
     helpDisplaySettings,
     labelDisplaySettings,
+    rectSizeDisplaySettings,
     labelSwitchHint,
     setHelpDisplaySetting,
     setLabelDisplaySetting,
+    setRectSizeDisplaySetting,
     showLabelSwitchHint,
   } = useLabelDisplaySettings(labelById);
 
@@ -835,6 +837,7 @@ function App() {
         isPrelabelExecutionOpen={isPrelabelExecutionOpen}
         labelById={labelById}
         labelDisplaySettings={labelDisplaySettings}
+        rectSizeDisplaySettings={rectSizeDisplaySettings}
         labelShortcuts={labelShortcuts}
         labelSwitchHint={labelSwitchHint}
         labels={labels}
@@ -917,6 +920,7 @@ function App() {
         prelabelModels={prelabelModels}
         prelabelExecution={prelabelExecution}
         setLabelDisplaySetting={setLabelDisplaySetting}
+        setRectSizeDisplaySetting={setRectSizeDisplaySetting}
         setSelectedExportFormatId={changeExportFormat}
         setSelectedPath={setSelectedPath}
         setUpdateMessage={setUpdateMessage}

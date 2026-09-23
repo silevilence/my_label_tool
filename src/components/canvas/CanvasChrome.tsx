@@ -4,6 +4,7 @@ import { shortcutKey } from "../../lib/shortcuts";
 import { formatShortcut } from "../../lib/shortcut-utils";
 import { SHORTCUT_ZH_CN as shortcutText } from "../../i18n/shortcuts.zh-CN";
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
+import { DISPLAY_ZH_CN as displayText } from "../../i18n/display.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 import type { MutableRefObject, ReactNode } from "react";
 import { IMAGE_DELETION_ZH_CN as imageDeletionText } from "../../i18n/image-deletion.zh-CN";
@@ -387,6 +388,7 @@ interface AnnotationRectProps {
   label: LabelConfig;
   rectRef: MutableRefObject<KonvaRect | null>;
   showLabel: boolean;
+  showSize: boolean;
   onContextMenu: (event: KonvaEventObject<MouseEvent>, annotationId: string) => void;
   onDragEnd: (annotation: AnnotationShape, event: KonvaEventObject<DragEvent>) => void;
   onPanStart: (event: KonvaEventObject<MouseEvent>) => void;
@@ -405,6 +407,7 @@ export function AnnotationRect({
   label,
   rectRef,
   showLabel,
+  showSize,
   onContextMenu,
   onDragEnd,
   onPanStart,
@@ -412,6 +415,7 @@ export function AnnotationRect({
   onTransformEnd,
 }: AnnotationRectProps) {
   const rect = toCanvasRect(annotation.points, imageLayout);
+  const sizeText = displayText.rectSize(annotation.points[2], annotation.points[3]);
 
   return (
     <>
@@ -455,6 +459,21 @@ export function AnnotationRect({
         }
         onTransformEnd={() => onTransformEnd(annotation)}
       />
+      {showSize && (
+        <Text
+          {...rect}
+          text={sizeText}
+          fontFamily="monospace"
+          fontSize={Math.min(12, rect.width / (sizeText.length * 0.65), rect.height)}
+          align="center"
+          verticalAlign="middle"
+          wrap="none"
+          fill="#ffffff"
+          shadowColor="#000000"
+          shadowBlur={3}
+          listening={false}
+        />
+      )}
       {showLabel && (
         <KonvaLabel listening={false} x={rect.x} y={Math.max(imageLayout.y, rect.y - 22)}>
           <Tag fill={`${label.color}dd`} cornerRadius={4} />

@@ -46,7 +46,11 @@ import type { ExportFormatId } from "../types/export";
 import type { ProjectConfig } from "../lib/importers";
 import type { ImageFile } from "../lib/tauri-api";
 import type { ShortcutMap } from "../lib/defaults/shortcuts";
-import type { HelpDisplaySettings, LabelDisplaySettings } from "../lib/defaults/display";
+import type {
+  HelpDisplaySettings,
+  LabelDisplaySettings,
+  RectSizeDisplaySettings,
+} from "../lib/defaults/display";
 import type { AppUpdateProgress, AppUpdateStatus } from "../lib/updater";
 import type { PrelabelExecutionControls } from "../hooks/usePrelabelExecution";
 import type { usePrelabelModels } from "../hooks/usePrelabelModels";
@@ -119,6 +123,7 @@ interface AppLayoutProps {
   isPrelabelExecutionOpen: boolean;
   labelById: Map<string, LabelConfig>;
   labelDisplaySettings: LabelDisplaySettings;
+  rectSizeDisplaySettings: RectSizeDisplaySettings;
   labelShortcuts: string[];
   labelSwitchHint: LabelConfig | null;
   labels: LabelConfig[];
@@ -207,6 +212,7 @@ interface AppLayoutProps {
   setSelectedPath: (path: string) => void;
   setUpdateMessage: (message: string) => void;
   setLabelDisplaySetting: (mode: InteractionMode, visible: boolean) => void;
+  setRectSizeDisplaySetting: (mode: InteractionMode, visible: boolean) => void;
   startPanning: (event: KonvaEventObject<MouseEvent>) => void;
   undo: () => void;
   updateLabels: (labels: LabelConfig[]) => void;
@@ -258,6 +264,7 @@ export function AppLayout({
   isPrelabelExecutionOpen,
   labelById,
   labelDisplaySettings,
+  rectSizeDisplaySettings,
   labelShortcuts,
   labelSwitchHint,
   labels,
@@ -338,6 +345,7 @@ export function AppLayout({
   setSelectedPath,
   setUpdateMessage,
   setLabelDisplaySetting,
+  setRectSizeDisplaySetting,
   startPanning,
   undo,
   updateLabels,
@@ -547,6 +555,7 @@ export function AppLayout({
                         <AnnotationRect
                           {...commonProps}
                           rectRef={selectedRectRef}
+                          showSize={rectSizeDisplaySettings[interactionMode]}
                           onDragEnd={handleDragEnd}
                           onTransformEnd={handleTransformEnd}
                         />
@@ -784,10 +793,12 @@ export function AppLayout({
           <ShortcutSettings
             helpDisplaySettings={helpDisplaySettings}
             labelDisplaySettings={labelDisplaySettings}
+            rectSizeDisplaySettings={rectSizeDisplaySettings}
             labelShortcuts={labelShortcuts}
             shortcuts={shortcuts}
             onChangeHelpDisplaySetting={setHelpDisplaySetting}
             onChangeLabelDisplaySetting={setLabelDisplaySetting}
+            onChangeRectSizeDisplaySetting={setRectSizeDisplaySetting}
             onChangeShortcut={updateShortcut}
             onClose={() => setIsShortcutSettingsOpen(false)}
           />

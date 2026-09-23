@@ -13,6 +13,8 @@ import { PRELABEL_RESOURCE_ZH_CN as resourceText } from "../i18n/prelabel-resour
 import { SHORTCUT_ZH_CN as text } from "../i18n/shortcuts.zh-CN";
 import { useShortcutStore } from "../store/useShortcutStore";
 import { useShortcutsConfig } from "./useShortcutsConfig";
+import { useLabelDisplaySettings } from "./useLabelDisplaySettings";
+import { DISPLAY_ZH_CN as displayText } from "../i18n/display.zh-CN";
 
 vi.mock("../lib/tauri-api", () => ({
   loadShortcuts: vi.fn(),
@@ -29,12 +31,15 @@ const onClose = vi.fn();
 
 function Harness({ labelShortcuts = [] }: { labelShortcuts?: string[] }) {
   config = useShortcutsConfig(reportError);
+  const display = useLabelDisplaySettings(new Map());
   return (
     <ShortcutSettings
       shortcuts={config.shortcuts}
       labelShortcuts={labelShortcuts}
       helpDisplaySettings={DEFAULT_HELP_DISPLAY_SETTINGS}
       labelDisplaySettings={DEFAULT_LABEL_DISPLAY_SETTINGS}
+      rectSizeDisplaySettings={display.rectSizeDisplaySettings}
+      onChangeRectSizeDisplaySetting={display.setRectSizeDisplaySetting}
       onChangeHelpDisplaySetting={vi.fn()}
       onChangeLabelDisplaySetting={vi.fn()}
       onChangeShortcut={config.updateShortcut}
@@ -46,6 +51,7 @@ function Harness({ labelShortcuts = [] }: { labelShortcuts?: string[] }) {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.resetAllMocks();
+  window.localStorage.clear();
   vi.mocked(loadShortcuts).mockResolvedValue(DEFAULT_SHORTCUTS);
   vi.mocked(loadPrelabelResourceLimits).mockResolvedValue({
     maxMemoryMiB: 80,
@@ -75,6 +81,26 @@ async function clickRestore(label: string) {
   expect(button).toBeDefined();
   await act(async () => button!.click());
 }
+
+it("updates each size display switch immediately and restores it after remount", async () => {
+  await render({});
+  function sizeSwitches() {
+    const group = [...document.querySelectorAll("fieldset")].find(
+      (item) => item.querySelector("legend")?.textContent === displayText.rectSizeTitle,
+    );
+    expect(group).toBeDefined();
+    return [...group!.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+  }
+  expect(sizeSwitches().map((input) => input.checked)).toEqual([false, false, true]);
+  for (const input of sizeSwitches()) {
+    await act(async () => input.click());
+  }
+  expect(sizeSwitches().map((input) => input.checked)).toEqual([true, true, false]);
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await render({});
+  expect(sizeSwitches().map((input) => input.checked)).toEqual([true, true, false]);
+});
 
 it("restores every changed shortcut in one state update and one persisted snapshot", async () => {
   await render({ previousImage: "a", nextImage: "d", zoomIn: "w" });

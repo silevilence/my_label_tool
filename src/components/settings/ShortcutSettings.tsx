@@ -1,4 +1,5 @@
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
+import { DISPLAY_ZH_CN as displayText } from "../../i18n/display.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 import { confirmAction } from "../../lib/prompts";
 import { useEffect, useState } from "react";
@@ -10,7 +11,11 @@ import {
 
 type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
 import type { InteractionMode } from "../canvas/types";
-import type { HelpDisplaySettings, LabelDisplaySettings } from "../../lib/defaults/display";
+import type {
+  HelpDisplaySettings,
+  LabelDisplaySettings,
+  RectSizeDisplaySettings,
+} from "../../lib/defaults/display";
 import { formatShortcut, normalizeShortcutKey } from "../../lib/shortcut-utils";
 import { detectConflicts, shortcutKey } from "../../lib/shortcuts";
 import { SHORTCUT_ZH_CN as shortcutText } from "../../i18n/shortcuts.zh-CN";
@@ -21,10 +26,12 @@ import { usePrelabelResourceStore } from "../../store/usePrelabelResourceStore";
 interface ShortcutSettingsProps {
   helpDisplaySettings: HelpDisplaySettings;
   labelDisplaySettings: LabelDisplaySettings;
+  rectSizeDisplaySettings: RectSizeDisplaySettings;
   labelShortcuts: string[];
   shortcuts: ShortcutMap;
   onChangeHelpDisplaySetting: (setting: keyof HelpDisplaySettings, visible: boolean) => void;
   onChangeLabelDisplaySetting: (mode: InteractionMode, visible: boolean) => void;
+  onChangeRectSizeDisplaySetting: (mode: InteractionMode, visible: boolean) => void;
   onChangeShortcut: (changes: Partial<ShortcutMap>) => void;
   onClose: () => void;
 }
@@ -32,10 +39,12 @@ interface ShortcutSettingsProps {
 export function ShortcutSettings({
   helpDisplaySettings,
   labelDisplaySettings,
+  rectSizeDisplaySettings,
   labelShortcuts,
   shortcuts,
   onChangeHelpDisplaySetting,
   onChangeLabelDisplaySetting,
+  onChangeRectSizeDisplaySetting,
   onChangeShortcut,
   onClose,
 }: ShortcutSettingsProps) {
@@ -162,9 +171,7 @@ export function ShortcutSettings({
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-slate-100">设置</h2>
-            <p className="mt-1 text-xs text-slate-400">
-              配置快捷键、画布提示，以及不同交互模式下是否显示框上的标签名。
-            </p>
+            <p className="mt-1 text-xs text-slate-400">{displayText.settingsDescription}</p>
           </div>
           <button
             className="rounded border border-slate-700 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800"
@@ -252,28 +259,44 @@ export function ShortcutSettings({
           </div>
         </div>
 
-        <div className="mt-4 rounded border border-slate-800 p-3">
-          <h3 className="text-sm font-medium text-slate-100">标签名显示</h3>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            {LABEL_DISPLAY_OPTIONS.map((option) => (
-              <label
-                className="flex items-start gap-2 rounded border border-slate-800 bg-slate-950 p-2 text-sm text-slate-200"
-                key={option.id}
-              >
-                <input
-                  checked={labelDisplaySettings[option.id]}
-                  className="mt-1"
-                  type="checkbox"
-                  onChange={(event) => onChangeLabelDisplaySetting(option.id, event.target.checked)}
-                />
-                <span>
-                  <span className="block">{option.label}</span>
-                  <span className="block text-xs text-slate-500">{option.description}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </div>
+        {[
+          {
+            title: displayText.labelTitle,
+            description: null,
+            settings: labelDisplaySettings,
+            onChange: onChangeLabelDisplaySetting,
+          },
+          {
+            title: displayText.rectSizeTitle,
+            description: displayText.rectSizeDescription,
+            settings: rectSizeDisplaySettings,
+            onChange: onChangeRectSizeDisplaySetting,
+          },
+        ].map(({ title, description, settings, onChange }) => (
+          <fieldset key={title} className="mt-4 rounded border border-slate-800 p-3">
+            <legend className="px-1 text-sm font-medium text-slate-100">{title}</legend>
+            {description && <p className="text-xs text-slate-400">{description}</p>}
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {displayText.modes.map((option) => (
+                <label
+                  className="flex items-start gap-2 rounded border border-slate-800 bg-slate-950 p-2 text-sm text-slate-200"
+                  key={option.id}
+                >
+                  <input
+                    checked={settings[option.id]}
+                    className="mt-1"
+                    type="checkbox"
+                    onChange={(event) => onChange(option.id, event.target.checked)}
+                  />
+                  <span>
+                    <span className="block">{option.label}</span>
+                    <span className="block text-xs text-slate-500">{option.description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ))}
 
         <div className="mt-4 divide-y divide-slate-800 rounded border border-slate-800">
           <div className="flex items-center justify-between gap-3 px-3 py-2">
@@ -341,16 +364,6 @@ export function ShortcutSettings({
     </Overlay>
   );
 }
-
-const LABEL_DISPLAY_OPTIONS: Array<{
-  id: InteractionMode;
-  label: string;
-  description: string;
-}> = [
-  { id: "default", label: "默认模式", description: "普通查看、选择与调整" },
-  { id: "select", label: "选择模式", description: "按住 Shift 强制选择" },
-  { id: "annotate", label: "标注模式", description: "按住 Ctrl 强制绘制" },
-];
 
 function isModifierKey(key: string): boolean {
   return ["Alt", "Control", "Meta", "Shift"].includes(key);

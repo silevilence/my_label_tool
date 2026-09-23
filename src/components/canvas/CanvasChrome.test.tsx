@@ -4,6 +4,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import type { KonvaEventObject } from "konva/lib/Node";
 import { expect, it, vi } from "vitest";
+import { DEFAULT_RECT_SIZE_DISPLAY_SETTINGS } from "../../lib/defaults/display";
 import {
   AnnotationRect,
   AnnotationPoint,
@@ -48,8 +49,90 @@ vi.mock("react-konva", () => ({
   Label: () => null,
   Line: () => null,
   Tag: () => null,
-  Text: () => null,
+  Text: ({
+    text,
+    listening,
+    x,
+    y,
+    width,
+    height,
+  }: {
+    text: string;
+    listening?: boolean;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  }) => (
+    <span data-listening={listening} data-x={x} data-y={y} data-width={width} data-height={height}>
+      {text}
+    </span>
+  ),
 }));
+
+it("shows original pixel dimensions inside rectangles across modes, zoom and edits", () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const props: ComponentProps<typeof AnnotationRect> = {
+    annotation: { id: "r", labelId: "l", type: "rect", points: [10, 20, 100, 200] },
+    label: { id: "l", name: "label", color: "#ffffff", shapeType: "rect" },
+    imageLayout: { x: 30, y: 40, scale: 1, width: 500, height: 500 },
+    interactionMode: "annotate",
+    isHighlighted: false,
+    isPanning: false,
+    spacePan: false,
+    isSelected: false,
+    rectRef: { current: null },
+    showLabel: false,
+    showSize: true,
+    onContextMenu: vi.fn(),
+    onDragEnd: vi.fn(),
+    onPanStart: vi.fn(),
+    onSelect: vi.fn(),
+    onTransformEnd: vi.fn(),
+  };
+  for (const mode of ["default", "select", "annotate"] as const) {
+    act(() =>
+      root.render(
+        <AnnotationRect
+          {...props}
+          interactionMode={mode}
+          showSize={DEFAULT_RECT_SIZE_DISPLAY_SETTINGS[mode]}
+        />,
+      ),
+    );
+    expect(host.textContent).toBe(mode === "annotate" ? "100x200" : "");
+    act(() => root.render(<AnnotationRect {...props} interactionMode={mode} showSize />));
+    expect(host.textContent).toBe("100x200");
+  }
+  for (const scale of [0.01, 0.25, 1, 2, 10]) {
+    act(() =>
+      root.render(<AnnotationRect {...props} imageLayout={{ ...props.imageLayout, scale }} />),
+    );
+    expect(host.textContent).toBe("100x200");
+    const text = host.querySelector("span")!;
+    expect(text.dataset).toMatchObject({
+      listening: "false",
+      x: String(30 + 10 * scale),
+      y: String(40 + 20 * scale),
+      width: String(100 * scale),
+      height: String(200 * scale),
+    });
+  }
+  act(() =>
+    root.render(
+      <AnnotationRect
+        {...props}
+        annotation={{ ...props.annotation, points: [10, 20, 150.25, 230.50000001] }}
+      />,
+    ),
+  );
+  expect(host.textContent).toBe("150.25x230.5");
+  act(() => root.render(<AnnotationRect {...props} showSize={false} />));
+  expect(host.textContent).toBe("");
+  act(() => root.unmount());
+});
 it("accepts native touch drags and rejects middle-button and modified drags", () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const props: ComponentProps<typeof AnnotationRect> = {
@@ -62,6 +145,7 @@ it("accepts native touch drags and rejects middle-button and modified drags", ()
     spacePan: false,
     isSelected: false,
     rectRef: { current: null },
+    showSize: false,
     showLabel: false,
     onContextMenu: vi.fn(),
     onDragEnd: vi.fn(),
@@ -97,6 +181,7 @@ it("starts panning from shapes on middle button and space-held left button", () 
     spacePan: false,
     isSelected: false,
     rectRef: { current: null },
+    showSize: false,
     showLabel: false,
     onContextMenu: vi.fn(),
     onDragEnd: vi.fn(),
@@ -150,7 +235,8 @@ it.each(["point", "polygon"] as const)(
       onPanStart: vi.fn(),
       onSelect: vi.fn(),
     };
-    const root = createRoot(document.createElement("div"));
+    const host = document.createElement("div");
+    const root = createRoot(host);
     act(() =>
       root.render(
         type === "point" ? (
@@ -161,6 +247,7 @@ it.each(["point", "polygon"] as const)(
       ),
     );
     expect(handlers.draggable).toBe(false);
+    expect(host.textContent).toBe("");
     const stopDrag = vi.fn();
     handlers.drag!({
       evt: { button: 0, buttons: 1 },
