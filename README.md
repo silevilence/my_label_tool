@@ -40,6 +40,7 @@
 
 - **画布缩放与平移**：滚轮以图片内的鼠标位置为中心（鼠标在图片外时取最近的图片边界点）缩放，Ctrl+滚轮微调；Ctrl+右键或中键拖动平移画布
 - **十字光标与辅助线**：绘制标注时鼠标显示十字光标，并显示随鼠标移动的水平/垂直辅助线，便于精确对齐；两者均可在设置中单独开关
+- **标注框尺寸显示**：矩形标注框内可直接显示其在原图中的像素宽高，缩放画布时数值保持稳定；是否显示可在设置中按默认 / 选择 / 标注三种交互模式独立开关（默认仅标注模式显示）
 - **大图优化**：针对大图片优化了标注与渲染流畅度
 
 **导入与导出**
@@ -51,6 +52,7 @@
 **AI 预打标（可选）**
 
 - **模型库**：添加标准 YOLO 模型（ONNX）或 PyTorch 的 `.pt` 模型，自动识别模型格式、类别数与输入尺寸；`.pt` 模型可在应用内一键转换为 ONNX 并校验：优先使用本机已装的 yolo CLI / ultralytics 环境，未安装时也可经 uvx 自动获取运行环境（首次运行需联网）；转换前可预览命令、调整输入尺寸与简化选项，过程中实时显示输出并可随时取消；可为模型配置「更新地址」（ONNX 下载直链），点击「更新模型」即下载、校验并替换模型文件（新文件保存在应用数据目录，不覆盖原始文件），下载过程中可取消
+- **模型结构查看**：可离线查看 ONNX 模型的计算图：可视化节点与数据流向、算子分布统计、输入输出与中间张量形状（静态规则保守推导，无法确定的形状明确标注为未知），点击节点可查看属性、输入输出与关联权重；直接读取 ONNX 文件即可，无需安装 ONNX Runtime，不运行推理，也不会将文件加入模型库
 - **ONNX Runtime 按需安装**：推理运行时（约 40–90MB）不随安装包分发，可在设置中一键下载（自动 SHA-256 校验；下载中显示进度并可随时取消）或手动放置 DLL，放置后即时可用，保持核心安装包轻量
 - **GPU 加速**：随附的 DirectML 构建支持可选 GPU 加速，当前运行时是否支持在设置中明确提示
 - **类别映射**：模型类别与项目标签按名称自动匹配，也支持手动绑定已有标签、从类名新建标签或排除类别；未映射的类别运行时自动跳过
@@ -128,7 +130,7 @@ npm test
 npm run test:coverage
 ```
 
-画布交互暂无自动化测试，相关改动需按 `AGENTS.md` 中的手动验证清单核对。详细的打包与发布流程见 [docs/build.md](docs/build.md)。
+画布交互已有部分组件级回归测试，相关改动仍需按 `AGENTS.md` 中的手动验证清单核对。详细的打包与发布流程见 [docs/build.md](docs/build.md)。
 
 ## 发布
 
@@ -147,7 +149,7 @@ my_label_tool/
 ├── src/                            # React 前端
 │   ├── components/                 # 画布、设置面板、侧边栏组件（含图片删除确认弹窗）
 │   │   ├── canvas/                 # Konva 画布、几何计算、交互类型
-│   │   ├── settings/               # 导出面板、标签设置、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置、插件管理
+│   │   ├── settings/               # 导出面板、标签设置、预打标设置/执行浮窗、PT 转换弹窗、ONNX 结构查看弹窗、快捷键设置、插件管理
 │   │   └── sidebar/                # 应用侧边栏、图片搜索弹窗、图片列表右键菜单
 │   ├── store/                      # Zustand 状态管理（标注数据 + 全局状态）
 │   ├── types/                      # 核心类型定义（annotation、export、prelabel、plugin）
@@ -157,11 +159,11 @@ my_label_tool/
 │   │   ├── image-search.ts         # 图片表达式搜索语法与匹配
 │   │   ├── prelabel-*.ts           # 预打标模型库、类别映射、执行逻辑
 │   │   └── plugin-*.ts             # 插件配置迁移、预置标签、导出/预打标来源
-│   ├── i18n/                       # 前端用户可见文案（prelabel / plugin / project / image-deletion 的 zh-CN 文件）
+│   ├── i18n/                       # 前端用户可见文案（display / onnx-graph / prelabel / plugin / project / video 等模块的 zh-CN 文件）
 │   └── hooks/                      # 画布交互、图片加载、图片删除、预打标、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
 │   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs）、models、bin（插件校验/测试桩）
-│   │   ├── media/                  # ONNX 元数据识别、预打标推理管线、PT 转换、图片回收站删除
+│   │   ├── media/                  # ONNX 元数据识别与结构解析、预打标推理管线、PT 转换、视频抽帧处理、缩略图生成、图片回收站删除
 │   │   ├── plugins/                # 插件运行时：manifest、protocol、permissions、registry、config
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── tests/                      # 插件协议集成测试（plugin_conformance.rs）
@@ -169,9 +171,9 @@ my_label_tool/
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── examples/plugins/               # 三种插件示例（标签预置 / 导出器 / 预打标）
-├── scripts/                        # 插件打包与验证脚本（package-plugin.mjs、verify-plugin-*.ps1）
+├── scripts/                        # 插件打包与验证、视频工具准备、一次性 ONNX 核对脚本（package-plugin.mjs、verify-plugin-*.ps1、prepare-video-tools.ps1、verify-onnx-graph.py）
 ├── .github/workflows/              # ci.yml、official-models.yml、release.yml
-├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、插件 JSON Schema、adr/）
+├── docs/                           # 文档（build.md、video-annotation.md、onnx-graph.md、scripting.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、插件/项目 JSON Schema、adr/、verification/）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md                       # AI 开发指南
 └── package.json

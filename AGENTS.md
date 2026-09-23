@@ -77,7 +77,7 @@ my_label_tool/
 │   │   ├── operations/             # 按操作归属的进度、取消与终态消息
 │   │   ├── overlay/                # 自注册遮罩、输入门禁、焦点与视口滚动
 │   │   ├── canvas/                 # Konva 画布（CanvasChrome）、几何计算（geometry）、交互类型
-│   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行浮窗、PT 转换弹窗、快捷键设置、插件管理
+│   │   ├── settings/               # 导出面板、标签设置（弹窗）、预打标设置/执行浮窗、PT 转换弹窗、ONNX 结构查看弹窗、快捷键设置、插件管理
 │   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）、图片列表右键菜单（ImageListContextMenu）
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
 │   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态、useOverlayStore 遮罩栈、useShortcutStore 动作注册与键位、useOperations 资源互斥注册表）
@@ -91,11 +91,11 @@ my_label_tool/
 │   │   ├── plugin-*.ts             # 插件契约：配置迁移 / 预置标签 / 导出与预打标来源
 │   │   ├── tauri-api.ts            # 所有 Tauri command 调用封装
 │   │   └── app-utils.ts            # 路径、图片尺寸、项目配置等工具函数
-│   ├── i18n/                       # 前端用户可见文案（prelabel.zh-CN.ts、plugin.zh-CN.ts、project.zh-CN.ts、image-deletion.zh-CN.ts）
+│   ├── i18n/                       # 前端用户可见文案（prelabel.zh-CN.ts、plugin.zh-CN.ts、project.zh-CN.ts、image-deletion.zh-CN.ts、display.zh-CN.ts、onnx-graph.zh-CN.ts）
 │   └── hooks/                      # 画布交互、图片加载、图片删除、预打标、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
-│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs、image_deletion.rs）、models、bin（插件校验/测试桩）
-│   │   ├── media/                  # 图像/模型处理：onnx_metadata.rs、pt_conversion.rs、prelabel/（runtime、pipeline、inference）、image_deletion.rs + image_recycle_windows.rs（回收站删除）
+│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs、image_deletion.rs）、models、bin（插件校验/测试桩、inspect_onnx_graph 开发 CLI）
+│   │   ├── media/                  # 图像/模型处理：onnx_metadata.rs、onnx_wire.rs、onnx_graph/（结构解析与静态形状推导）、pt_conversion.rs、prelabel/（runtime、pipeline、inference）、image_deletion.rs + image_recycle_windows.rs（回收站删除）
 │   │   ├── plugins/                # 插件框架：manifest、protocol、runtime、permissions、registry、config
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── tests/                      # 插件协议集成测试（plugin_conformance.rs）
@@ -105,7 +105,7 @@ my_label_tool/
 ├── examples/plugins/               # 插件开发示例（label-preset-demo / exporter-labelme-demo / prelabel-demo）
 ├── scripts/                        # 插件打包/验证与一次性 ONNX 核对脚本（verify-onnx-graph.py）
 ├── .github/workflows/              # GitHub Actions：ci.yml、official-models.yml、release.yml
-├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、frontend-interaction.md、架构评审报告目录、插件 JSON Schema、verification/、adr/）
+├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、frontend-interaction.md、video-annotation.md、onnx-graph.md、scripting.md、prelabel-resource-limits.md、架构评审报告目录、插件/项目 JSON Schema、research/、verification/、adr/）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md
 └── package.json
