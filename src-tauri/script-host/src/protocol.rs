@@ -68,12 +68,22 @@ pub fn receive(
     input: &mut impl BufRead,
     output: &mut impl Write,
 ) -> Result<(Snapshot, String, Limits)> {
+    receive_with_init(input, output, |_| Ok(()))
+}
+
+pub fn receive_with_init(
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+    init: impl FnOnce(&Limits) -> Result<()>,
+) -> Result<(Snapshot, String, Limits)> {
     let hello = read_line(input)?.ok_or_else(|| Failure::new("PROTOCOL_ERROR", "hello"))?;
     if hello["op"] != "hello" || hello["version"] != VERSION {
         return Err(Failure::new("VERSION_UNSUPPORTED", "hello"));
     }
     let limits: Limits = serde_json::from_value(hello["limits"].clone())
         .map_err(|e| Failure::new("INVALID_ARGUMENT", e))?;
+    crate::limits::validate(&limits)?;
+    init(&limits)?;
     write_line(output, &json!({"event":"ready", "version":VERSION}))?;
     let mut snapshot = Snapshot::default();
     loop {

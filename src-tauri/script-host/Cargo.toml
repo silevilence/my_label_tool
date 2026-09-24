@@ -3,9 +3,25 @@ name = "label-script-host"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["lua"]
+lua = ["dep:mlua"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+mlua = { version = "0.12.1", optional = true, features = ["lua54", "vendored", "serde"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security"] }
+
+[[bin]]
+name = "label-script-host"
+path = "src/main.rs"
+required-features = ["lua"]
 
 [[bin]]
 name = "script-conformance-stub"
