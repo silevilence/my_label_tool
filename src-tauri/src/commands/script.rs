@@ -5,7 +5,7 @@ use crate::{
         runner::{self, ScriptResult},
     },
 };
-use label_script_host::protocol::{Failure, Limits, Snapshot};
+use label_script_host::protocol::{Failure, Snapshot};
 use serde_json::Value;
 use std::path::PathBuf;
 use tauri::{ipc::Channel, Manager};
@@ -44,9 +44,10 @@ pub async fn run_script(
     run_id: String,
     snapshot: Snapshot,
     source: String,
-    limits: Limits,
     on_event: Channel<Value>,
 ) -> Result<Vec<ScriptResult>, Vec<Failure>> {
+    let limits = super::load_script_resource_limits(app.clone())
+        .map_err(|e| vec![Failure::new("INVALID_ARGUMENT", e)])?;
     let path = host_path(&app).map_err(|e| vec![Failure::new("HOST_UNAVAILABLE", e)])?;
     let registration = registry::Registration::new(run_id).map_err(|e| vec![e])?;
     tauri::async_runtime::spawn_blocking(move || {

@@ -3,6 +3,8 @@ mod script;
 pub use script::*;
 mod script_library;
 pub use script_library::*;
+mod script_settings;
+pub use script_settings::*;
 mod onnx_graph;
 pub use onnx_graph::*;
 mod video;

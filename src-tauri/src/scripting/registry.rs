@@ -50,7 +50,9 @@ pub fn shutdown() {
     }
     // Keep the application alive until runner guards have killed and reaped children.
     loop {
-        if runs().lock().map(|runs| runs.is_empty()).unwrap_or(true) { break; }
+        if runs().lock().map(|runs| runs.is_empty()).unwrap_or(true) {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }

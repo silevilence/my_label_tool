@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { LabelConfig } from "../types/annotation";
-import type { ScriptLimits } from "../types/script";
 import { beginScriptOperation } from "../lib/script-operation";
 import { applyScriptPreview, createScriptSnapshot, formatScriptReport, prepareScriptResults, type ScriptPreview } from "../lib/script-execution";
 import { cancelScript, runScript, scriptHostAvailable } from "../lib/tauri-api";
@@ -35,7 +34,7 @@ export function useScriptRun(labels: LabelConfig[]) {
     setBusy(false);
   }
 
-  async function run(source: string, includeDimensions: boolean, previewFirst: boolean, limits: ScriptLimits) {
+  async function run(source: string, includeDimensions: boolean, previewFirst: boolean) {
     let active: OperationHandle;
     try { active = beginScriptOperation(cancelScript); } catch (error) { useOperations.getState().pushError(text.title, String(error)); return; }
     operation.current = active;
@@ -50,7 +49,7 @@ export function useScriptRun(labels: LabelConfig[]) {
         }
       }
       if (active.cancelRequested) { active.complete(text.cancelled, "warning"); return; }
-      const results = await runScript(active.id, snapshot, source, limits, (event) => {
+      const results = await runScript(active.id, snapshot, source, (event) => {
         if (event.event === "progress") active.progress(event.completed / event.total * 100, text.progress(event.completed, event.total));
         else setLogs((previous) => [...previous.slice(-199), event.message]);
       });

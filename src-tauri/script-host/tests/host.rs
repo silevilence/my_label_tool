@@ -19,7 +19,7 @@ fn run(
     writeln!(
         input,
         "{}",
-        json!({"op":"hello","version":1,"limits":{"maxMemoryMiB":memory,"timeoutSeconds":2}})
+        json!({"op":"hello","version":1,"limits":{"maxMemoryMiB":memory,"timeoutSeconds":if extra_images > 0 { 30 } else { 2 }}})
     )
     .unwrap();
     writeln!(input, "{}", json!({"op":"section","name":"labels","items":[{"id":"random","name":"车辆","shapeType":"rect"}]})).unwrap();

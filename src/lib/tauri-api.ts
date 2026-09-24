@@ -16,10 +16,12 @@ export async function selectScriptExportPath(name: string): Promise<string | nul
 }
 
 export function scriptHostAvailable(): Promise<boolean> { return invoke("script_host_available"); }
-export function runScript(runId: string, snapshot: ScriptSnapshot, source: string, limits: ScriptLimits, onEvent: (event: ScriptEvent) => void): Promise<ScriptResult[]> {
+export function loadScriptResourceLimits(): Promise<ScriptLimits> { return invoke("load_script_resource_limits"); }
+export function saveScriptResourceLimits(value: ScriptLimits): Promise<void> { return invoke("save_script_resource_limits", { value }); }
+export function runScript(runId: string, snapshot: ScriptSnapshot, source: string, onEvent: (event: ScriptEvent) => void): Promise<ScriptResult[]> {
   const channel = new Channel<ScriptEvent>();
   channel.onmessage = onEvent;
-  return invoke("run_script", { runId, snapshot, source, limits, onEvent: channel });
+  return invoke("run_script", { runId, snapshot, source, onEvent: channel });
 }
 export function cancelScript(runId: string): Promise<void> { return invoke("cancel_script", { runId }); }
 import { open, save } from "@tauri-apps/plugin-dialog";

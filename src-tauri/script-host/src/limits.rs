@@ -1,12 +1,51 @@
 use crate::protocol::{Failure, Limits, Result};
 
 pub fn validate(limits: &Limits) -> Result<()> {
-    if !(64..=4096).contains(&limits.max_memory_mi_b)
-        || !(1..=3600).contains(&limits.timeout_seconds)
+    let spec = specification();
+    if !(spec.memory.min..=spec.memory.max).contains(&limits.max_memory_mi_b)
+        || !(spec.timeout.min..=spec.timeout.max).contains(&limits.timeout_seconds)
     {
         return Err(Failure::new("INVALID_ARGUMENT", "limits"));
     }
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+struct Range {
+    min: u64,
+    max: u64,
+}
+#[derive(serde::Deserialize)]
+struct Specification {
+    defaults: Limits,
+    memory: Range,
+    timeout: Range,
+}
+fn specification() -> &'static Specification {
+    static SPEC: std::sync::OnceLock<Specification> = std::sync::OnceLock::new();
+    SPEC.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../src/lib/defaults/script-limits.json"))
+            .expect("checked-in script limit specification")
+    })
+}
+pub fn defaults() -> Limits {
+    specification().defaults.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn defaults_and_ranges_share_one_specification() {
+        assert!(validate(&defaults()).is_ok());
+        for (memory, seconds) in [(0, 30), (4097, 30), (256, 0), (256, 3601)] {
+            assert!(validate(&Limits {
+                max_memory_mi_b: memory,
+                timeout_seconds: seconds
+            })
+            .is_err());
+        }
+    }
 }
 
 #[cfg(windows)]

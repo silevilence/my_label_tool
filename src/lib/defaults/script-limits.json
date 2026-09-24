@@ -1,0 +1,5 @@
+{
+  "defaults": { "maxMemoryMiB": 256, "timeoutSeconds": 30 },
+  "memory": { "min": 64, "max": 4096 },
+  "timeout": { "min": 1, "max": 3600 }
+}

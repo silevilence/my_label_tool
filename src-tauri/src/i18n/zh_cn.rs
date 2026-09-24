@@ -930,4 +930,10 @@ pub fn script_execution_failed(error: impl std::fmt::Display) -> String {
     format!("脚本执行失败：{error}")
 }
 
-pub fn script_invalid_library_id() -> String { "脚本库标识无效".into() }
+pub fn script_invalid_library_id() -> String {
+    "脚本库标识无效".into()
+}
+
+pub fn script_invalid_limits() -> String {
+    "脚本资源上限无效，请恢复默认或输入允许范围内的整数".into()
+}
