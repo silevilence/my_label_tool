@@ -11,7 +11,7 @@ const shape = (id: string, type: AnnotationShape["type"] = "rect"): AnnotationSh
 });
 beforeEach(() => {
   useAnnotationStore.getState().setFrameIndices({});
-  useAnnotationStore.getState().replaceAnnotations({});
+  useAnnotationStore.getState().replaceAnnotations({}, []);
 });
 it("binds rect, polygon and point edits to the selected source frame and keeps frames isolated", () => {
   const store = useAnnotationStore.getState();
@@ -43,7 +43,9 @@ it("normalizes imported and prelabel annotations and restores deleted shapes on 
   store.deleteAnnotation("later.png", "prediction");
   store.undo();
   expect(useAnnotationStore.getState().annotationsByImage["later.png"][0].frameIndex).toBe(30);
-  store.replaceAnnotations({ "later.png": [shape("imported")] });
+  store.replaceAnnotations({ "later.png": [shape("imported")] }, [
+    { id: "person", name: "person", color: "#fff", shapeType: "any" },
+  ]);
   expect(useAnnotationStore.getState().annotationsByImage["later.png"][0].frameIndex).toBe(30);
   store.setFrameIndices({ "later.png": 40 });
   expect(useAnnotationStore.getState().annotationsByImage["later.png"][0].frameIndex).toBe(40);
@@ -68,6 +70,7 @@ it("round-trips native JSON without losing source frame or original pixel coordi
   expect(parsed.images[0].annotations[0]).toMatchObject({ points: [1, 2, 3, 4], frameIndex: 30 });
   store.replaceAnnotations(
     Object.fromEntries(parsed.images.map((image) => [image.name, image.annotations])),
+    parsed.labels,
   );
   expect(useAnnotationStore.getState().annotationsByImage["later.png"][0].frameIndex).toBe(30);
 });
@@ -82,7 +85,7 @@ it("applies a ten-thousand-frame batch without quadratic index copying and keeps
     imagePath: `frame-${index}.png`,
     annotations: [shape(`shape-${index}`)],
   }));
-  store.replaceAnnotations(Object.fromEntries(entries.map((entry) => [entry.imagePath, []])));
+  store.replaceAnnotations(Object.fromEntries(entries.map((entry) => [entry.imagePath, []])), []);
   const started = performance.now();
   store.insertAnnotationsBatch(entries, "replace");
   expect(performance.now() - started).toBeLessThan(5000);
@@ -95,7 +98,7 @@ it("applies a ten-thousand-frame batch without quadratic index copying and keeps
   );
 });
 it("retires a complete frame set and prunes its undo/redo entries without losing other images", () => {
-  useAnnotationStore.getState().replaceAnnotations({});
+  useAnnotationStore.getState().replaceAnnotations({}, []);
   for (const path of ["old/a.png", "photo.png", "old/b.png"]) {
     useAnnotationStore
       .getState()

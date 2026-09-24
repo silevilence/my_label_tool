@@ -74,7 +74,7 @@ it.each([false, true])(
     store.setFrameIndices(
       mixed ? projectFrameIndices(videos) : { [images[0].path]: 0, [images[1].path]: 30 },
     );
-    store.replaceAnnotations({});
+    store.replaceAnnotations({}, []);
     const target = mixed ? videos[0].images[1] : images[1];
     store.addAnnotation(target.path, {
       id: "target",
@@ -124,7 +124,7 @@ it.each([false, true])(
     await act(async () => {
       expect(await actions.saveProjectExport()).toBe(true);
     });
-    await act(async () => store.replaceAnnotations({}));
+    await act(async () => store.replaceAnnotations({}, []));
     await act(async () => actions.maybeLoadProjectConfig("C:/frames", images));
     expect(useAnnotationStore.getState().annotationsByImage[target.path][0]).toMatchObject({
       points: [2, 3, 4, 5],

@@ -8,7 +8,7 @@ unsafe impl std::alloc::GlobalAlloc for FallibleHostAllocator {
     unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
         let ptr = std::alloc::System.alloc(layout);
         if ptr.is_null() {
-            std::process::exit(125);
+            std::process::exit(EXIT_MEMORY_LIMIT);
         }
         ptr
     }
@@ -18,7 +18,7 @@ unsafe impl std::alloc::GlobalAlloc for FallibleHostAllocator {
     unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
         let ptr = std::alloc::System.realloc(ptr, layout, size);
         if ptr.is_null() {
-            std::process::exit(125);
+            std::process::exit(EXIT_MEMORY_LIMIT);
         }
         ptr
     }
@@ -35,7 +35,7 @@ fn main() {
         // Covers parsing, snapshot collection, native Lua calls and pcall loops too.
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(timeout));
-            std::process::exit(124);
+            std::process::exit(EXIT_TIMEOUT);
         });
         Ok(())
     })

@@ -6,7 +6,6 @@ import {
   readLibraryScript,
   removeLibraryScript,
   saveLibraryScript,
-  splitScriptPath,
   type ScriptLibrary,
 } from "../lib/script-library";
 import { readTextFile, selectScriptExportPath, selectScriptFile } from "../lib/tauri-api";
@@ -111,7 +110,7 @@ export function useScriptLibrary() {
         const template = copyExample ? example : undefined;
         const name = await promptText(
           template ? text.copyExample : text.newScript,
-          template?.name ?? text.defaultName,
+          template?.name ?? text.defaultScriptName,
         );
         if (!name?.trim()) return;
         const entry = {
@@ -126,7 +125,7 @@ export function useScriptLibrary() {
     save: () =>
       work(async () => {
         if (!library || example) return;
-        const name = selected?.name ?? (await promptText(text.saveAs, text.defaultName));
+        const name = selected?.name ?? (await promptText(text.saveAs, text.defaultScriptName));
         if (!name?.trim()) return;
         const entry = {
           id: selected?.id ?? crypto.randomUUID(),
@@ -167,10 +166,9 @@ export function useScriptLibrary() {
     export: () =>
       work(async () => {
         const path = await selectScriptExportPath(
-          `${example?.name ?? selected?.name ?? text.defaultName}.lua`,
+          `${example?.name ?? selected?.name ?? text.defaultScriptName}.lua`,
         );
         if (path) {
-          splitScriptPath(path);
           await exportScriptFile(path, source);
         }
       }),

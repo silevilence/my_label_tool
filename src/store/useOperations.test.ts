@@ -3,6 +3,26 @@ import { tryBeginOperation, useOperations } from "./useOperations";
 beforeEach(() => {
   for (const op of useOperations.getState().operations) useOperations.getState().dismiss(op.id);
 });
+it("uses one arbitration path and limits editing exemptions to project annotations", () => {
+  const registry = useOperations.getState();
+  const operation = registry.begin({
+    label: "snapshot",
+    resource: ["project-annotations", "export-dir"],
+    allowAnnotationEditing: true,
+  });
+  expect(registry.canEditAnnotations()).toBe(true);
+  expect(registry.canStart("project-annotations", "annotation-edit")).toBe(true);
+  expect(registry.canStart("project-annotations")).toBe(false);
+  expect(registry.canStart(["project-annotations", "export-dir"], "annotation-edit")).toBe(false);
+  expect(() =>
+    registry.begin({
+      label: "another",
+      resource: "project-annotations",
+      allowAnnotationEditing: true,
+    }),
+  ).toThrow();
+  operation.complete();
+});
 it("keeps only the latest completion of the same label", () => {
   const registry = useOperations.getState();
   const first = registry.begin({ label: "download", resource: "model-download" });

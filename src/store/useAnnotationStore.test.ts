@@ -4,9 +4,37 @@ import { useAnnotationStore } from "./useAnnotationStore";
 const rect = { id: "r1", type: "rect" as const, labelId: "person", points: [1, 2, 3, 4] };
 
 describe("annotation store", () => {
+  it("validates replacement and batch input atomically against the supplied labels", () => {
+    const labels = [{ id: "person", name: "person", color: "#fff", shapeType: "rect" as const }];
+    const store = useAnnotationStore.getState();
+    store.addAnnotation("a.jpg", rect, labels);
+    const before = useAnnotationStore.getState();
+    for (const invalid of [
+      { ...rect, labelId: "missing" },
+      { ...rect, points: [0, 0, Infinity, 1] },
+      { ...rect, points: [0] },
+      { ...rect, type: "point" as const, points: [0, 0] },
+    ]) {
+      expect(() => store.replaceAnnotations({ "a.jpg": [], "b.jpg": [invalid] }, labels)).toThrow();
+      expect(() =>
+        store.insertAnnotationsBatch(
+          [
+            { imagePath: "a.jpg", annotations: [] },
+            { imagePath: "b.jpg", annotations: [invalid] },
+          ],
+          "replace",
+          undefined,
+          labels,
+        ),
+      ).toThrow();
+      expect(() => store.addAnnotation("b.jpg", invalid, labels)).toThrow();
+      expect(() => store.updateAnnotation("a.jpg", rect.id, invalid, labels)).toThrow();
+      expect(useAnnotationStore.getState()).toBe(before);
+    }
+  });
   it("removes only deleted-image history and prunes stale selections from surviving history", () => {
     const store = useAnnotationStore.getState();
-    store.replaceAnnotations({});
+    store.replaceAnnotations({}, []);
     store.addAnnotation("a.jpg", rect);
     store.selectShape(rect.id);
     store.addAnnotation("b.jpg", { ...rect, id: "b" });
@@ -88,9 +116,12 @@ describe("annotation store", () => {
 
   it("replaces all annotations and label ids without preserving undo history", () => {
     useAnnotationStore.getState().addAnnotation("a.jpg", rect);
-    useAnnotationStore.getState().replaceAnnotations({
-      "b.jpg": [{ ...rect, id: "r2", labelId: "old" }],
-    });
+    useAnnotationStore.getState().replaceAnnotations(
+      {
+        "b.jpg": [{ ...rect, id: "r2", labelId: "old" }],
+      },
+      [{ id: "old", name: "old", color: "#fff", shapeType: "any" }],
+    );
 
     expect(useAnnotationStore.getState().canUndo).toBe(false);
     useAnnotationStore.getState().replaceLabel("old", "new");
@@ -98,7 +129,11 @@ describe("annotation store", () => {
   });
 
   it("inserts batch results as one undo transaction per image", () => {
-    useAnnotationStore.getState().replaceAnnotations({ "a.jpg": [rect] });
+    useAnnotationStore
+      .getState()
+      .replaceAnnotations({ "a.jpg": [rect] }, [
+        { id: "person", name: "person", color: "#fff", shapeType: "any" },
+      ]);
     const a2 = { ...rect, id: "a2" };
     const b1 = { ...rect, id: "b1" };
 
@@ -122,7 +157,11 @@ describe("annotation store", () => {
   });
 
   it("replaces existing annotations in batch overwrite mode", () => {
-    useAnnotationStore.getState().replaceAnnotations({ "a.jpg": [rect] });
+    useAnnotationStore
+      .getState()
+      .replaceAnnotations({ "a.jpg": [rect] }, [
+        { id: "person", name: "person", color: "#fff", shapeType: "any" },
+      ]);
     const generated = { ...rect, id: "generated" };
 
     useAnnotationStore
@@ -136,7 +175,11 @@ describe("annotation store", () => {
 
   it("preserves unrelated selection and restores removed selection on undo", () => {
     const selected = { ...rect, id: "selected" };
-    useAnnotationStore.getState().replaceAnnotations({ "a.jpg": [selected], "b.jpg": [] });
+    useAnnotationStore
+      .getState()
+      .replaceAnnotations({ "a.jpg": [selected], "b.jpg": [] }, [
+        { id: "person", name: "person", color: "#fff", shapeType: "any" },
+      ]);
     useAnnotationStore.getState().selectShape(selected.id);
 
     useAnnotationStore

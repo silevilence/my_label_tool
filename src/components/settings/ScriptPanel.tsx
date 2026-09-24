@@ -26,14 +26,11 @@ export function ScriptPanel({
   const run = useScriptRun(labels);
   const count = useAnnotationStore((state) => scopePaths(state).length);
   // Hiding retains the editor and active run; switching scripts still confirms discard.
-  function close() {
-    onClose();
-  }
   const disabled = run.busy || library.pending;
   return (
     <Overlay
       open={open}
-      onClose={close}
+      onClose={onClose}
       canDismiss={!library.pending}
       label={text.title}
       size="wide"
@@ -47,7 +44,7 @@ export function ScriptPanel({
           </div>
           <button
             disabled={library.pending}
-            onClick={() => void close()}
+            onClick={onClose}
             className="rounded border border-slate-600 px-3 py-2 disabled:opacity-40"
           >
             {run.busy ? text.hideRun : text.close}

@@ -1,4 +1,5 @@
 import { validateAnnotationCore } from "./annotation-validation";
+import { ANNOTATION_ZH_CN as annotationText } from "../i18n/annotation.zh-CN";
 import { DEFAULT_LABEL_COLORS } from "./defaults/labels";
 import type { ProjectSettings } from "../types/project-settings";
 import { parseProjectSettings } from "./project-settings";
@@ -213,17 +214,15 @@ export function parseCocoImport(text: string, preservePaths = false): ImportedAn
       throw new Error(`annotations[${index}] 引用了不存在的 category_id`);
     }
 
-    const bbox = numberArray(annotation.bbox, `annotations[${index}].bbox`);
-    if (bbox.length < 4) {
-      throw new Error(`annotations[${index}].bbox 至少需要 4 个数字`);
-    }
+    const shape = { type: "rect", labelId: label.id, points: annotation.bbox };
+    validateImportedAnnotation(shape, labels, `annotations[${index}].bbox`);
 
     const items = annotationsByImageId.get(imageId) ?? [];
     items.push({
       id: `coco-${scalarId(annotation.id, `annotations[${index}].id`, String(index + 1))}`,
       type: "rect",
       labelId: label.id,
-      points: bbox.slice(0, 4),
+      points: shape.points.slice(0, 4),
       frameIndex: 0,
     });
     annotationsByImageId.set(imageId, items);
@@ -266,13 +265,17 @@ export function parseVocImport(
     labels,
     images: parsedImages.map((image) => ({
       name: image.name,
-      annotations: image.annotations.map((annotation, index) => ({
-        id: `voc-${baseName(image.name)}-${index + 1}`,
-        type: "rect",
-        labelId: labelByName.get(annotation.labelName)?.id ?? labels[0]?.id ?? "unknown",
-        points: annotation.points,
-        frameIndex: 0,
-      })),
+      annotations: image.annotations.map((annotation, index) => {
+        const shape = {
+          id: `voc-${baseName(image.name)}-${index + 1}`,
+          type: "rect" as const,
+          labelId: labelByName.get(annotation.labelName)?.id,
+          points: annotation.points,
+          frameIndex: 0,
+        };
+        validateImportedAnnotation(shape, labels, `${image.name} object[${index}]`);
+        return shape;
+      }),
     })),
   };
 }
@@ -442,13 +445,10 @@ function parseYoloLine(
   }
 
   const [cx, cy, width, height] = parts.slice(1, 5).map((part) => Number(part));
-  if (![cx, cy, width, height].every(Number.isFinite)) {
-    throw new Error(`${image.name} 第 ${lineIndex + 1} 行坐标无效`);
-  }
 
   const pixelWidth = width * image.width;
   const pixelHeight = height * image.height;
-  return {
+  const shape: AnnotationShape = {
     id: `yolo-${baseName(image.name)}-${lineIndex + 1}`,
     type: "rect",
     labelId: label.id,
@@ -460,6 +460,8 @@ function parseYoloLine(
     ],
     frameIndex: 0,
   };
+  validateImportedAnnotation(shape, labels, `${image.name}:${lineIndex + 1}`);
+  return shape;
 }
 
 function parseLabels(value: unknown): LabelConfig[] {
@@ -489,7 +491,7 @@ function parseAnnotations(value: unknown, field: string, labels: LabelConfig[]):
 
     const type = parseAnnotationShapeType(annotation.type, "rect");
     const normalized = { ...annotation, type };
-    validateAnnotationCore(normalized, labels);
+    validateImportedAnnotation(normalized, labels, `${field}[${index}]`);
     const { labelId, points } = normalized;
     return {
       id:
@@ -503,6 +505,23 @@ function parseAnnotations(value: unknown, field: string, labels: LabelConfig[]):
       frameIndex: typeof annotation.frameIndex === "number" ? annotation.frameIndex : 0,
     };
   });
+}
+
+function validateImportedAnnotation(
+  value: unknown,
+  labels: readonly LabelConfig[],
+  field: string,
+): asserts value is Omit<AnnotationShape, "id"> & { id?: string } {
+  try {
+    validateAnnotationCore(value, labels);
+  } catch (error) {
+    throw Object.assign(
+      new Error(
+        annotationText.invalidAt(field, error instanceof Error ? error.message : String(error)),
+      ),
+      { cause: error },
+    );
+  }
 }
 
 function parseAttributes(value: unknown): AnnotationShape["attributes"] {
@@ -656,14 +675,6 @@ function asArray(value: unknown, field: string): unknown[] {
     throw new Error(`${field} 必须是数组`);
   }
   return value;
-}
-
-function numberArray(value: unknown, field: string): number[] {
-  const values = asArray(value, field);
-  if (!values.every((item) => typeof item === "number" && Number.isFinite(item))) {
-    throw new Error(`${field} 必须全部是数字`);
-  }
-  return values.map((item) => Number(item));
 }
 
 function scalarId(value: unknown, field: string, fallback?: string): string {

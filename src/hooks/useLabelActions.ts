@@ -32,7 +32,10 @@ export interface UseLabelActionsParams {
   templates: LabelTemplate[];
   usedLabelIds: Set<string>;
   replaceLabel: (oldLabelId: string, nextLabelId: string) => void;
-  replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
+  replaceAnnotations: (
+    annotationsByImage: Record<string, AnnotationShape[]>,
+    labels: readonly LabelConfig[],
+  ) => void;
   setActiveProjectConfig: (config: ProjectConfig) => void;
   setCurrentLabelId: (labelId: string) => void;
   setError: (message: string) => void;
@@ -207,14 +210,20 @@ export function useLabelActions({
       );
       if (removeAnnotations) {
         const removedIds = new Set(danglingDraftLabels.map((label) => label.id));
-        replaceAnnotations(
-          Object.fromEntries(
-            Object.entries(annotationsByImage).map(([path, items]) => [
-              path,
-              items.filter((annotation) => !removedIds.has(annotation.labelId)),
-            ]),
-          ),
-        );
+        try {
+          replaceAnnotations(
+            Object.fromEntries(
+              Object.entries(annotationsByImage).map(([path, items]) => [
+                path,
+                items.filter((annotation) => !removedIds.has(annotation.labelId)),
+              ]),
+            ),
+            savedLabels,
+          );
+        } catch (error) {
+          reportError(error);
+          return;
+        }
       } else {
         keptDraftLabels = danglingDraftLabels;
       }
@@ -355,7 +364,12 @@ export function useLabelActions({
 
     const nextConfig = { ...activeProjectConfig, labels: nextLabels };
     if (updateAnnotations) {
-      replaceAnnotations(nextAnnotationsByImage);
+      try {
+        replaceAnnotations(nextAnnotationsByImage, nextLabels);
+      } catch (error) {
+        reportError(error);
+        return;
+      }
     }
     setActiveProjectConfig(nextConfig);
     applyProjectTemplate(activeProjectConfig.template, nextLabels);

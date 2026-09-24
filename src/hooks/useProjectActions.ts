@@ -79,7 +79,10 @@ interface UseProjectActionsParams {
   refreshPluginExtensions: () => Promise<void>;
   applyProjectTemplate: (template: ProjectConfig["template"], labels: LabelConfig[]) => void;
   clearProjectTemplate: () => void;
-  replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
+  replaceAnnotations: (
+    annotationsByImage: Record<string, AnnotationShape[]>,
+    labels: readonly LabelConfig[],
+  ) => void;
   setActiveProjectConfig: Dispatch<SetStateAction<ProjectConfig | null>>;
   setActiveProjectConfigPath: (path: string) => void;
   setError: (message: string) => void;
@@ -613,7 +616,7 @@ export function useProjectActions({
       imported,
       currentImages,
     );
-    replaceAnnotations(nextAnnotationsByImage);
+    replaceAnnotations(nextAnnotationsByImage, imported.labels);
     applyProjectTemplate(config.template, imported.labels);
     setActiveProjectConfig({ ...config, labels: imported.labels });
     setActiveProjectConfigPath(configPath);

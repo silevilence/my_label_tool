@@ -5,7 +5,7 @@ const get = store.getState;
 beforeEach(() => {
   get().setImages(images);
   get().select("a");
-  get().replaceAnnotations({});
+  get().replaceAnnotations({}, []);
   get().setFrameIndices({});
 });
 describe("selection and scope", () => {
@@ -49,7 +49,9 @@ describe("selection and scope", () => {
     expect(get().selectedPath).toBe("");
   });
   it("searches unannotated paths within the active scope", () => {
-    get().replaceAnnotations({ b: [{ id: "s", type: "point", labelId: "l", points: [1, 2] }] });
+    get().replaceAnnotations({ b: [{ id: "s", type: "point", labelId: "l", points: [1, 2] }] }, [
+      { id: "l", name: "l", color: "#fff", shapeType: "any" },
+    ]);
     get().pushScope({ kind: "search", ids: ["a", "b", "d"], label: "results" });
     get().selectUnannotated(1);
     expect(get().selectedPath).toBe("d");

@@ -4,6 +4,8 @@ use std::io::{BufRead, Read, Write};
 
 pub const VERSION: u32 = 1;
 pub const MAX_LINE: usize = 8 * 1024 * 1024;
+pub const EXIT_TIMEOUT: i32 = 124;
+pub const EXIT_MEMORY_LIMIT: i32 = 125;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,12 +15,15 @@ pub struct Limits {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Snapshot {
+    // Preserve optional/unknown core fields verbatim. The host routes snapshot data;
+    // the frontend owns annotation validation and its evolving core model.
     pub labels: Vec<Value>,
     pub images: Vec<Value>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Failure {
+    // Open wire identifier: retain unknown host codes for frontend fallback diagnostics.
     pub code: String,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,6 +122,18 @@ pub fn receive_with_init(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn snapshot_extensions_and_unknown_failure_codes_round_trip_without_loss() {
+        let value = json!({
+            "labels":[{"id":"label","name":"label","futureLabel":{"nested":true}}],
+            "images":[{"path":"a.png","name":"a.png","annotations":[],"futureImage":[1,2]}]
+        });
+        let snapshot: Snapshot = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(snapshot).unwrap(), value);
+        let value = json!({"code":"FUTURE_HOST_ERROR","message":"detail","imagePath":"a.png"});
+        let failure: Failure = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(failure).unwrap(), value);
+    }
     #[test]
     fn contract_negotiates_ignores_extensions_and_rejects_bad_commands() {
         let hello = "{\"op\":\"hello\",\"version\":1,\"future\":true,\"limits\":{\"maxMemoryMiB\":256,\"timeoutSeconds\":30}}\n";

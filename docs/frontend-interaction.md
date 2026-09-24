@@ -85,7 +85,8 @@ resolveShortcut(event, ctx) → actionId | null  // 纯函数：匹配 · 优先
 ```ts
 useOperations() → {
   begin(op: { label: string; resource: OperationResource; cancel?: () => void }): OperationHandle;
-  canStart(resource: OperationResource): boolean;   // 唯一互斥裁决处
+  canStart(resource: OperationResource, intent?: "operation" | "annotation-edit"): boolean; // 唯一裁决处
+  canEditAnnotations(): boolean;                    // 委托 canStart(project-annotations, annotation-edit)
   operations: OperationView[];                      // { id, label, kind, message, percent, canCancel, status }
 }
 // OperationHandle: { id, progress(percent, message?), complete(message?), fail(error), cancelRequested }
@@ -98,6 +99,7 @@ useOperations() → {
 **实现**
 
 - 允许并发；占用同一资源的操作互斥，裁决只在 `canStart` 一处。工作区禁用、键盘门禁、图片删除与视频导入入口统一读取注册表资源占用。
+- `canStart` 默认按长操作裁决，不能用手工编辑意图启动操作；`begin` 始终使用默认意图。快照型脚本可声明 `allowAnnotationEditing`，仅放行 `project-annotations` 的手工编辑；保存、导出、预打标及其他资源仍互斥。手工输入门禁 `canEditAnnotations` 仅委托同一裁决，不自行扫描注册表。脚本应用前严格检查作用域、标签及标注快照，变化时整轮拒绝覆盖。
 - 消息按操作归属并带 `kind`（`success | warning | error`）：成功不再穿错误配色，两条提示通道（5 秒红框 / 2.2 秒琥珀条）按 kind 分流，不再是「后写覆盖前写」。
 - 同名操作的完成卡片仅保留最近完成的一次；正在执行的操作与失败卡片不参与完成去重，失败继续聚合计数。完成卡片五秒后自动收起。
 - 模型库的选择、配置和映射保存属于本地设置，不登记模型下载资源或完成卡片；失败归属「预打标模型设置」，面板提供就地重试。下载、转换与校验沿用操作注册表。

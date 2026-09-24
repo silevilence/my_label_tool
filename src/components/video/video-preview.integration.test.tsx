@@ -89,13 +89,15 @@ async function click(label: string) {
 }
 async function openVideo() {
   await act(async () => root.render(<App />));
-  await act(async () => document.body.querySelector<HTMLButtonElement>('button[aria-label="打开菜单"]')!.click());
+  await act(async () =>
+    document.body.querySelector<HTMLButtonElement>('button[aria-label="打开菜单"]')!.click(),
+  );
   await click("打开项目文件夹");
   await act(async () =>
     document.body.querySelector<HTMLButtonElement>('button[title="C:/movie.mp4"]')!.click(),
   );
   await act(async () => {
-    useAnnotationStore.getState().replaceAnnotations({ [path(0)]: [shape(0)] });
+    useAnnotationStore.getState().replaceAnnotations({ [path(0)]: [shape(0)] }, DEFAULT_LABELS);
     useAnnotationStore.getState().selectShape("shape-0");
   });
 }
@@ -124,7 +126,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(800);
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(600);
   HTMLElement.prototype.scrollIntoView = vi.fn();
-  useAnnotationStore.getState().replaceAnnotations({});
+  useAnnotationStore.getState().replaceAnnotations({}, []);
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);

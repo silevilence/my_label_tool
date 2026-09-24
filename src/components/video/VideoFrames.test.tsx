@@ -31,7 +31,7 @@ it("shares sidebar/timeline distribution and navigation through the selection st
   const store = useAnnotationStore.getState();
   store.setImages(videos[0].images);
   store.select(videos[0].images[0].path);
-  store.replaceAnnotations({});
+  store.replaceAnnotations({}, []);
   let navigation!: ReturnType<typeof useVideoFrameNavigation>;
   function Harness() {
     const selectedPath = useAnnotationStore((state) => state.selectedPath);

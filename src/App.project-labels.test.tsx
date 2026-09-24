@@ -142,7 +142,7 @@ describe("App project labels", () => {
     document.body.append(container);
     root = createRoot(container);
     vi.clearAllMocks();
-    useAnnotationStore.getState().replaceAnnotations({});
+    useAnnotationStore.getState().replaceAnnotations({}, []);
 
     promptsMocks.confirmAction.mockResolvedValue(true);
     tauriMocks.exportAnnotationsJson.mockResolvedValue(undefined);
@@ -265,7 +265,7 @@ describe("App YOLO folder auto load", () => {
     document.body.append(container);
     root = createRoot(container);
     vi.clearAllMocks();
-    useAnnotationStore.getState().replaceAnnotations({});
+    useAnnotationStore.getState().replaceAnnotations({}, []);
 
     promptsMocks.confirmAction.mockResolvedValue(true);
     tauriMocks.exportAnnotationsJson.mockResolvedValue(undefined);
@@ -448,7 +448,9 @@ describe("App YOLO folder auto load", () => {
       points: [1, 2, 3, 4],
     };
     await act(async () =>
-      useAnnotationStore.getState().replaceAnnotations({ "C:\\project\\cat.jpg": [annotation] }),
+      useAnnotationStore
+        .getState()
+        .replaceAnnotations({ "C:\\project\\cat.jpg": [annotation] }, DEFAULT_LABELS),
     );
     tauriMocks.exportAnnotationsJson.mockRejectedValue(new Error("write denied"));
     await clickAction("import-yolo");

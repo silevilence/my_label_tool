@@ -45,7 +45,7 @@ pub const COMMANDS: &[Command] = &[
         name: "submit",
         parameters: "{imagePath,annotations}",
         returns: "true",
-        errors: "IMAGE_NOT_FOUND,INVALID_ARGUMENT,INVALID_ANNOTATION",
+        errors: "IMAGE_NOT_FOUND,INVALID_ARGUMENT",
         section: "images",
         run: submit,
     },

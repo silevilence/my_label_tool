@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { annotationShapesEqual, annotationShapesSnapshot } from "./annotation-utils";
+import {
+  annotationSnapshotsEqual,
+  annotationShapesSnapshot,
+  annotationValuesEqual,
+} from "./annotation-utils";
 import type { AnnotationShape } from "../types/annotation";
 
 const annotation: AnnotationShape = {
@@ -11,10 +15,18 @@ const annotation: AnnotationShape = {
 };
 
 describe("annotation snapshots", () => {
+  it("distinguishes exact snapshot changes from equivalent script values", () => {
+    const before = { ...annotation, attributes: { z: 1, a: 2 }, frameIndex: undefined };
+    const after = { ...annotation, attributes: { a: 2, z: 1 }, frameIndex: 0 };
+    expect(annotationSnapshotsEqual([before], [after])).toBe(false);
+    expect(annotationValuesEqual([before], [after])).toBe(true);
+    expect(annotationValuesEqual([before], [])).toBe(false);
+    expect(annotationValuesEqual([before], [{ ...after, points: [9, 2, 3, 4] }])).toBe(false);
+  });
   it("uses one stable equality rule for store history and async conflict checks", () => {
     expect(annotationShapesSnapshot([annotation])).toBe(JSON.stringify([annotation]));
-    expect(annotationShapesEqual([annotation], [{ ...annotation }])).toBe(true);
-    expect(annotationShapesEqual([annotation], [{ ...annotation, points: [2, 2, 3, 4] }])).toBe(
+    expect(annotationSnapshotsEqual([annotation], [{ ...annotation }])).toBe(true);
+    expect(annotationSnapshotsEqual([annotation], [{ ...annotation, points: [2, 2, 3, 4] }])).toBe(
       false,
     );
   });

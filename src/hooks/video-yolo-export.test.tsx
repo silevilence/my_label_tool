@@ -185,6 +185,7 @@ beforeEach(() => {
           [shape],
         ]),
       ),
+      [{ id: "person", name: "person", color: "#fff", shapeType: "any" }],
     );
   container = document.createElement("div");
   document.body.append(container);
@@ -247,11 +248,14 @@ it("writes nothing when the directory chooser is cancelled", async () => {
   expect(config).not.toHaveBeenCalled();
 });
 it("rejects unsupported shapes before choosing a directory or dropping annotations", async () => {
-  useAnnotationStore.getState().replaceAnnotations({
-    [videos[0].images[0].path]: [
-      { id: "point", type: "point", labelId: "person", points: [10, 10] },
-    ],
-  });
+  useAnnotationStore.getState().replaceAnnotations(
+    {
+      [videos[0].images[0].path]: [
+        { id: "point", type: "point", labelId: "person", points: [10, 10] },
+      ],
+    },
+    [{ id: "person", name: "person", color: "#fff", shapeType: "any" }],
+  );
   await act(async () => root.render(<Harness format="yolo" />));
   await act(async () => actions.saveProjectExport());
   // 失败卡片只在导出面板就地呈现，不重复打进全局错误条。
@@ -342,7 +346,7 @@ it.each(["yolo", "voc", "coco"] as const)(
     });
     await act(async () => root.render(<Harness format={format} />));
     await act(async () => actions.saveProjectExport());
-    await act(async () => useAnnotationStore.getState().replaceAnnotations({}));
+    await act(async () => useAnnotationStore.getState().replaceAnnotations({}, []));
     await act(async () => actions.maybeLoadProjectConfig("C:/project", images));
     const annotations = useAnnotationStore.getState().annotationsByImage;
     expect(annotations[videos[0].images[0].path]).toEqual([]);

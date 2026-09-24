@@ -42,7 +42,7 @@ export function useOpenFolder({
         const entries = await listProjectVideos(path);
         const videos = projectVideos(path, entries);
         const nextImages = mergeProjectImages(listedImages, videos);
-        useAnnotationStore.getState().replaceAnnotations({});
+        useAnnotationStore.getState().replaceAnnotations({}, []);
         useAnnotationStore.getState().setFrameIndices(projectFrameIndices(videos));
         setProjectVideos(entries);
         setFolderPath(path);

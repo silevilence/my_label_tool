@@ -1,7 +1,7 @@
 import type { AnnotationShape, LabelConfig } from "../types/annotation";
 import type { ScriptResult, ScriptSnapshot } from "../types/script";
 import { validateAnnotationCore } from "./annotation-validation";
-import { annotationShapeFingerprint } from "./annotation-utils";
+import { annotationShapeFingerprint, annotationSnapshotsEqual } from "./annotation-utils";
 import { scopePaths, useAnnotationStore } from "../store/useAnnotationStore";
 import { SCRIPT_ZH_CN as text } from "../i18n/script.zh-CN";
 
@@ -122,8 +122,7 @@ export function applyScriptPreview(
       JSON.stringify(preview.snapshot.images.map((i) => i.path)) ||
     preview.snapshot.images.some(
       (image) =>
-        JSON.stringify(state.annotationsByImage[image.path] ?? []) !==
-        JSON.stringify(image.annotations),
+        !annotationSnapshotsEqual(state.annotationsByImage[image.path] ?? [], image.annotations),
     )
   )
     throw new Error(text.staleSnapshot);

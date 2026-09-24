@@ -150,10 +150,13 @@ it("removes annotations with dangling references when confirmed", async () => {
   expect(String(promptsApi.confirmAction.mock.calls[0][0])).toContain("草稿标签");
   expect(String(promptsApi.confirmAction.mock.calls[0][0])).toContain("2 个标注");
   expect(String(promptsApi.confirmAction.mock.calls[0][0])).toContain("不可撤销");
-  expect(replaceAnnotations).toHaveBeenCalledWith({
-    p1: [annotation("s1", "a")],
-    p2: [annotation("unrelated", "missing")],
-  });
+  expect(replaceAnnotations).toHaveBeenCalledWith(
+    {
+      p1: [annotation("s1", "a")],
+      p2: [annotation("unrelated", "missing")],
+    },
+    [savedA],
+  );
   expect(setLabels).toHaveBeenCalledWith([savedA]);
   expect(setIsLabelDirty).toHaveBeenCalledWith(false);
 });
@@ -183,6 +186,27 @@ it("keeps referenced draft labels dirty when the removal is declined", async () 
   expect(setSavedLabels).toHaveBeenCalledWith([savedA]);
   expect(setIsLabelDirty).toHaveBeenCalledWith(true);
   expect(setCurrentLabelId).toHaveBeenCalledWith(draftC.id);
+  expect(tauriApi.saveLabelConfigs).not.toHaveBeenCalled();
+});
+
+it("reports a rejected replacement without discarding label drafts", async () => {
+  promptsApi.confirmAction.mockResolvedValue(true);
+  const setError = vi.fn();
+  const setLabels = vi.fn();
+  const controls = renderHarness({
+    labels: [savedA, draftC],
+    savedLabels: [savedA],
+    usedLabelIds: new Set(["c"]),
+    annotationsByImage: { p1: [annotation("draft", "c")] },
+    replaceAnnotations: () => {
+      throw new Error("invalid annotations");
+    },
+    setError,
+    setLabels,
+  });
+  await act(() => controls.cancelLabelChanges());
+  expect(setError).toHaveBeenCalledWith("invalid annotations");
+  expect(setLabels).not.toHaveBeenCalled();
   expect(tauriApi.saveLabelConfigs).not.toHaveBeenCalled();
 });
 

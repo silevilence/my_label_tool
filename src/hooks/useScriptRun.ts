@@ -68,6 +68,7 @@ export function useScriptRun(labels: LabelConfig[]) {
       return;
     }
     operation.current = active;
+    let awaitingPreview = false;
     setBusy(true);
     setReport("");
     setLogs([]);
@@ -100,6 +101,7 @@ export function useScriptRun(labels: LabelConfig[]) {
       }
       const prepared = prepareScriptResults(snapshot, results);
       if (previewFirst) {
+        awaitingPreview = true;
         setPreview(prepared);
         active.progress(100, text.awaitingApply);
         active.setCancel(() => {
@@ -113,9 +115,7 @@ export function useScriptRun(labels: LabelConfig[]) {
       if (active.cancelRequested) active.complete(text.cancelled, "warning");
       else active.fail(formatScriptError(error));
     } finally {
-      if (
-        useOperations.getState().operations.find((op) => op.id === active.id)?.status !== "running"
-      ) {
+      if (!awaitingPreview) {
         operation.current = null;
         setBusy(false);
       }

@@ -65,6 +65,7 @@ beforeEach(() => {
         ],
       ]),
     ),
+    [{ id: "label", name: "label", color: "#fff", shapeType: "any" }],
   );
   container = document.createElement("div");
   root = createRoot(container);

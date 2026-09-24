@@ -4,7 +4,11 @@ export function annotationShapesSnapshot(annotations: AnnotationShape[]): string
   return JSON.stringify(annotations);
 }
 
-export function annotationShapesEqual(left: AnnotationShape[], right: AnnotationShape[]): boolean {
+/** Exact representation equality for native history and stale-snapshot detection. */
+export function annotationSnapshotsEqual(
+  left: AnnotationShape[],
+  right: AnnotationShape[],
+): boolean {
   return annotationShapesSnapshot(left) === annotationShapesSnapshot(right);
 }
 
@@ -20,7 +24,8 @@ export function annotationShapeFingerprint(shape: AnnotationShape): string {
   ]);
 }
 
-export function scriptAnnotationsEqual(left: AnnotationShape[], right: AnnotationShape[]): boolean {
+/** Semantic equality ignores object key order and omitted default frame/attributes. */
+export function annotationValuesEqual(left: AnnotationShape[], right: AnnotationShape[]): boolean {
   return (
     left.length === right.length &&
     left.every(

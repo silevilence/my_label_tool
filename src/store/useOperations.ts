@@ -44,7 +44,7 @@ interface OperationInput {
 interface Operations {
   operations: OperationView[];
   begin(input: OperationInput): OperationHandle;
-  canStart(resources: Resources): boolean;
+  canStart(resources: Resources, intent?: "operation" | "annotation-edit"): boolean;
   canEditAnnotations(): boolean;
   cancel(id: string): Promise<void>;
   dismiss(id: string): void;
@@ -56,19 +56,21 @@ const asResources = (resources: Resources): readonly OperationResource[] =>
 const cancellations = new Map<string, () => void | Promise<void>>();
 export const useOperations = create<Operations>((set, get) => ({
   operations: [],
-  canStart: (resources) =>
+  canStart: (resources, intent = "operation") =>
     !get().operations.some(
       (op) =>
         op.status === "running" &&
-        op.resources.some((resource) => asResources(resources).includes(resource)),
+        op.resources.some(
+          (resource) =>
+            asResources(resources).includes(resource) &&
+            !(
+              intent === "annotation-edit" &&
+              resource === "project-annotations" &&
+              op.allowAnnotationEditing
+            ),
+        ),
     ),
-  canEditAnnotations: () =>
-    !get().operations.some(
-      (op) =>
-        op.status === "running" &&
-        op.resources.includes("project-annotations") &&
-        !op.allowAnnotationEditing,
-    ),
+  canEditAnnotations: () => get().canStart("project-annotations", "annotation-edit"),
   begin: (input) => {
     if (!get().canStart(input.resource)) throw new Error(text.busy);
     const id = crypto.randomUUID();

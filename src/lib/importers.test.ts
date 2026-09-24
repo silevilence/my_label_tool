@@ -23,6 +23,54 @@ const imageSizes = new Map<string, ImageSize>([
 ]);
 
 describe("importers", () => {
+  it("keeps native annotation locations in shared validation errors", () => {
+    const labels = [{ id: "car", name: "car", color: "#fff", shapeType: "rect" }];
+    for (const annotation of [
+      { type: "rect", labelId: "missing", points: [0, 0, 1, 1] },
+      { type: "rect", labelId: "car", points: [0] },
+      { type: "point", labelId: "car", points: [0, 0] },
+    ]) {
+      expect(() =>
+        parseNativeJsonImport(
+          JSON.stringify({ labels, images: [{ name: "a.jpg", annotations: [annotation] }] }),
+        ),
+      ).toThrow("images[0].annotations[0]");
+    }
+  });
+  it("validates coordinates after COCO, VOC and YOLO normalization", () => {
+    expect(() =>
+      parseCocoImport(
+        JSON.stringify({
+          categories: [{ id: 1, name: "car" }],
+          images: [{ id: 1, file_name: "a.jpg" }],
+          annotations: [{ id: 1, image_id: 1, category_id: 1, bbox: [0, 0, 1] }],
+        }),
+      ),
+    ).toThrow("annotations[0].bbox");
+    expect(() =>
+      parseVocImport([
+        file(
+          "a.xml",
+          "<annotation><filename>a.jpg</filename><object><name>car</name><bndbox><xmin>-1e308</xmin><ymin>0</ymin><xmax>1e308</xmax><ymax>1</ymax></bndbox></object></annotation>",
+        ),
+      ]),
+    ).toThrow("a.jpg object[0]");
+    expect(() =>
+      parseYoloImport([file("classes.txt", "car"), file("a.txt", "0 0.5 0.5 1e308 1")], imageSizes),
+    ).toThrow("a.jpg:1");
+    const external = parseExternalYoloImport(
+      [file("classes.txt", "car"), file("a.txt", "0 0.5 0.5 1e308 1\n0 0.5 0.5 0.2 0.2")],
+      imageSizes,
+    );
+    expect(external.summary.invalidLineCount).toBe(1);
+    expect(external.imported.images[0].annotations).toHaveLength(1);
+    const pointOnly: LabelConfig[] = [
+      { id: "car", name: "car", color: "#fff", shapeType: "point" },
+    ];
+    expect(() =>
+      parseYoloImport([file("a.txt", "0 0.5 0.5 0.2 0.2")], imageSizes, pointOnly),
+    ).toThrow("a.jpg:1");
+  });
   it("parses project configs with defaults for missing optional parts", () => {
     const config = parseProjectConfig(
       JSON.stringify({
@@ -201,9 +249,7 @@ describe("importers", () => {
     expect(projectConfigSchema.required).not.toContain("pluginConfigs");
     expect(projectConfigSchema.required).not.toContain("template");
     expect(projectConfigSchema.required).not.toContain("exportOptions");
-    expect(projectConfigSchema.properties.pluginConfigs.items.$ref).toBe(
-      "#/$defs/pluginConfig",
-    );
+    expect(projectConfigSchema.properties.pluginConfigs.items.$ref).toBe("#/$defs/pluginConfig");
     expect(projectConfigSchema.$defs.pluginConfig.required).toEqual([
       "pluginId",
       "configVersion",
@@ -292,12 +338,16 @@ describe("importers", () => {
       parseNativeJsonImport(
         JSON.stringify({
           labels: [{ id: "x", name: "x" }],
-          images: [{ name: "a.jpg", annotations: [{ type: "polygon", labelId: "x", points: [1, 2] }] }],
+          images: [
+            { name: "a.jpg", annotations: [{ type: "polygon", labelId: "x", points: [1, 2] }] },
+          ],
         }),
       ),
     ).toThrow("坐标数量不足");
     expect(() =>
-      parseNativeJsonImport(JSON.stringify({ labels: [], images: [{ name: "a.jpg", annotations: [{}] }] })),
+      parseNativeJsonImport(
+        JSON.stringify({ labels: [], images: [{ name: "a.jpg", annotations: [{}] }] }),
+      ),
     ).toThrow("标注标签为空或不存在");
   });
 
@@ -360,7 +410,9 @@ describe("importers", () => {
 
   it("rejects invalid VOC XML objects", () => {
     expect(() =>
-      parseVocImport([file("a.xml", "<annotation><object><name>person</name></object></annotation>")]),
+      parseVocImport([
+        file("a.xml", "<annotation><object><name>person</name></object></annotation>"),
+      ]),
     ).toThrow("缺少 bndbox");
     expect(() =>
       parseVocImport([
@@ -386,14 +438,27 @@ describe("importers", () => {
   });
 
   it("rejects invalid YOLO class files and lines", () => {
-    expect(() => parseYoloImport([file("classes.txt", "\n")], imageSizes)).toThrow("classes.txt 中没有标签");
-    expect(() => parseYoloImport([file("a.txt", "0 0.5 0.5 1 1")], imageSizes)).toThrow("缺少 classes.txt");
-    expect(() => parseYoloImport([file("classes.txt", "person\n"), file("a.txt", "1 0.5 0.5 1 1")], imageSizes)).toThrow("标签索引无效");
-    expect(() => parseYoloImport([file("classes.txt", "person\n"), file("a.txt", "0 x 0.5 1 1")], imageSizes)).toThrow("坐标无效");
+    expect(() => parseYoloImport([file("classes.txt", "\n")], imageSizes)).toThrow(
+      "classes.txt 中没有标签",
+    );
+    expect(() => parseYoloImport([file("a.txt", "0 0.5 0.5 1 1")], imageSizes)).toThrow(
+      "缺少 classes.txt",
+    );
+    expect(() =>
+      parseYoloImport(
+        [file("classes.txt", "person\n"), file("a.txt", "1 0.5 0.5 1 1")],
+        imageSizes,
+      ),
+    ).toThrow("标签索引无效");
+    expect(() =>
+      parseYoloImport([file("classes.txt", "person\n"), file("a.txt", "0 x 0.5 1 1")], imageSizes),
+    ).toThrow("a.jpg:1");
   });
 
   it("uses fallback YOLO labels when classes.txt is missing", () => {
-    const fallback: LabelConfig[] = [{ id: "fallback-0", name: "fallback", color: "#fff", shapeType: "rect" }];
+    const fallback: LabelConfig[] = [
+      { id: "fallback-0", name: "fallback", color: "#fff", shapeType: "rect" },
+    ];
     const imported = parseYoloImport([file("a.txt", "0 0.5 0.5 1 1")], imageSizes, fallback);
 
     expect(imported.labels).toBe(fallback);
@@ -413,17 +478,25 @@ describe("importers", () => {
 
     expect(imported.labels).toBe(projectLabels);
     expect(imported.images[0].annotations[0]).toMatchObject({
-      labelId: "dog", points: [40, 15, 20, 20],
+      labelId: "dog",
+      points: [40, 15, 20, 20],
     });
-    expect(() => parseYoloImport(
-      [file("classes.txt", "cat\ndog\n"), file("a.txt", "2 0.5 0.5 0.2 0.4\n")],
-      imageSizes, projectLabels,
-    )).toThrow("标签索引无效");
+    expect(() =>
+      parseYoloImport(
+        [file("classes.txt", "cat\ndog\n"), file("a.txt", "2 0.5 0.5 0.2 0.4\n")],
+        imageSizes,
+        projectLabels,
+      ),
+    ).toThrow("标签索引无效");
   });
 
   it("summarizes external YOLO missing, orphan and invalid files", () => {
     const { imported, summary } = parseExternalYoloImport(
-      [file("classes.txt", "person\n"), file("a.txt", "0 0.5 0.5 1 1\nbad\n"), file("orphan.txt", "0 0.1 0.1 0.1 0.1")],
+      [
+        file("classes.txt", "person\n"),
+        file("a.txt", "0 0.5 0.5 1 1\nbad\n"),
+        file("orphan.txt", "0 0.1 0.1 0.1 0.1"),
+      ],
       imageSizes,
     );
 

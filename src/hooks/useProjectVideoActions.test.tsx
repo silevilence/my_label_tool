@@ -41,9 +41,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   useOperations.setState({ operations: [] });
   root = createRoot(document.createElement("div"));
-  useAnnotationStore.getState().replaceAnnotations({
-    "C:/project/photo.png": [{ id: "photo", type: "point", labelId: "label", points: [1, 2] }],
-  });
+  useAnnotationStore.getState().replaceAnnotations(
+    {
+      "C:/project/photo.png": [{ id: "photo", type: "point", labelId: "label", points: [1, 2] }],
+    },
+    [{ id: "label", name: "label", color: "#fff", shapeType: "any" }],
+  );
 });
 afterEach(async () => {
   await act(async () => root.unmount());

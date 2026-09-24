@@ -94,7 +94,7 @@ describe("image deletion entry wiring", () => {
     vi.mocked(api.listImageFiles).mockResolvedValue(
       ["a", "b"].map((name) => ({ name: `${name}.png`, path: `C:/fixture/${name}.png` })),
     );
-    useAnnotationStore.getState().replaceAnnotations({});
+    useAnnotationStore.getState().replaceAnnotations({}, []);
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);

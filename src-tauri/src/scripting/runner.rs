@@ -98,7 +98,7 @@ pub fn run(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW: keep the bundled host headless.
     }
     let mut child = command
         .spawn()
@@ -228,8 +228,8 @@ pub fn run(
                             return Ok(results);
                         }
                         let code = match status.code() {
-                            Some(124) => "TIMEOUT",
-                            Some(125) => "MEMORY_LIMIT",
+                            Some(protocol::EXIT_TIMEOUT) => "TIMEOUT",
+                            Some(protocol::EXIT_MEMORY_LIMIT) => "MEMORY_LIMIT",
                             _ => {
                                 if let Some(error) = write_failure {
                                     return Err(vec![error]);

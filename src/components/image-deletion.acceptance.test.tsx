@@ -85,7 +85,7 @@ describe("image deletion confirmation and state", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     vi.mocked(recycleImageFile).mockResolvedValue(undefined);
-    useAnnotationStore.getState().replaceAnnotations({});
+    useAnnotationStore.getState().replaceAnnotations({}, []);
     useAnnotationStore.getState().addAnnotation(initialImages[1].path, rect);
     container = document.createElement("div");
     document.body.append(container);

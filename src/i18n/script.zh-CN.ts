@@ -50,7 +50,7 @@ export const SCRIPT_ZH_CN = {
   limitsHint:
     "机器级配置。运行使用已保存的上限，保存后下一次运行生效；覆盖整份快照、Lua 和结果缓冲。",
   newScript: "新建脚本",
-  defaultName: "跨图编号",
+  defaultScriptName: "跨图编号",
   saveAs: "保存脚本到库",
   saveScript: "保存脚本",
   rename: "重命名",
@@ -110,10 +110,4 @@ export const SCRIPT_ZH_CN = {
   staleSnapshot: "作用域、标签或标注已变化，请重新运行脚本",
   report: (images: number, added: number, removed: number, changed: number, skipped: number) =>
     `图片 ${images} 张；图形新增 ${added}、删除 ${removed}、修改 ${changed}；跳过 ${skipped} 张`,
-  invalidAnnotation: "标注必须是对象",
-  invalidLabel: "标注标签为空或不存在",
-  invalidShape: "图形类型无效或与标签不兼容",
-  invalidCoordinates: "坐标数量不足或包含非有限数值",
-  labelMissing: "未找到标签",
-  labelAmbiguous: "标签名称或标识不唯一",
 } as const;

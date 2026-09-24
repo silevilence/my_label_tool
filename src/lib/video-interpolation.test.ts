@@ -29,7 +29,7 @@ function shape(id: string, x: number, type: AnnotationShape["type"] = "rect"): A
 }
 beforeEach(() => {
   useAnnotationStore.getState().setFrameIndices({});
-  useAnnotationStore.getState().replaceAnnotations({});
+  useAnnotationStore.getState().replaceAnnotations({}, []);
 });
 it("interpolates original pixel coordinates for rect, point and matching polygon vertices", () => {
   for (const type of ["rect", "point", "polygon"] as const) {
@@ -126,7 +126,9 @@ it("marks a keyframe preserving attributes and promotes edited interpolation to 
 it("applies as ordinary frame history and supports undo/redo without mutating keyframes", () => {
   const original = { "0.png": [shape("a", 0)], "8.png": [shape("b", 80)] };
   const store = useAnnotationStore.getState();
-  store.replaceAnnotations(original);
+  store.replaceAnnotations(original, [
+    { id: "label", name: "label", color: "#fff", shapeType: "any" },
+  ]);
   store.insertAnnotationsBatch(
     interpolateVideoTrack(video, images, original, "track").entries,
     "replace",

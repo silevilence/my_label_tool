@@ -1,5 +1,4 @@
 import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
-import { validateAnnotationCore } from "./lib/annotation-validation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
 import { usePanTermination } from "./hooks/usePanTermination";
 import { useScopeEscape } from "./hooks/useScopeEscape";
@@ -169,21 +168,33 @@ function App() {
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
   const frameNavigation = useVideoFrameNavigation(video, selectedVideo?.images ?? [], selectedPath);
   const selectedShapeId = useAnnotationStore((state) => state.selectedShapeId);
-  const addAnnotation = useCallback((path: string, annotation: AnnotationShape) => {
-    validateAnnotationCore(annotation, labels);
-    useAnnotationStore.getState().addAnnotation(path, annotation);
-  }, [labels]);
-  const updateAnnotation = useCallback((path: string, id: string, patch: Partial<AnnotationShape>) => {
-    const previous = useAnnotationStore.getState().annotationsByImage[path]?.find((shape) => shape.id === id);
-    if (previous) validateAnnotationCore({ ...previous, ...patch }, labels);
-    useAnnotationStore.getState().updateAnnotation(path, id, patch);
-  }, [labels]);
+  const addAnnotation = useCallback(
+    (path: string, annotation: AnnotationShape) => {
+      useAnnotationStore.getState().addAnnotation(path, annotation, labels);
+    },
+    [labels],
+  );
+  const updateAnnotation = useCallback(
+    (path: string, id: string, patch: Partial<AnnotationShape>) => {
+      useAnnotationStore.getState().updateAnnotation(path, id, patch, labels);
+    },
+    [labels],
+  );
   const deleteAnnotation = useAnnotationStore((state) => state.deleteAnnotation);
   const clearImageAnnotations = useAnnotationStore((state) => state.clearImageAnnotations);
   const undo = useAnnotationStore((state) => state.undo);
   const redo = useAnnotationStore((state) => state.redo);
   const replaceAnnotations = useAnnotationStore((state) => state.replaceAnnotations);
-  const insertAnnotationsBatch = useAnnotationStore((state) => state.insertAnnotationsBatch);
+  const insertAnnotationsBatch = useCallback(
+    (
+      entries: Array<{ imagePath: string; annotations: AnnotationShape[] }>,
+      mode: "append" | "replace",
+      groupId?: string,
+    ) => {
+      useAnnotationStore.getState().insertAnnotationsBatch(entries, mode, groupId, labels);
+    },
+    [labels],
+  );
   const replaceLabel = useAnnotationStore((state) => state.replaceLabel);
   const selectShape = useAnnotationStore((state) => state.selectShape);
   const canUndo = useAnnotationStore((state) => state.canUndo);
