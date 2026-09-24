@@ -85,7 +85,7 @@ export function useKeyboardShortcuts({
         hasBlockingOverlay: overlay.hasBlocking(),
         hasLightOverlay: overlay.hasLight(),
         isEditableTarget: isEditableTarget(event.target),
-        busy: !useOperations.getState().canStart("project-annotations"),
+        busy: !useOperations.getState().canEditAnnotations(),
         shortcuts,
         labelShortcuts: labels,
         available: [...Object.keys(handlers), ...labels.map((label) => `label:${label.id}`)],

@@ -9,37 +9,47 @@ import { Overlay } from "../overlay/Overlay";
 import { ScriptDiffPreview } from "./ScriptDiffPreview";
 import { scopePaths, useAnnotationStore } from "../../store/useAnnotationStore";
 
-export function ScriptPanel({ labels, onClose }: { labels: LabelConfig[]; onClose: () => void }) {
+export function ScriptPanel({
+  open = true,
+  labels,
+  onClose,
+}: {
+  open?: boolean;
+  labels: LabelConfig[];
+  onClose: () => void;
+}) {
   const library = useScriptLibrary();
   const limits = useScriptLimits();
   const { source, setSource, includeDimensions, setIncludeDimensions } = library;
   const [previewFirst, setPreviewFirst] = useState(false);
   const run = useScriptRun(labels);
   const count = useAnnotationStore((state) => scopePaths(state).length);
-  async function close() {
-    if (await library.discardChanges()) onClose();
+  // Hiding retains the editor and active run; switching scripts still confirms discard.
+  function close() {
+    onClose();
   }
   const disabled = run.busy || library.pending;
   return (
     <Overlay
+      open={open}
       onClose={close}
-      canDismiss={!disabled}
+      canDismiss={!library.pending}
       label={text.title}
       size="wide"
       operationFeedback
     >
-      <section className="flex max-h-[90vh] flex-col gap-4 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100">
+      <section className="flex flex-col gap-4 rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100">
         <header className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold">{text.title}</h2>
             <p className="mt-1 text-xs text-slate-400">{text.scope(count)}</p>
           </div>
           <button
-            disabled={disabled}
+            disabled={library.pending}
             onClick={() => void close()}
             className="rounded border border-slate-600 px-3 py-2 disabled:opacity-40"
           >
-            {text.close}
+            {run.busy ? text.hideRun : text.close}
           </button>
         </header>
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -152,7 +162,7 @@ export function ScriptPanel({ labels, onClose }: { labels: LabelConfig[]; onClos
             {run.logs.join("\n")}
           </pre>
         )}
-        <footer className="flex items-center gap-3 border-t border-slate-800 pt-4">
+        <footer className="sticky bottom-0 flex items-center gap-3 border-t border-slate-800 bg-slate-900 py-3">
           <button
             disabled={
               disabled ||

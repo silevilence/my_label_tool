@@ -7,3 +7,25 @@ export function annotationShapesSnapshot(annotations: AnnotationShape[]): string
 export function annotationShapesEqual(left: AnnotationShape[], right: AnnotationShape[]): boolean {
   return annotationShapesSnapshot(left) === annotationShapesSnapshot(right);
 }
+
+/** Script results may reorder JSON object keys and explicitly supply default frame 0. */
+export function annotationShapeFingerprint(shape: AnnotationShape): string {
+  return JSON.stringify([
+    shape.id,
+    shape.type,
+    shape.labelId,
+    shape.points,
+    Object.entries(shape.attributes ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+    shape.frameIndex ?? 0,
+  ]);
+}
+
+export function scriptAnnotationsEqual(left: AnnotationShape[], right: AnnotationShape[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (shape, index) =>
+        annotationShapeFingerprint(shape) === annotationShapeFingerprint(right[index]),
+    )
+  );
+}

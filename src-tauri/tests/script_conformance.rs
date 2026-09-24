@@ -65,3 +65,48 @@ fn cancellation_terminates_the_child_and_exposes_no_partial_results() {
     worker.join().unwrap();
     assert_eq!(result.unwrap_err()[0].code, "CANCELLED");
 }
+
+#[test]
+fn chunk_byte_limits_do_not_change_a_valid_snapshot_result() {
+    let snapshot = Snapshot {
+        labels: vec![],
+        images: (0..12).map(|n| json!({"path":format!("{n}.png"), "annotations":[], "padding":"x".repeat(1024*1024)})).collect(),
+    };
+    let run_case = |chunk_size| {
+        run(
+            Path::new(env!("CARGO_BIN_EXE_script-conformance-stub")),
+            snapshot.clone(),
+            "normal".into(),
+            Limits {
+                max_memory_mi_b: 256,
+                timeout_seconds: 30,
+            },
+            chunk_size,
+            &AtomicBool::new(false),
+            &mut |_| {},
+        )
+    };
+    let one = serde_json::to_value(run_case(1).unwrap()).unwrap();
+    assert_eq!(one, serde_json::to_value(run_case(16).unwrap()).unwrap());
+}
+
+#[test]
+fn memory_exit_during_input_is_not_reported_as_a_broken_pipe() {
+    let snapshot = Snapshot {
+        labels: vec![],
+        images: (0..100).map(|n| json!({"path":format!("{n}.png"), "annotations":[], "padding":"x".repeat(1024*1024)})).collect(),
+    };
+    let result = run(
+        Path::new(env!("CARGO_BIN_EXE_script-conformance-stub")),
+        snapshot,
+        "normal".into(),
+        Limits {
+            max_memory_mi_b: 65,
+            timeout_seconds: 30,
+        },
+        16,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    );
+    assert_eq!(result.unwrap_err()[0].code, "MEMORY_LIMIT");
+}

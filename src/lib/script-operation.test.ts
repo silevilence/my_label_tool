@@ -6,6 +6,7 @@ it("reserves project annotations against export and prelabel and exposes cancell
   const cancel = vi.fn(async () => {});
   const operation = beginScriptOperation(cancel);
   expect(useOperations.getState().canStart("project-annotations")).toBe(false);
+  expect(useOperations.getState().canEditAnnotations()).toBe(true);
   expect(() => beginScriptOperation(cancel)).toThrow();
   await useOperations.getState().cancel(operation.id);
   expect(cancel).toHaveBeenCalledWith(operation.id);

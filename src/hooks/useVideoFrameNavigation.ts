@@ -8,11 +8,11 @@ export function useVideoFrameNavigation(
   images: ImageFile[],
   selectedPath: string,
 ) {
-  const busy = useOperations((state) => !state.canStart("project-annotations"));
+  const busy = useOperations((state) => !state.canEditAnnotations());
   const annotations = useAnnotationStore((state) => state.annotationsByImage);
   const frames = frameSummaries(video, annotations, images);
   const navigation = frameNavigation(frames, selectedPath, (path) => {
-    if (!video || !useOperations.getState().canStart("project-annotations")) return false;
+    if (!video || !useOperations.getState().canEditAnnotations()) return false;
     const store = useAnnotationStore.getState();
     store.pushScope({
       kind: "video",

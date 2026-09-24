@@ -1,6 +1,7 @@
 import type { AnnotationShape, LabelConfig } from "../types/annotation";
 import type { ScriptResult, ScriptSnapshot } from "../types/script";
 import { validateAnnotationCore } from "./annotation-validation";
+import { annotationShapeFingerprint } from "./annotation-utils";
 import { scopePaths, useAnnotationStore } from "../store/useAnnotationStore";
 import { SCRIPT_ZH_CN as text } from "../i18n/script.zh-CN";
 
@@ -96,7 +97,8 @@ export function prepareScriptResults(
       for (const shape of annotations) {
         const old = before.get(shape.id);
         if (!old) report.added++;
-        else if (shapeFingerprint(old) !== shapeFingerprint(shape)) report.changed++;
+        else if (annotationShapeFingerprint(old) !== annotationShapeFingerprint(shape))
+          report.changed++;
       }
       entries.push({ imagePath: result.imagePath, annotations });
     } catch (error) {
@@ -130,15 +132,4 @@ export function applyScriptPreview(
 
 export function formatScriptReport(report: ScriptReport): string {
   return text.report(report.images, report.added, report.removed, report.changed, report.skipped);
-}
-
-function shapeFingerprint(shape: AnnotationShape): string {
-  return JSON.stringify([
-    shape.id,
-    shape.type,
-    shape.labelId,
-    shape.points,
-    Object.entries(shape.attributes ?? {}).sort(([a], [b]) => a.localeCompare(b)),
-    shape.frameIndex ?? 0,
-  ]);
 }

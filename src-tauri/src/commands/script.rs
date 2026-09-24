@@ -13,6 +13,12 @@ use tauri::{ipc::Channel, Manager};
 fn host_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let name = format!("label-script-host{}", std::env::consts::EXE_SUFFIX);
     let mut paths = vec![];
+    #[cfg(debug_assertions)]
+    paths.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("script-host/target/debug")
+            .join(&name),
+    );
     if let Ok(current) = std::env::current_exe() {
         if let Some(directory) = current.parent() {
             paths.push(directory.join(&name));
@@ -22,12 +28,6 @@ fn host_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         paths.push(directory.join("script-tools").join(&name));
         paths.push(directory.join(&name));
     }
-    #[cfg(debug_assertions)]
-    paths.push(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("script-host/target/debug")
-            .join(name),
-    );
     paths
         .into_iter()
         .find(|path| path.is_file())
@@ -47,10 +47,10 @@ pub async fn run_script(
     source: String,
     on_event: Channel<Value>,
 ) -> Result<Vec<ScriptResult>, Vec<Failure>> {
+    let registration = registry::Registration::new(run_id).map_err(|e| vec![e])?;
     let limits = super::load_script_resource_limits(app.clone())
         .map_err(|e| vec![Failure::new("INVALID_ARGUMENT", e)])?;
     let path = host_path(&app).map_err(|e| vec![Failure::new("HOST_UNAVAILABLE", e)])?;
-    let registration = registry::Registration::new(run_id).map_err(|e| vec![e])?;
     tauri::async_runtime::spawn_blocking(move || {
         runner::run(
             &path,

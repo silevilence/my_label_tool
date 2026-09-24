@@ -352,7 +352,7 @@ export function AppLayout({
   updateShortcut,
   zoomFromKeyboard,
 }: AppLayoutProps) {
-  const annotationsBusy = useOperations((state) => !state.canStart("project-annotations"));
+  const annotationsBusy = useOperations((state) => !state.canEditAnnotations());
   const [canvasPointer, setCanvasPointer] = useState<{ x: number; y: number } | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const scopeStack = useAnnotationStore((state) => state.scopeStack);

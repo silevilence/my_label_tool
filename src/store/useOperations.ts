@@ -21,6 +21,7 @@ export interface OperationView {
   canCancel: boolean;
   cancelRequested: boolean;
   startedAt: number;
+  allowAnnotationEditing?: boolean;
   finishedAt?: number;
   /** 同名操作失败的累计次数。 */
   failCount?: number;
@@ -37,11 +38,14 @@ interface OperationInput {
   label: string;
   resource: Resources;
   cancel?: () => void | Promise<void>;
+  /** Snapshot-only operations reject stale results instead of locking manual edits. */
+  allowAnnotationEditing?: boolean;
 }
 interface Operations {
   operations: OperationView[];
   begin(input: OperationInput): OperationHandle;
   canStart(resources: Resources): boolean;
+  canEditAnnotations(): boolean;
   cancel(id: string): Promise<void>;
   dismiss(id: string): void;
   /** 与具体操作句柄无关的错误统一入口：常驻可关闭卡片，同名聚合计数。 */
@@ -57,6 +61,13 @@ export const useOperations = create<Operations>((set, get) => ({
       (op) =>
         op.status === "running" &&
         op.resources.some((resource) => asResources(resources).includes(resource)),
+    ),
+  canEditAnnotations: () =>
+    !get().operations.some(
+      (op) =>
+        op.status === "running" &&
+        op.resources.includes("project-annotations") &&
+        !op.allowAnnotationEditing,
     ),
   begin: (input) => {
     if (!get().canStart(input.resource)) throw new Error(text.busy);
@@ -85,6 +96,7 @@ export const useOperations = create<Operations>((set, get) => ({
           canCancel: !!input.cancel,
           cancelRequested: false,
           startedAt: Date.now(),
+          allowAnnotationEditing: input.allowAnnotationEditing ?? false,
         },
       ],
     }));

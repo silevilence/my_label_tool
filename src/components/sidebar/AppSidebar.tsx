@@ -156,6 +156,7 @@ export function AppSidebar({
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const [isPluginSettingsOpen, setIsPluginSettingsOpen] = useState(false);
   const [isScriptOpen, setIsScriptOpen] = useState(false);
+  const [hasOpenedScript, setHasOpenedScript] = useState(false);
   const [imageMenu, setImageMenu] = useState<{ image: ImageFile; x: number; y: number } | null>(
     null,
   );
@@ -369,7 +370,7 @@ export function AppSidebar({
         >
           {PRELABEL_ZH_CN.executionTitle}
         </button>
-        <button className="mt-2 w-full rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800" onClick={() => setIsScriptOpen(true)}>{scriptText.title}</button>
+        <button className="mt-2 w-full rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800" onClick={() => { setHasOpenedScript(true); setIsScriptOpen(true); }}>{scriptText.title}</button>
       </section>
 
       <div className="scrollbar-dark min-h-0 max-h-[45vh] overflow-y-auto">
@@ -547,7 +548,7 @@ export function AppSidebar({
           onClose={() => setIsPluginSettingsOpen(false)}
         />
       )}
-      {isScriptOpen && <ScriptPanel labels={labels} onClose={() => setIsScriptOpen(false)} />}
+      {hasOpenedScript && <ScriptPanel open={isScriptOpen} labels={labels} onClose={() => setIsScriptOpen(false)} />}
     </aside>
   );
 }

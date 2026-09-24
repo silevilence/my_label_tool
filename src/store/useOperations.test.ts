@@ -47,6 +47,7 @@ it("deduplicates only completed cards and preserves concurrent work and failures
 it("atomically excludes overlapping resources while allowing independent operations", () => {
   const registry = useOperations.getState();
   const prelabel = registry.begin({ label: "prelabel", resource: "project-annotations" });
+  expect(registry.canEditAnnotations()).toBe(false);
   const exporting = registry.begin({ label: "export", resource: "export-dir" });
   expect(registry.canStart("onnx-runtime")).toBe(true);
   expect(registry.canStart(["video-frames", "project-annotations"])).toBe(false);
@@ -65,6 +66,7 @@ it("atomically excludes overlapping resources while allowing independent operati
   registry.dismiss(prelabel.id);
   expect(registry.canStart("project-annotations")).toBe(false);
   prelabel.complete("done");
+  expect(registry.canEditAnnotations()).toBe(true);
   prelabel.fail("late error");
   prelabel.progress(0, "late progress");
   exporting.fail(new Error("disk full"));

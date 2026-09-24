@@ -637,7 +637,7 @@ function App() {
       if (
         useOverlayStore.getState().hasBlocking() ||
         useOverlayStore.getState().hasLight() ||
-        !useOperations.getState().canStart("project-annotations")
+        !useOperations.getState().canEditAnnotations()
       )
         return;
       setInteractionMode(getInteractionMode(event.ctrlKey, event.shiftKey));
@@ -663,7 +663,7 @@ function App() {
         !shouldPanWithSpace(event, {
           editableTarget: isEditableTarget(event.target),
           overlayDepth: useOverlayStore.getState().depth(),
-          operationAvailable: useOperations.getState().canStart("project-annotations"),
+          operationAvailable: useOperations.getState().canEditAnnotations(),
         })
       )
         return;

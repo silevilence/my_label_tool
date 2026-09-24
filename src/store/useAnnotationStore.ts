@@ -1,7 +1,7 @@
 import { validateAnnotationCore } from "../lib/annotation-validation";
 import type { ImageFile } from "../lib/tauri-api";
 import { create } from "zustand";
-import { annotationShapesEqual } from "../lib/annotation-utils";
+import { annotationShapesEqual, scriptAnnotationsEqual } from "../lib/annotation-utils";
 import type { AnnotationShape } from "../types/annotation";
 
 export type Scope =
@@ -325,7 +325,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       entry.annotations.forEach((shape) => validateAnnotationCore(shape));
       const before = state.annotationsByImage[entry.imagePath] ?? [];
       const after = bindFrame(entry.annotations, state.frameIndices[entry.imagePath]);
-      if (annotationShapesEqual(before, after)) continue;
+      if (scriptAnnotationsEqual(before, after)) continue;
       changes.push({ imagePath: entry.imagePath, before: cloneAnnotations(before), after: cloneAnnotations(after) });
       annotationsByImage[entry.imagePath] = cloneAnnotations(after);
     }

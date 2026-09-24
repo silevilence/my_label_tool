@@ -60,16 +60,45 @@ pub fn execute(
         api.set("API_VERSION", 1)?;
         api.set(
             "call",
-            scope.create_function_mut(|lua, (name, args): (String, Option<mlua::Value>)| {
-                let args = match args {
-                    None | Some(mlua::Value::Nil) => json!({}),
-                    Some(args) => lua.from_value::<Value>(args)?,
-                };
+            scope.create_function_mut(|lua, mut arguments: mlua::MultiValue| {
+                // Binding/conversion failures must be latched too: pcall may catch them.
+                let converted = (|| {
+                    let name = match arguments.pop_front() {
+                        Some(mlua::Value::String(name)) => name.to_str()?.to_owned(),
+                        _ => {
+                            return Err(mlua::Error::RuntimeError(
+                                "command name must be a string".into(),
+                            ))
+                        }
+                    };
+                    let mut args = match arguments.pop_front() {
+                        None | Some(mlua::Value::Nil) => json!({}),
+                        Some(args) => lua.from_value::<Value>(args)?,
+                    };
+                    // Lua has one empty table literal for both maps and arrays.
+                    // At submit.annotations the contract unambiguously requires an array.
+                    if name == "submit"
+                        && args["annotations"]
+                            .as_object()
+                            .is_some_and(|map| map.is_empty())
+                    {
+                        args["annotations"] = json!([]);
+                    }
+                    Ok((name, args))
+                })();
+                let (name, args) = converted.inspect_err(|error| {
+                    context
+                        .borrow_mut()
+                        .failures
+                        .push(Failure::new("INVALID_ARGUMENT", error));
+                })?;
                 let value = context
                     .borrow_mut()
                     .call(&name, args, emit)
                     .map_err(|e| mlua::Error::RuntimeError(format!("{}: {}", e.code, e.message)))?;
-                lua.to_value(&value)
+                lua.to_value(&value).inspect_err(|error| {
+                    context.borrow_mut().failures.push(lua_error(error.clone()));
+                })
             })?,
         )?;
         lua.globals().set("annotool", api)?;
@@ -166,5 +195,24 @@ mod tests {
                 .failures
                 .is_empty()
         );
+    }
+    #[test]
+    fn caught_binding_and_conversion_errors_invalidate_prior_submissions() {
+        for call in [
+            "annotool.call('submit', {imagePath='a.png', annotations=function() end})",
+            "annotool.call({}, {})",
+            "annotool.call()",
+        ] {
+            let result = run(&format!(
+                "annotool.call('submit', {{imagePath='a.png', annotations=annotool.call('annotations', {{imagePath='a.png'}})}}); pcall(function() {call} end)"
+            ));
+            assert_eq!(result.failures[0].code, "INVALID_ARGUMENT", "{call}");
+        }
+    }
+    #[test]
+    fn an_empty_lua_table_can_clear_an_image() {
+        let result = run("annotool.call('submit', {imagePath='a.png', annotations={}})");
+        assert!(result.failures.is_empty(), "{:?}", result.failures);
+        assert_eq!(result.results["a.png"], json!([]));
     }
 }

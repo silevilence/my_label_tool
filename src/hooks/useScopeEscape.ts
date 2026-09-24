@@ -13,7 +13,7 @@ export function useScopeEscape(draftActive = false) {
       if (event.key !== "Escape" || event.repeat) return;
       if (
         draftActive ||
-        !useOperations.getState().canStart("project-annotations") ||
+        !useOperations.getState().canEditAnnotations() ||
         isEditableTarget(event.target) ||
         useOverlayStore.getState().depth() > 0 ||
         useAnnotationStore.getState().scopeStack.length <= 1

@@ -32,22 +32,6 @@ pub fn defaults() -> Limits {
     specification().defaults.clone()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn defaults_and_ranges_share_one_specification() {
-        assert!(validate(&defaults()).is_ok());
-        for (memory, seconds) in [(0, 30), (4097, 30), (256, 0), (256, 3601)] {
-            assert!(validate(&Limits {
-                max_memory_mi_b: memory,
-                timeout_seconds: seconds
-            })
-            .is_err());
-        }
-    }
-}
-
 #[cfg(windows)]
 pub struct ProcessLimit(windows::Win32::Foundation::HANDLE);
 #[cfg(windows)]
@@ -99,4 +83,20 @@ pub fn install(limits: &Limits) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn defaults_and_ranges_share_one_specification() {
+        assert!(validate(&defaults()).is_ok());
+        for (memory, seconds) in [(0, 30), (4097, 30), (256, 0), (256, 3601)] {
+            assert!(validate(&Limits {
+                max_memory_mi_b: memory,
+                timeout_seconds: seconds
+            })
+            .is_err());
+        }
+    }
 }

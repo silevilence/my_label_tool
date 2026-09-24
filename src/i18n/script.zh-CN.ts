@@ -1,4 +1,5 @@
 export const SCRIPT_ZH_CN = {
+  hideRun: "收起，继续标注",
   title: "Lua 脚本",
   invalidLibrary: "脚本库索引无效，请检查应用数据目录中的 scripts/index.json",
   invalidFile: "脚本文件路径无效",

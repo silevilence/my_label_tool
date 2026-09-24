@@ -15,7 +15,7 @@ export function useDraftKeyboard(
       if (
         isEditableTarget(event.target) ||
         useOverlayStore.getState().depth() > 0 ||
-        !useOperations.getState().canStart("project-annotations")
+        !useOperations.getState().canEditAnnotations()
       )
         return;
       if (event.key === "Escape" && gesture.state !== "idle") {

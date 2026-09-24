@@ -37,6 +37,24 @@ beforeEach(() => {
 });
 
 describe("script transaction", () => {
+  it("does not create history for reordered attributes or an explicit default frame", () => {
+    const original: AnnotationShape = {
+      id: "box",
+      type: "rect",
+      labelId: "car",
+      points: [1, 2, 3, 4],
+      attributes: { z: 1, a: 2 },
+    };
+    useAnnotationStore.setState({ annotationsByImage: { a: [original] } });
+    const snapshot = createScriptSnapshot(labels);
+    const preview = prepareScriptResults(snapshot, [
+      { imagePath: "a", annotations: [{ ...original, attributes: { a: 2, z: 1 }, frameIndex: 0 }] },
+    ]);
+    expect(preview.report.changed).toBe(0);
+    applyScriptPreview(preview, labels, "noop");
+    expect(useAnnotationStore.getState().undoStack).toEqual([]);
+    expect(useAnnotationStore.getState().annotationsByImage.a).toEqual([original]);
+  });
   it("snapshots the scope top without dimensions and does not alias the store", () => {
     useAnnotationStore.getState().pushScope({ kind: "search", ids: ["b", "a"], label: "搜索" });
     const snapshot = createScriptSnapshot(labels);
