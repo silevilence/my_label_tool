@@ -25,6 +25,8 @@ pub fn run() {
             commands::run_script,
             commands::cancel_script,
             commands::script_host_available,
+            commands::script_library_directory,
+            commands::delete_script_file,
             commands::import_video,
             commands::reextract_video,
             commands::cancel_video_import,

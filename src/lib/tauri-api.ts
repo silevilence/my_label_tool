@@ -2,6 +2,18 @@ import type { VideoExtractionSettings } from "../types/project-settings";
 import { extractionSettings } from "./project-settings";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { ScriptEvent, ScriptLimits, ScriptResult, ScriptSnapshot } from "../types/script";
+import { SCRIPT_ZH_CN as scriptText } from "../i18n/script.zh-CN";
+
+export function scriptLibraryDirectory(): Promise<string> { return invoke("script_library_directory"); }
+export function deleteScriptFile(id: string): Promise<void> { return invoke("delete_script_file", { id }); }
+export async function selectScriptFile(): Promise<string | null> {
+  const path = await open({ multiple: false, filters: [{ name: scriptText.scriptFile, extensions: ["lua"] }] });
+  return typeof path === "string" ? path : null;
+}
+export async function selectScriptExportPath(name: string): Promise<string | null> {
+  const path = await save({ defaultPath: name, filters: [{ name: scriptText.scriptFile, extensions: ["lua"] }] });
+  return typeof path === "string" ? path : null;
+}
 
 export function scriptHostAvailable(): Promise<boolean> { return invoke("script_host_available"); }
 export function runScript(runId: string, snapshot: ScriptSnapshot, source: string, limits: ScriptLimits, onEvent: (event: ScriptEvent) => void): Promise<ScriptResult[]> {
