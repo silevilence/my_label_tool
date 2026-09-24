@@ -291,14 +291,14 @@ describe("importers", () => {
     expect(() =>
       parseNativeJsonImport(
         JSON.stringify({
-          labels: [],
+          labels: [{ id: "x", name: "x" }],
           images: [{ name: "a.jpg", annotations: [{ type: "polygon", labelId: "x", points: [1, 2] }] }],
         }),
       ),
-    ).toThrow("至少需要 6 个数字");
+    ).toThrow("坐标数量不足");
     expect(() =>
       parseNativeJsonImport(JSON.stringify({ labels: [], images: [{ name: "a.jpg", annotations: [{}] }] })),
-    ).toThrow("缺少 labelId");
+    ).toThrow("标注标签为空或不存在");
   });
 
   it("parses COCO categories, images and bboxes", () => {

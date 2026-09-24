@@ -1,3 +1,4 @@
+import { validateAnnotationCore } from "../lib/annotation-validation";
 import type { ImageFile } from "../lib/tauri-api";
 import { create } from "zustand";
 import { annotationShapesEqual } from "../lib/annotation-utils";
@@ -390,6 +391,7 @@ function applyImageHistory(
   selectedAfter: string | null,
   groupId?: string,
 ): AnnotationState {
+  annotations.forEach((annotation) => validateAnnotationCore(annotation));
   const after = bindFrame(annotations, state.frameIndices[imagePath]);
   const before = state.annotationsByImage[imagePath] ?? [];
   if (annotationShapesEqual(before, after)) {

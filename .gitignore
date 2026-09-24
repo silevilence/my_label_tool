@@ -12,6 +12,7 @@ dist
 dist-ssr
 coverage
 src-tauri/target
+src-tauri/script-host/target
 .codegraph
 *.local
 /.local-models/

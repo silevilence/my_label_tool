@@ -1,4 +1,5 @@
 import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
+import { validateAnnotationCore } from "./lib/annotation-validation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
 import { usePanTermination } from "./hooks/usePanTermination";
 import { useScopeEscape } from "./hooks/useScopeEscape";
@@ -168,8 +169,15 @@ function App() {
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
   const frameNavigation = useVideoFrameNavigation(video, selectedVideo?.images ?? [], selectedPath);
   const selectedShapeId = useAnnotationStore((state) => state.selectedShapeId);
-  const addAnnotation = useAnnotationStore((state) => state.addAnnotation);
-  const updateAnnotation = useAnnotationStore((state) => state.updateAnnotation);
+  const addAnnotation = useCallback((path: string, annotation: AnnotationShape) => {
+    validateAnnotationCore(annotation, labels);
+    useAnnotationStore.getState().addAnnotation(path, annotation);
+  }, [labels]);
+  const updateAnnotation = useCallback((path: string, id: string, patch: Partial<AnnotationShape>) => {
+    const previous = useAnnotationStore.getState().annotationsByImage[path]?.find((shape) => shape.id === id);
+    if (previous) validateAnnotationCore({ ...previous, ...patch }, labels);
+    useAnnotationStore.getState().updateAnnotation(path, id, patch);
+  }, [labels]);
   const deleteAnnotation = useAnnotationStore((state) => state.deleteAnnotation);
   const clearImageAnnotations = useAnnotationStore((state) => state.clearImageAnnotations);
   const undo = useAnnotationStore((state) => state.undo);

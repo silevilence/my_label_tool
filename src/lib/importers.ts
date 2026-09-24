@@ -1,3 +1,4 @@
+import { validateAnnotationCore } from "./annotation-validation";
 import { DEFAULT_LABEL_COLORS } from "./defaults/labels";
 import type { ProjectSettings } from "../types/project-settings";
 import { parseProjectSettings } from "./project-settings";
@@ -177,7 +178,7 @@ export function parseNativeJsonImport(text: string): ImportedAnnotations {
     return {
       path: typeof image.path === "string" ? image.path : undefined,
       name,
-      annotations: parseAnnotations(image.annotations, `images[${imageIndex}].annotations`),
+      annotations: parseAnnotations(image.annotations, `images[${imageIndex}].annotations`, labels),
     };
   });
 
@@ -480,24 +481,16 @@ function parseLabels(value: unknown): LabelConfig[] {
   });
 }
 
-function parseAnnotations(value: unknown, field: string): AnnotationShape[] {
+function parseAnnotations(value: unknown, field: string, labels: LabelConfig[]): AnnotationShape[] {
   return asArray(value, field).map((annotation, index) => {
     if (!isRecord(annotation)) {
       throw new Error(`${field}[${index}] 必须是对象`);
     }
 
-    const labelId = annotation.labelId;
-    if (typeof labelId !== "string" || !labelId) {
-      throw new Error(`${field}[${index}] 缺少 labelId`);
-    }
-
     const type = parseAnnotationShapeType(annotation.type, "rect");
-    const points = numberArray(annotation.points, `${field}[${index}].points`);
-    const minPointCount = type === "rect" ? 4 : type === "polygon" ? 6 : 2;
-    if (points.length < minPointCount) {
-      throw new Error(`${field}[${index}].points 至少需要 ${minPointCount} 个数字`);
-    }
-
+    const normalized = { ...annotation, type };
+    validateAnnotationCore(normalized, labels);
+    const { labelId, points } = normalized;
     return {
       id:
         typeof annotation.id === "string" && annotation.id
