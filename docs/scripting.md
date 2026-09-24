@@ -1,6 +1,6 @@
 # 脚本（Lua 数据处理）
 
-> 状态：可开工。决策依据 ADR 0013（宿主进程与信任边界）、ADR 0014（写回事务）、ADR 0015（能力面扩展）；术语见 `CONTEXT.md`「脚本 (Scripting)」段。
+> 状态：已实现桌面接入与独立容器宿主。完整服务端 UI 仍在 ROADMAP 计划区。用户指南见 [scripting-user.md](scripting-user.md)，内部契约见 [script-protocol.md](script-protocol.md)。决策依据 ADR 0013（宿主进程与信任边界）、ADR 0014（写回事务）、ADR 0015（能力面扩展）；术语见 `CONTEXT.md`「脚本 (Scripting)」段。
 
 ## Problem Statement
 
@@ -112,7 +112,7 @@
 
 ## Further Notes
 
-- **待原型确定的两项**：Lua 方言（倾向标准 Lua 5.4：脚本作者最熟悉、可用本机解释器调试；Luau 的硬内存上限在「只防手滑」的边界下不是必需）与具体数值上限（宿主进程内存、总超时，实测后定默认值）。
+- **原型结论**：使用标准 Lua 5.4（mlua vendored），默认进程内存 256 MiB、总时限 30 秒，配置真相源为 `src/lib/defaults/script-limits.json`。实测与复跑步骤见 [verification/lua-host.md](verification/lua-host.md)。
 - **打包与交付**：宿主二进制要覆盖桌面打包与容器交付；任一形态不可用时必须在界面如实说明，不得静默降级（ADR 0012 的既有要求）。
 - **快捷键**：默认不提供；若提供，只提供「打开脚本面板」这类无副作用动作并纳入快捷键设置面板。
 - **文档同步**：规格落地后同步更新 `AGENTS.md` 的命令清单、目录结构与文档索引，并按 `plugin-api-versioning` 的核对清单确认插件契约面未变更。

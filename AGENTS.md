@@ -100,9 +100,13 @@ my_label_tool/
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── tests/                      # 插件协议集成测试（plugin_conformance.rs）
 │   ├── capabilities/               # Tauri 权限（core/dialog/process/updater:default）
+│   ├── script-host/                # 独立 Lua 5.4 crate、命令注册表与 NDJSON 协议；不依赖 Tauri，不属于插件
+│   ├── script-tools/               # 构建时放入的 Lua 宿主二进制，随桌面资源交付
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── examples/plugins/               # 插件开发示例（label-preset-demo / exporter-labelme-demo / prelabel-demo）
+├── examples/scripts/               # 按标签名改派、坐标修正、跨图编号 Lua 示例
+├── containers/                     # 独立脚本宿主容器（完整服务端仍在计划区）
 ├── scripts/                        # 插件打包/验证与一次性 ONNX 核对脚本（verify-onnx-graph.py）
 ├── .github/workflows/              # GitHub Actions：ci.yml、official-models.yml、release.yml
 ├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、frontend-interaction.md、video-annotation.md、onnx-graph.md、scripting.md、prelabel-resource-limits.md、架构评审报告目录、插件/项目 JSON Schema、research/、verification/、adr/）
@@ -125,6 +129,9 @@ my_label_tool/
 | `export_annotations_json` | 将标注数据写入指定 JSON 文件 |
 | `export_text_files` | 批量写入文本文件（VOC XML / YOLO txt），路径需为相对安全路径 |
 | `read_text_file` | 读取单个文本文件内容（导入用） |
+| `run_script` / `cancel_script` / `script_host_available` | 宿主专用 Lua 脚本：作用域快照、分段传输、全量结果缓冲与取消；读取机器级上限，不向插件开放 |
+| `script_library_directory` / `delete_script_file` | 宿主脚本库目录初始化与安全删除；脚本内容及索引读写仍复用 `read_text_file` / `export_text_files` |
+| `load_script_resource_limits` / `save_script_resource_limits` | 机器级脚本进程内存与总时限；默认值及范围共享 `src/lib/defaults/script-limits.json`，不写入项目配置 |
 | `list_text_files` | 按扩展名列出文件夹下文本文件（导入用） |
 | `load_label_configs` / `save_label_configs` | 标签配置持久化（app data 目录 `labels.json`） |
 | `load_label_templates` / `save_label_templates` | 标签模板持久化（`label-templates.json`） |
@@ -228,6 +235,8 @@ interface LabelTemplate {
 - 如确实需要单文件超过 1000 行，必须在文件开头用注释说明原因和理由。
 
 ## 7. 测试要求
+
+- **Lua 脚本**：开发者规格 `docs/scripting.md`、用户指南 `docs/scripting-user.md`、内部协议 `docs/script-protocol.md`、验证记录 `docs/verification/lua-host.md`。独立宿主测试运行 `cargo test --manifest-path src-tauri/script-host/Cargo.toml`，runner 集成测试 `cargo test --manifest-path src-tauri/Cargo.toml --test script_conformance`；桌面/容器真实示例通过 `scripts/verify-script-host.ps1` 验证。脚本不进入插件注册表、权限或版本面。前端共享校验位于 `src/lib/annotation-validation.ts`；运行编排/脚本库位于 `src/lib/script-*.ts` 与 `src/hooks/useScript*.ts`，进程编排位于 `src-tauri/src/scripting/`，整轮撤销以独立历史条目实现，不能改变普通批量操作逐图撤销语义。
 
 - **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、图片回收站删除、ONNX 元数据解析、预打标推理管线、PT 转换等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、图片删除流程与入口、预打标模型库/类别映射/执行、插件契约（`src/types/plugin*.test.ts`、`src/lib/plugin-*.test.ts`）与插件管理 UI（`plugin-ui.acceptance.test.tsx`）等纯逻辑。插件协议集成测试：`cargo test --manifest-path src-tauri/Cargo.toml --test plugin_conformance`（独立桩进程覆盖握手、全部错误码、进度、取消与行上限）；插件改动的快速验证脚本：`scripts/verify-plugin-system.ps1`、`scripts/verify-plugin-sdk.ps1`。
 - 预打标真实模型验收：`.github/workflows/official-models.yml` 在 CI 下载官方 YOLOv5n / YOLOv8n / YOLO11n 权重并导出 ONNX，运行被 `#[ignore]` 隔离的元数据、运行时、真实推理与 `.pt` 转换测试；仅当预打标模块、Rust 依赖或工作流本身变化时触发，也可手动触发。涉及预打标推理改动时，先确认这些测试仍能通过。

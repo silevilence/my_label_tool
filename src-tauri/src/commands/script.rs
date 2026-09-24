@@ -19,6 +19,7 @@ fn host_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         }
     }
     if let Ok(directory) = app.path().resource_dir() {
+        paths.push(directory.join("script-tools").join(&name));
         paths.push(directory.join(&name));
     }
     #[cfg(debug_assertions)]

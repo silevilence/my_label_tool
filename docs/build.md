@@ -43,7 +43,9 @@ powershell -NoProfile -Command "cargo clippy --manifest-path src-tauri/Cargo.tom
 powershell -NoProfile -Command "npm.cmd run tauri build"
 ```
 
-该命令会先执行 `npm run build`，再由 Tauri 生成 Windows 安装包/可执行产物。
+该命令会先准备离线视频工具、编译独立 Lua 宿主并执行 `npm run build`，再由 Tauri 生成 Windows 安装包/可执行产物。Lua 宿主由 `scripts/prepare-script-host.ps1` 编译到 `src-tauri/script-tools/` 并随资源目录打包，不能只复制主程序 EXE 而遗漏该目录。
+
+脚本宿主可单独验收：`cargo test --manifest-path src-tauri/script-host/Cargo.toml`。开发启动也会先编译调试版宿主；容器构建见 [脚本使用指南](scripting-user.md)，容器仅提供 NDJSON 宿主，完整服务端尚未交付。
 
 常见产物位置：
 

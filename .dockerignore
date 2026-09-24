@@ -1,0 +1,9 @@
+**/target
+node_modules
+.git
+dist
+coverage
+*.log
+.local-*
+src-tauri/script-tools/*.exe
+src-tauri/video-tools/*.exe

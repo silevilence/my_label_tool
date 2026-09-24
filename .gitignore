@@ -19,6 +19,10 @@ src-tauri/script-host/target
 /.local-video-qa/
 /src-tauri/video-tools/*
 !/src-tauri/video-tools/README.md
+/src-tauri/script-tools/*
+!/src-tauri/script-tools/README.md
+!/src-tauri/script-tools/THIRD-PARTY-LICENSES.txt
+/.local-script-qa/
 
 # Editor directories and files
 .vscode/*

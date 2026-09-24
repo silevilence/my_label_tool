@@ -16,6 +16,8 @@ permissions:
   contents: read
 
 jobs:
+  script-host:
+    uses: ./.github/workflows/script-host.yml
   frontend:
     name: Type, lint, and coverage
     runs-on: windows-latest
