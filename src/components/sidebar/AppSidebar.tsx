@@ -1,4 +1,6 @@
 import { PROJECT_ZH_CN as projectText } from "../../i18n/project.zh-CN";
+import { ScriptPanel } from "../settings/ScriptPanel";
+import { SCRIPT_ZH_CN as scriptText } from "../../i18n/script.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
 import { useState } from "react";
@@ -153,6 +155,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const [isPluginSettingsOpen, setIsPluginSettingsOpen] = useState(false);
+  const [isScriptOpen, setIsScriptOpen] = useState(false);
   const [imageMenu, setImageMenu] = useState<{ image: ImageFile; x: number; y: number } | null>(
     null,
   );
@@ -366,6 +369,7 @@ export function AppSidebar({
         >
           {PRELABEL_ZH_CN.executionTitle}
         </button>
+        <button className="mt-2 w-full rounded border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800" onClick={() => setIsScriptOpen(true)}>{scriptText.title}</button>
       </section>
 
       <div className="scrollbar-dark min-h-0 max-h-[45vh] overflow-y-auto">
@@ -543,6 +547,7 @@ export function AppSidebar({
           onClose={() => setIsPluginSettingsOpen(false)}
         />
       )}
+      {isScriptOpen && <ScriptPanel labels={labels} onClose={() => setIsScriptOpen(false)} />}
     </aside>
   );
 }

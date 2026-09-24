@@ -45,6 +45,7 @@ interface AnnotationState {
     mode: "append" | "replace",
     groupId?: string,
   ) => void;
+  applyScriptTransaction: (entries: Array<{ imagePath: string; annotations: AnnotationShape[] }>, transactionId: string) => void;
   undo: () => void;
   redo: () => void;
   replaceAnnotations: (annotationsByImage: Record<string, AnnotationShape[]>) => void;
@@ -59,6 +60,8 @@ interface AnnotationHistoryEntry {
   selectedBefore: string | null;
   selectedAfter: string | null;
   groupId?: string;
+  transactionId?: string;
+  changes?: Array<{ imagePath: string; before: AnnotationShape[]; after: AnnotationShape[] }>;
 }
 
 const HISTORY_LIMIT = 100;
@@ -210,7 +213,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       const removedIds = new Set(
         imagePaths.flatMap((path) => (state.annotationsByImage[path] ?? []).map((item) => item.id)),
       );
-      for (const entry of [...state.undoStack, ...state.redoStack]) {
+      for (const entry of [...state.undoStack, ...state.redoStack].flatMap((entry) => entry.changes ?? [entry])) {
         if (removedPaths.has(entry.imagePath)) {
           for (const item of [...entry.before, ...entry.after]) removedIds.add(item.id);
         }
@@ -219,6 +222,12 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       for (const path of removedPaths) delete annotationsByImage[path];
       const prune = (entries: AnnotationHistoryEntry[]) =>
         entries
+          .map((entry) => {
+            if (!entry.changes) return entry;
+            const changes = entry.changes.filter((change) => !removedPaths.has(change.imagePath));
+            return { ...entry, ...changes[0], changes };
+          })
+          .filter((entry) => !entry.changes || entry.changes.length > 0)
           .filter((entry) => !removedPaths.has(entry.imagePath))
           .map((entry) => ({
             ...entry,
@@ -309,6 +318,22 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       });
     });
   },
+  applyScriptTransaction: (entries, transactionId) => set((state) => {
+    const annotationsByImage = { ...state.annotationsByImage };
+    const changes: NonNullable<AnnotationHistoryEntry["changes"]> = [];
+    for (const entry of entries) {
+      entry.annotations.forEach((shape) => validateAnnotationCore(shape));
+      const before = state.annotationsByImage[entry.imagePath] ?? [];
+      const after = bindFrame(entry.annotations, state.frameIndices[entry.imagePath]);
+      if (annotationShapesEqual(before, after)) continue;
+      changes.push({ imagePath: entry.imagePath, before: cloneAnnotations(before), after: cloneAnnotations(after) });
+      annotationsByImage[entry.imagePath] = cloneAnnotations(after);
+    }
+    if (!changes.length) return state;
+    const selectedAfter = (annotationsByImage[state.selectedPath] ?? []).some((shape) => shape.id === state.selectedShapeId) ? state.selectedShapeId : null;
+    const entry: AnnotationHistoryEntry = { ...changes[0], changes, transactionId, selectedBefore: state.selectedShapeId, selectedAfter };
+    return withHistoryFlags({ ...state, annotationsByImage, selectedShapeId: selectedAfter, undoStack: trimHistory([...state.undoStack, entry]), redoStack: [] });
+  }),
   undo: () =>
     set((state) => {
       const entry = state.undoStack[state.undoStack.length - 1];
@@ -322,9 +347,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
         ...state,
         annotationsByImage: {
           ...state.annotationsByImage,
-          [entry.imagePath]: cloneAnnotations(
-            bindFrame(entry.before, state.frameIndices[entry.imagePath]),
-          ),
+          ...Object.fromEntries((entry.changes ?? [entry]).map((change) => [change.imagePath, cloneAnnotations(bindFrame(change.before, state.frameIndices[change.imagePath]))])),
         },
         selectedShapeId: entry.selectedBefore,
         undoStack,
@@ -344,9 +367,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
         ...state,
         annotationsByImage: {
           ...state.annotationsByImage,
-          [entry.imagePath]: cloneAnnotations(
-            bindFrame(entry.after, state.frameIndices[entry.imagePath]),
-          ),
+          ...Object.fromEntries((entry.changes ?? [entry]).map((change) => [change.imagePath, cloneAnnotations(bindFrame(change.after, state.frameIndices[change.imagePath]))])),
         },
         selectedShapeId: entry.selectedAfter,
         undoStack,

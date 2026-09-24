@@ -1,0 +1,61 @@
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { useScriptRun } from "./useScriptRun";
+import { useAnnotationStore } from "../store/useAnnotationStore";
+import { useOperations } from "../store/useOperations";
+import type { AnnotationShape, LabelConfig } from "../types/annotation";
+import type { ScriptResult } from "../types/script";
+const api = vi.hoisted(() => ({ runScript: vi.fn(), cancelScript: vi.fn().mockResolvedValue(undefined), scriptHostAvailable: vi.fn().mockResolvedValue(true) }));
+vi.mock("../lib/tauri-api", () => api);
+const labels: LabelConfig[] = [{ id: "l", name: "标签", color: "#fff", shapeType: "any" }];
+const shape: AnnotationShape = { id: "s", labelId: "l", type: "point", points: [1, 2] };
+const limits = { maxMemoryMiB: 256, timeoutSeconds: 30 };
+let controls: ReturnType<typeof useScriptRun>;
+let root: Root;
+function Harness() { controls = useScriptRun(labels); return null; }
+beforeEach(async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  useOperations.setState({ operations: [] });
+  useAnnotationStore.setState({ images: [{ path: "a", name: "a" }], scopeStack: [{ kind: "project" }], annotationsByImage: { a: [shape] }, undoStack: [], redoStack: [], frameIndices: {} });
+  root = createRoot(document.createElement("div"));
+  await act(async () => root.render(<Harness />));
+});
+afterEach(() => { act(() => root.unmount()); vi.clearAllMocks(); });
+it("cancellation and failure never mutate annotations", async () => {
+  let resolve!: (value: ScriptResult[]) => void;
+  api.runScript.mockReturnValue(new Promise<ScriptResult[]>((done) => { resolve = done; }));
+  let pending!: Promise<void>;
+  await act(async () => { pending = controls.run("source", false, false, limits); });
+  expect(controls.busy).toBe(true);
+  await act(async () => controls.cancel());
+  await act(async () => { resolve([{ imagePath: "a", annotations: [] }]); await pending; });
+  expect(useAnnotationStore.getState().annotationsByImage.a).toEqual([shape]);
+  expect(useAnnotationStore.getState().undoStack).toEqual([]);
+  api.runScript.mockRejectedValue([{ code: "SCRIPT_ERROR", message: "line 1", imagePath: "a" }]);
+  await act(async () => controls.run("bad", false, false, limits));
+  expect(useOperations.getState().operations.some((op) => op.status === "failed" && op.message.includes("line 1"))).toBe(true);
+  expect(useAnnotationStore.getState().annotationsByImage.a).toEqual([shape]);
+});
+it("keeps resource reserved through preview, applies once, and exposes transaction undo", async () => {
+  api.runScript.mockResolvedValue([{ imagePath: "a", annotations: [] }]);
+  await act(async () => controls.run("source", false, true, limits));
+  expect(controls.preview?.report.removed).toBe(1);
+  expect(useOperations.getState().canStart("project-annotations")).toBe(false);
+  expect(useAnnotationStore.getState().annotationsByImage.a).toEqual([shape]);
+  act(() => controls.apply());
+  expect(controls.canUndo).toBe(true);
+  expect(useAnnotationStore.getState().annotationsByImage.a).toEqual([]);
+  expect(useOperations.getState().canStart("project-annotations")).toBe(true);
+  act(() => controls.undo());
+  expect(useAnnotationStore.getState().annotationsByImage.a).toEqual([shape]);
+  expect(controls.canUndo).toBe(false);
+});
+it("discarding preview leaves no history", async () => {
+  api.runScript.mockResolvedValue([{ imagePath: "a", annotations: [] }]);
+  await act(async () => controls.run("source", false, true, limits));
+  await act(async () => controls.cancel());
+  expect(controls.preview).toBe(null);
+  expect(useAnnotationStore.getState().undoStack).toEqual([]);
+  expect(useOperations.getState().canStart("project-annotations")).toBe(true);
+});
