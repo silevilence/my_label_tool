@@ -69,7 +69,6 @@
 **操作与效率**
 
 - **Lua 脚本**：在当前作用域批量改派标签、修正坐标或跨图编号；提供脚本库、内置编辑器、逐图差异预览和进度取消。每个脚本功能都有内置只读示例，与用户脚本分组展示，可运行或复制后编辑。整轮成功后才更新内存，一次撤销/重做覆盖整轮，保存项目后才落盘。宿主随桌面包交付，无需安装 Lua，详见 [脚本使用指南](docs/scripting-user.md)
-
 - **撤销 / 重做**：标注的新增、删除、移动、调整均可撤销重做（默认 `Ctrl+Z` / `Ctrl+Y`）
 - **快速保存**：按 `Ctrl+S` 快速保存当前项目，保存时显示进度与完成提示
 - **删除与清空**：选中标注按 `Delete` 删除；提供「清空当前图片所有标注」按钮（需二次确认）
@@ -82,6 +81,7 @@
 | --- | --- |
 | Node.js | ≥ 20（Vite 7 要求） |
 | Rust | stable（建议通过 [rustup](https://rustup.rs/) 安装） |
+| Microsoft C++ Build Tools | 编译 Tauri 与随包分发的 Lua 宿主（vendored Lua 由 C 编译器构建） |
 | 操作系统 | Windows（主要目标平台）；macOS / Linux 可编译但未充分测试 |
 
 > 预打标为可选功能，不影响核心标注使用：首次使用需在应用内获取 ONNX Runtime（联网一键下载或离线放置 DLL）并导入模型文件；`.pt` 模型转换无需本机安装 Python / ultralytics（经 uvx 自动获取，首次运行需联网），也可使用本机已有的 yolo CLI 或 ultralytics 环境离线转换。
@@ -106,6 +106,12 @@ npm run tauri build
 
 产物位于 `src-tauri/target/release/`，生成的 Windows 安装包可在无开发环境的机器上直接运行。
 
+打包会自动准备离线视频工具（`ffmpeg` / `ffprobe`）、编译 Lua 脚本宿主并执行前端构建：宿主二进制由 `scripts/prepare-script-host.ps1` 写入 `src-tauri/script-tools/`，作为资源目录随包分发，不能只分发主程序 EXE 而遗漏该目录。开发模式（`npm run tauri dev`）会先编译调试版宿主。脚本宿主也可单独构建为容器镜像（仅提供脚本宿主，不含服务端界面）：
+
+```bash
+podman build -f containers/script-host.Dockerfile -t localhost/label-script-host:qa .
+```
+
 ## 常用开发命令
 
 ```bash
@@ -120,18 +126,26 @@ cargo clippy --manifest-path src-tauri/Cargo.toml  # Rust lint
 ## 测试
 
 ```bash
-# Rust 后端单元测试（覆盖图片识别、JSON 导出、文本文件导出/列举、PT 转换等）
+# Rust 后端单元测试（覆盖图片识别、JSON 导出、文本文件导出/列举、图片回收站删除、ONNX 解析、预打标管线、PT 转换、标签样例图等）
 cargo test --manifest-path src-tauri/Cargo.toml
 
 # 插件协议集成测试（独立桩进程覆盖握手、错误码、进度、取消与行上限）
 cargo test --manifest-path src-tauri/Cargo.toml --test plugin_conformance
 
-# 前端单元测试（Vitest，覆盖导入/导出、store、几何计算、标签模板同步等纯逻辑层）
+# 脚本 runner 集成测试（独立桩进程覆盖超时、崩溃、行上限与取消）
+cargo test --manifest-path src-tauri/Cargo.toml --test script_conformance
+
+# Lua 宿主 crate 测试（命令注册表、资源上限、协议收发与内置示例执行）
+cargo test --locked --manifest-path src-tauri/script-host/Cargo.toml
+
+# 前端单元测试（Vitest，覆盖导入/导出、store、几何计算、标签模板同步、脚本与标签样例图逻辑等纯逻辑层）
 npm test
 
 # 前端测试 + 覆盖率（行/函数/语句覆盖率门槛 90%，分支 75%）
 npm run test:coverage
 ```
+
+内置脚本示例与容器形态用 `scripts/verify-script-host.ps1` 在真实宿主上验收（加 `-Container -Image <已构建镜像>` 时改为在容器中运行同一批示例，镜像由 `containers/script-host.Dockerfile` 构建）；插件改动可用 `scripts/verify-plugin-system.ps1`、`scripts/verify-plugin-sdk.ps1` 快速验证。CI 的 [script-host.yml](.github/workflows/script-host.yml) 在 Windows 与 Ubuntu 上跑宿主测试与 clippy，[ci.yml](.github/workflows/ci.yml) 执行前端 typecheck / lint / 覆盖率与 Rust clippy / 测试。
 
 画布交互已有部分组件级回归测试，相关改动仍需按 `AGENTS.md` 中的手动验证清单核对。详细的打包与发布流程见 [docs/build.md](docs/build.md)。
 
@@ -150,33 +164,41 @@ npm run test:coverage
 ```
 my_label_tool/
 ├── src/                            # React 前端
-│   ├── components/                 # 画布、设置面板、侧边栏组件（含图片删除确认弹窗）
+│   ├── components/                 # 画布、设置面板、侧边栏组件（含图片删除确认弹窗、Lua 脚本面板）
 │   │   ├── canvas/                 # Konva 画布、几何计算、交互类型
-│   │   ├── settings/               # 导出面板、标签设置、预打标设置/执行浮窗、PT 转换弹窗、ONNX 结构查看弹窗、快捷键设置、插件管理
+│   │   ├── settings/               # 导出面板、标签设置与样例图选择、预打标设置/执行浮窗、PT 转换弹窗、ONNX 结构查看弹窗、快捷键设置、插件管理、Lua 脚本面板
 │   │   └── sidebar/                # 应用侧边栏、图片搜索弹窗、图片列表右键菜单
-│   ├── store/                      # Zustand 状态管理（标注数据 + 全局状态）
-│   ├── types/                      # 核心类型定义（annotation、export、prelabel、plugin）
-│   ├── lib/                        # Tauri API 封装、导入导出、默认配置、插件契约
-│   │   ├── defaults/               # 导出模板、标签、快捷键默认值
+│   ├── store/                      # Zustand 状态管理（标注数据 + 全局状态 + 操作资源互斥）
+│   ├── types/                      # 核心类型定义（annotation、export、prelabel、plugin、video、script、label-sample）
+│   ├── lib/                        # Tauri API 封装、导入导出、默认配置、插件契约、脚本与样例图逻辑
+│   │   ├── defaults/               # 导出模板、标签、快捷键、显示设置、脚本资源上限默认值
 │   │   ├── exporters/              # COCO / VOC / YOLO / 自定义导出
+│   │   ├── annotation-validation.ts# 导入、编辑与脚本提交共用的标注核心校验
 │   │   ├── image-search.ts         # 图片表达式搜索语法与匹配
 │   │   ├── prelabel-*.ts           # 预打标模型库、类别映射、执行逻辑
+│   │   ├── script-*.ts             # 脚本库、执行编排、资源上限、操作注册
+│   │   ├── label-sample*.ts        # 标签样例图目录约定与项目标注裁剪
 │   │   └── plugin-*.ts             # 插件配置迁移、预置标签、导出/预打标来源
-│   ├── i18n/                       # 前端用户可见文案（display / onnx-graph / prelabel / plugin / project / video 等模块的 zh-CN 文件）
-│   └── hooks/                      # 画布交互、图片加载、图片删除、预打标、标签/项目/快捷键等 hooks
+│   ├── i18n/                       # 前端用户可见文案（display / prelabel / plugin / project / script / label-sample / annotation / video 等模块的 zh-CN 文件）
+│   └── hooks/                      # 画布交互、图片加载与删除、预打标、脚本库与运行、标签样例图、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
-│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs）、models、bin（插件校验/测试桩）
-│   │   ├── media/                  # ONNX 元数据识别与结构解析、预打标推理管线、PT 转换、视频抽帧处理、缩略图生成、图片回收站删除
+│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs、script*.rs、label_samples.rs）、models、bin（插件校验/测试桩、inspect_onnx_graph 开发 CLI）
+│   │   ├── media/                  # 图像/视频/模型处理：ONNX 元数据与结构解析、预打标推理管线、PT 转换、视频抽帧、缩略图、图片回收站删除、标签样例图与裁剪
+│   │   ├── scripting/              # 脚本进程编排：快照分块、NDJSON 收发、取消与运行注册表
 │   │   ├── plugins/                # 插件运行时：manifest、protocol、permissions、registry、config
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
-│   ├── tests/                      # 插件协议集成测试（plugin_conformance.rs）
+│   ├── tests/                      # 集成测试（plugin_conformance.rs、script_conformance.rs）
 │   ├── capabilities/               # Tauri 权限配置
+│   ├── script-host/                # 独立 Lua 5.4 crate（命令注册表、NDJSON 协议、资源上限）；不依赖 Tauri，不属于插件层
+│   ├── script-tools/               # 构建产物目录：编译好的 Lua 宿主随桌面资源交付（二进制不入库）
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── examples/plugins/               # 三种插件示例（标签预置 / 导出器 / 预打标）
-├── scripts/                        # 插件打包与验证、视频工具准备、一次性 ONNX 核对脚本（package-plugin.mjs、verify-plugin-*.ps1、prepare-video-tools.ps1、verify-onnx-graph.py）
-├── .github/workflows/              # ci.yml、official-models.yml、release.yml
-├── docs/                           # 文档（build.md、video-annotation.md、onnx-graph.md、scripting.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、插件/项目 JSON Schema、adr/、verification/）
+├── examples/scripts/               # Lua 内置示例源文件与 catalog.json（覆盖全部脚本命令）
+├── containers/                     # 脚本宿主容器镜像（完整服务端形态仍在计划中）
+├── scripts/                        # 打包与验收脚本（插件打包/验证、视频工具与 Lua 宿主准备、脚本/视频/ONNX 验收）
+├── .github/workflows/              # ci.yml、script-host.yml、official-models.yml、release.yml
+├── docs/                           # 文档（build.md、video-annotation.md、onnx-graph.md、label-samples.md、scripting.md、scripting-user.md、script-protocol.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、frontend-interaction.md、prelabel-resource-limits.md、插件/项目/视频 JSON Schema、adr/、verification/、research/）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md                       # AI 开发指南
 └── package.json
@@ -194,5 +216,6 @@ my_label_tool/
 | 构建工具 | Vite 7 | 前端打包，开发端口固定 1420 |
 | 后端 | Rust + Tauri commands | 文件系统读写、JSON 导出、标签/模板/快捷键持久化、预打标推理调度 |
 | 插件系统 | 独立子进程 + NDJSON stdio 协议 | 标签预置 / 自定义导出格式 / 外部预打标三类扩展（实验性），隔离在 AppContainer 中 |
+| 脚本宿主 | 独立 Lua 5.4 进程 + NDJSON stdio 协议 | 在作用域内批量处理标注；随桌面包交付（`script-tools/`），不属于插件层，也可构建为容器镜像 |
 | 可选运行时 | ONNX Runtime（`ort` 动态加载） | 预打标推理用，应用内按需下载/手动放置，不随安装包分发 |
 | 配置持久化 | 本地 JSON 文件 | 保存在 app data 目录（含预打标模型库），不引入数据库 |
