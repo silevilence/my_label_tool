@@ -1,4 +1,5 @@
 import { PROJECT_ZH_CN as projectText } from "../../i18n/project.zh-CN";
+import type { LabelSamples } from "../../hooks/useLabelSamples";
 import { ScriptPanel } from "../settings/ScriptPanel";
 import { SCRIPT_ZH_CN as scriptText } from "../../i18n/script.zh-CN";
 import { Overlay } from "../overlay/Overlay";
@@ -29,6 +30,7 @@ import { ProjectMediaList } from "./ProjectMediaList";
 import { VIDEO_ZH_CN as videoText } from "../../i18n/video.zh-CN";
 
 interface AppSidebarProps {
+  labelSamples?: LabelSamples;
   reextractVideo?: (source: string) => void;
   openProjectSettings?: () => void;
   videos?: LoadedProjectVideo[];
@@ -92,6 +94,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
+  labelSamples,
   reextractVideo,
   openProjectSettings,
   videos = [],
@@ -375,6 +378,7 @@ export function AppSidebar({
 
       <div className="scrollbar-dark min-h-0 max-h-[45vh] overflow-y-auto">
         <LabelSettings
+          samples={labelSamples}
           canSaveTemplate={
             (isUserTemplate(selectedTemplateId) && !pluginTemplateIds.has(selectedTemplateId)) ||
             selectedTemplateId === projectTemplateId

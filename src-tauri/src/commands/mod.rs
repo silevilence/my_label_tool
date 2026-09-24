@@ -497,3 +497,5 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 }
+mod label_samples;
+pub use label_samples::*;

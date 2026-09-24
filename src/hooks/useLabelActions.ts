@@ -13,10 +13,12 @@ import {
 import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
 import { isLabelCompatibleWithShape } from "../types/annotation";
 import type { ProjectConfig } from "../lib/importers";
+import { useLabelSamples } from "./useLabelSamples";
 
 export type LabelActions = ReturnType<typeof useLabelActions>;
 
 export interface UseLabelActionsParams {
+  folderPath?: string;
   activeProjectConfig: ProjectConfig | null;
   activeProjectConfigPath: string;
   annotationsByImage: Record<string, AnnotationShape[]>;
@@ -55,6 +57,7 @@ export interface UseLabelActionsParams {
 }
 
 export function useLabelActions({
+  folderPath = "",
   activeProjectConfig,
   activeProjectConfigPath,
   annotationsByImage,
@@ -82,6 +85,7 @@ export function useLabelActions({
   setTemplates,
   updateAnnotation,
 }: UseLabelActionsParams) {
+  const labelSamples = useLabelSamples(folderPath, savedLabels, selectedTemplateId);
   function reportError(caughtError: unknown) {
     setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
   }
@@ -127,7 +131,11 @@ export function useLabelActions({
   }
 
   async function selectTemplate(templateId: string) {
-    if (isLabelDirty && !(await confirmAction("放弃当前未保存的标签修改？"))) {
+    if (labelSamples.busy) return;
+    if (
+      (isLabelDirty || labelSamples.dirty) &&
+      !(await confirmAction("放弃当前未保存的标签修改？"))
+    ) {
       return;
     }
 
@@ -135,6 +143,7 @@ export function useLabelActions({
     if (!template) {
       return;
     }
+    labelSamples.reset();
 
     if (template.id === projectTemplateId) {
       applyProjectTemplate(template, template.labels);
@@ -146,6 +155,7 @@ export function useLabelActions({
   }
 
   async function newTemplate() {
+    if (labelSamples.busy) return;
     const name = await promptText("新模板名称");
     if (!name?.trim()) {
       return;
@@ -158,29 +168,36 @@ export function useLabelActions({
     };
 
     const nextTemplates = [...templates, template];
+    if (!(await persistSavedLabels(nextTemplates))) return;
     setTemplates(nextTemplates);
     setSelectedTemplateId(template.id);
-    persistUserTemplates(nextTemplates);
-    applySavedLabels(template.labels);
+    applySavedLabels(template.labels, false);
   }
 
   async function saveTemplate() {
+    if (labelSamples.busy) return;
+    // Sample images belong to the project directory, including when the current
+    // labels come from a read-only template. Saving only images needs no clone.
+    if (!isLabelDirty && labelSamples.dirty) {
+      if (await labelSamples.save(labels, async () => {})) await labelSamples.refresh();
+      return;
+    }
     if (selectedTemplateId === projectTemplateId) {
       await saveProjectLabels(labels, false);
       return;
     }
 
     if (!isUserTemplate(selectedTemplateId) || readOnlyTemplateIds.has(selectedTemplateId)) {
-      saveTemplateAs();
+      await saveTemplateAs();
       return;
     }
 
     const nextTemplates = templates.map((template) =>
       template.id === selectedTemplateId ? { ...template, labels } : template,
     );
+    if (!(await persistSavedLabels(nextTemplates))) return;
     setTemplates(nextTemplates);
-    persistUserTemplates(nextTemplates);
-    applySavedLabels(labels);
+    applySavedLabels(labels, false);
   }
 
   async function saveTemplateAndUpdateAnnotations() {
@@ -192,6 +209,7 @@ export function useLabelActions({
   }
 
   async function cancelLabelChanges() {
+    if (labelSamples.busy) return;
     const danglingDraftLabels = findDanglingDraftLabels(labels, savedLabels, usedLabelIds);
     let keptDraftLabels: LabelConfig[] = [];
     if (danglingDraftLabels.length > 0) {
@@ -229,6 +247,7 @@ export function useLabelActions({
       }
     }
 
+    labelSamples.reset();
     if (selectedTemplateId === projectTemplateId && activeProjectConfig) {
       applyProjectTemplate(activeProjectConfig.template, savedLabels);
       if (keptDraftLabels.length > 0) {
@@ -254,6 +273,7 @@ export function useLabelActions({
   }
 
   async function saveTemplateAs() {
+    if (labelSamples.busy) return;
     const name = await promptText("另存为模板名称");
     if (!name?.trim()) {
       return;
@@ -265,14 +285,15 @@ export function useLabelActions({
       labels,
     };
     const nextTemplates = [...templates, template];
+    if (!(await persistSavedLabels(nextTemplates))) return;
 
     setTemplates(nextTemplates);
     setSelectedTemplateId(template.id);
-    persistUserTemplates(nextTemplates);
-    applySavedLabels(labels);
+    applySavedLabels(labels, false);
   }
 
   async function deleteTemplate() {
+    if (labelSamples.busy) return;
     if (
       !isUserTemplate(selectedTemplateId) ||
       selectedTemplateId === projectTemplateId ||
@@ -319,18 +340,18 @@ export function useLabelActions({
     }
   }
 
-  function applySavedLabels(nextLabels: LabelConfig[]) {
+  function applySavedLabels(nextLabels: LabelConfig[], persist = true) {
     replaceMissingAnnotationLabels(nextLabels);
     setLabels(nextLabels);
     setSavedLabels(nextLabels);
     setCurrentLabelId(nextLabels[0]?.id ?? DEFAULT_LABELS[0].id);
     setIsLabelDirty(false);
-    saveLabelConfigs(nextLabels).catch(reportError);
+    if (persist) saveLabelConfigs(nextLabels).catch(reportError);
   }
 
   async function saveProjectLabels(nextLabels: LabelConfig[], updateAnnotations: boolean) {
     if (!activeProjectConfig || !activeProjectConfigPath) {
-      applySavedLabels(nextLabels);
+      if (await persistSavedLabels()) applySavedLabels(nextLabels, false);
       return;
     }
 
@@ -363,17 +384,25 @@ export function useLabelActions({
     }
 
     const nextConfig = { ...activeProjectConfig, labels: nextLabels };
-    if (updateAnnotations) {
-      try {
-        replaceAnnotations(nextAnnotationsByImage, nextLabels);
-      } catch (error) {
-        reportError(error);
-        return;
-      }
-    }
+    if (
+      !(await labelSamples.save(nextLabels, async () => {
+        // File/name validation happens before any annotation mutation.
+        if (updateAnnotations) replaceAnnotations(nextAnnotationsByImage, nextLabels);
+        try {
+          await saveProjectConfig(activeProjectConfigPath, nextConfig);
+        } catch (error) {
+          if (updateAnnotations)
+            replaceAnnotations(annotationsByImage, [
+              ...savedLabels,
+              ...labels.filter((label) => !savedLabels.some((saved) => saved.id === label.id)),
+            ]);
+          throw error;
+        }
+      }))
+    )
+      return;
     setActiveProjectConfig(nextConfig);
     applyProjectTemplate(activeProjectConfig.template, nextLabels);
-    saveProjectConfig(activeProjectConfigPath, nextConfig).catch(reportError);
   }
 
   function replaceMissingAnnotationLabels(nextLabels: LabelConfig[]) {
@@ -388,14 +417,31 @@ export function useLabelActions({
   }
 
   function persistUserTemplates(nextTemplates: LabelTemplate[]) {
-    saveLabelTemplates(
+    writeUserTemplates(nextTemplates).catch(reportError);
+  }
+
+  function writeUserTemplates(nextTemplates: LabelTemplate[]) {
+    return saveLabelTemplates(
       nextTemplates
         .filter((template) => isUserTemplate(template.id) && template.id !== projectTemplateId)
         .filter((template) => !readOnlyTemplateIds.has(template.id)),
-    ).catch(reportError);
+    );
+  }
+
+  function persistSavedLabels(nextTemplates?: LabelTemplate[]) {
+    return labelSamples.save(labels, async () => {
+      if (nextTemplates) await writeUserTemplates(nextTemplates);
+      try {
+        await saveLabelConfigs(labels);
+      } catch (error) {
+        if (nextTemplates) await writeUserTemplates(templates);
+        throw error;
+      }
+    });
   }
 
   return {
+    labelSamples,
     applyProjectTemplate,
     clearProjectTemplate,
     cancelLabelChanges,

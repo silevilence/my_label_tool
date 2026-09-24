@@ -1,4 +1,5 @@
 import { OperationStatus } from "./operations/OperationStatus";
+import type { LabelSamples } from "../hooks/useLabelSamples";
 import { scopePaths, useAnnotationStore } from "../store/useAnnotationStore";
 import { useOperations } from "../store/useOperations";
 import { useShortcut } from "../hooks/useShortcut";
@@ -79,6 +80,7 @@ const ImageSearchDialog = lazy(async () => {
 });
 
 interface AppLayoutProps {
+  labelSamples?: LabelSamples;
   reextractVideo?: (source: string) => void;
   openProjectSettings?: () => void;
   projectSettings?: ReactNode;
@@ -221,6 +223,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({
+  labelSamples,
   reextractVideo,
   openProjectSettings,
   projectSettings,
@@ -427,6 +430,7 @@ export function AppLayout({
         className={`flex min-h-0 flex-1 ${annotationsBusy ? "pointer-events-none opacity-60" : ""}`}
       >
         <AppSidebar
+          labelSamples={labelSamples}
           reextractVideo={reextractVideo}
           openProjectSettings={openProjectSettings}
           videos={videos}

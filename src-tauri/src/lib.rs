@@ -22,6 +22,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::list_label_samples,
+            commands::preview_project_label_sample,
+            commands::create_label_sample_crop,
+            commands::discard_label_sample_crop,
+            commands::preview_label_sample,
+            commands::prepare_label_samples,
+            commands::finish_label_samples,
+            commands::open_label_sample_directory,
             commands::run_script,
             commands::cancel_script,
             commands::script_host_available,
@@ -95,6 +103,7 @@ pub fn run() {
             ) {
                 commands::cancel_all_pt_conversions_and_wait();
                 scripting::registry::shutdown();
+                media::label_sample_crops::shutdown();
                 media::video::shutdown();
                 commands::cancel_all_prelabel_tasks();
                 commands::cancel_all_runtime_downloads();

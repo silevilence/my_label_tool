@@ -1,4 +1,36 @@
 import type { VideoExtractionSettings } from "../types/project-settings";
+import type { LabelSample, LabelSampleChange, LabelSampleBounds, LabelSampleCrop } from "../types/label-sample";
+import { LABEL_SAMPLE_ZH_CN as sampleText } from "../i18n/label-sample.zh-CN";
+
+export function previewProjectLabelSample(folder: string, path: string, bounds: LabelSampleBounds): Promise<string> {
+  return invoke("preview_project_label_sample", { folder, path, bounds });
+}
+export function createLabelSampleCrop(folder: string, path: string, bounds: LabelSampleBounds): Promise<LabelSampleCrop> {
+  return invoke("create_label_sample_crop", { folder, path, bounds });
+}
+export function discardLabelSampleCrop(path: string): Promise<void> {
+  return invoke("discard_label_sample_crop", { path });
+}
+
+export function listLabelSamples(folder: string): Promise<LabelSample[]> {
+  return invoke("list_label_samples", { folder });
+}
+export function previewLabelSample(path: string): Promise<string> {
+  return invoke("preview_label_sample", { path });
+}
+export function prepareLabelSamples(folder: string, changes: LabelSampleChange[]): Promise<number> {
+  return invoke("prepare_label_samples", { folder, changes });
+}
+export function finishLabelSamples(token: number, commit: boolean): Promise<void> {
+  return invoke("finish_label_samples", { token, commit });
+}
+export function openLabelSampleDirectory(folder: string): Promise<void> {
+  return invoke("open_label_sample_directory", { folder });
+}
+export async function selectLabelSample(): Promise<string | null> {
+  const path = await open({ multiple: false, filters: [{ name: sampleText.fileFilter, extensions: ["png", "jpg", "jpeg", "bmp"] }] });
+  return typeof path === "string" ? path : null;
+}
 import { extractionSettings } from "./project-settings";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { ScriptEvent, ScriptLimits, ScriptResult, ScriptSnapshot } from "../types/script";

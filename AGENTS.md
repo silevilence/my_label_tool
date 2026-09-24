@@ -123,6 +123,8 @@ my_label_tool/
 | --- | --- |
 | `list_image_files` | 列出文件夹下可加载图片（校验扩展名 + 文件头签名，跳过空文件） |
 | `generate_image_thumbnail` | 宿主专用：按需生成 ≤256px 长边缩略图并缓存（键 = 路径/mtime/大小哈希），返回缓存路径；不向插件开放 |
+| `list_label_samples` / `preview_label_sample` / `prepare_label_samples` / `finish_label_samples` / `open_label_sample_directory` | 宿主专用标签样例图：读取项目 `icon/`、预览所选图片、准备保存与提交/回滚、打开目录；不修改标签/项目数据模型，不向插件或 Lua 开放，见 docs/label-samples.md |
+| `preview_project_label_sample` / `create_label_sample_crop` / `discard_label_sample_crop` | 宿主专用项目标注裁剪：生成内存预览、选中时写出临时 PNG、按已登记的临时路径安全清理；不向插件或 Lua 开放 |
 | `import_video` / `cancel_video_import` / `load_video_project` / `list_project_videos` | 宿主专用离线视频抽帧、取消、帧目录校验与混合项目视频枚举；不向插件开放，详见 docs/video-annotation.md |
 | `reextract_video` | 宿主专用视频重抽帧：校验项目归属，新帧准备成功后回收旧帧；失败回滚，不向插件开放 |
 | `recycle_image_file` | 校验所选目录内的普通图片文件并移入 Windows 回收站；失败不永久删除，仅供宿主 UI 调用，不向插件开放 |

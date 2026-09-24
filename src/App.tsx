@@ -309,6 +309,7 @@ function App() {
   useScopeEscape(gesture.state !== "idle");
   const {
     applyProjectTemplate,
+    labelSamples,
     clearProjectTemplate,
     cancelLabelChanges,
     deleteTemplate,
@@ -320,6 +321,7 @@ function App() {
     selectTemplate,
     updateLabels,
   } = useLabelActions({
+    folderPath,
     activeProjectConfig,
     activeProjectConfigPath,
     annotationsByImage,
@@ -749,6 +751,7 @@ function App() {
   return (
     <>
       <AppLayout
+        labelSamples={labelSamples}
         reextractVideo={
           !projectSettings.loading
             ? (source) =>

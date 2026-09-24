@@ -13,3 +13,5 @@ pub(crate) mod test_support;
 
 pub mod onnx_graph;
 pub(crate) mod onnx_wire;
+pub mod label_samples;
+pub mod label_sample_crops;

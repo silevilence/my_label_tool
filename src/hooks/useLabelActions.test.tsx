@@ -6,12 +6,18 @@ import type { AnnotationShape, LabelConfig } from "../types/annotation";
 
 const promptsApi = vi.hoisted(() => ({
   confirmAction: vi.fn(),
+  promptText: vi.fn(),
 }));
 vi.mock("../lib/prompts", () => promptsApi);
 const tauriApi = vi.hoisted(() => ({
   saveLabelConfigs: vi.fn(async () => {}),
   saveLabelTemplates: vi.fn(async () => {}),
   saveProjectConfig: vi.fn(async () => {}),
+  prepareLabelSamples: vi.fn(async () => 1),
+  finishLabelSamples: vi.fn(async () => {}),
+  listLabelSamples: vi.fn(async () => []),
+  selectLabelSample: vi.fn(async () => "C:/sample.png"),
+  previewLabelSample: vi.fn(async () => "preview"),
 }));
 vi.mock("../lib/tauri-api", () => tauriApi);
 vi.mock("../lib/app-utils", async (importOriginal) => ({
@@ -22,6 +28,7 @@ vi.mock("../lib/app-utils", async (importOriginal) => ({
 const savedA: LabelConfig = { id: "a", name: "行人", color: "#111111", shapeType: "any" };
 const savedB: LabelConfig = { id: "b", name: "车辆", color: "#222222", shapeType: "any" };
 const draftC: LabelConfig = { id: "c", name: "草稿标签", color: "#333333", shapeType: "any" };
+const initialSavedLabels = [savedA, savedB];
 const annotation = (id: string, labelId: string): AnnotationShape => ({
   id,
   type: "rect",
@@ -43,7 +50,7 @@ function renderHarness(overrides: Partial<UseLabelActionsParams> = {}): LabelAct
       labels: [savedA, savedB],
       projectTemplateId: "project-config",
       readOnlyTemplateIds: new Set(["common-detection"]),
-      savedLabels: [savedA, savedB],
+      savedLabels: initialSavedLabels,
       selectedPath: "p1",
       selectedShapeId: null,
       selectedTemplateId: "tpl-user",
@@ -67,11 +74,12 @@ function renderHarness(overrides: Partial<UseLabelActionsParams> = {}): LabelAct
   }
   const root = createRoot(document.createElement("div"));
   act(() => root.render(<Harness />));
-  return controls;
+  return new Proxy({} as LabelActions, { get: (_target, key) => Reflect.get(controls, key) });
 }
 
 beforeEach(() => {
   promptsApi.confirmAction.mockClear();
+  promptsApi.promptText.mockReset();
   for (const mock of Object.values(tauriApi)) mock.mockClear();
 });
 
@@ -226,4 +234,66 @@ it("hints when selecting a draft-only label as current label", () => {
   showMessage.mockClear();
   act(() => controls.selectCurrentLabel(savedA.id));
   expect(showMessage).not.toHaveBeenCalled();
+});
+
+it("keeps label drafts when sample preparation fails before persistence", async () => {
+  tauriApi.prepareLabelSamples.mockRejectedValueOnce(new Error("sample conflict"));
+  const setSavedLabels = vi.fn();
+  const controls = renderHarness({ folderPath: "C:/project", setSavedLabels });
+  await act(() => controls.saveTemplate());
+  expect(setSavedLabels).not.toHaveBeenCalled();
+  expect(tauriApi.saveLabelConfigs).not.toHaveBeenCalled();
+  expect(controls.labelSamples.error).toBe("sample conflict");
+});
+
+it("rolls samples back if label persistence fails and restores the previous templates", async () => {
+  tauriApi.saveLabelConfigs.mockRejectedValueOnce(new Error("write failed"));
+  const setSavedLabels = vi.fn();
+  const controls = renderHarness({ folderPath: "C:/project", setSavedLabels });
+  await act(() => controls.saveTemplate());
+  expect(tauriApi.finishLabelSamples).toHaveBeenCalledWith(1, false);
+  expect(tauriApi.saveLabelTemplates).toHaveBeenCalledTimes(2);
+  expect(setSavedLabels).not.toHaveBeenCalled();
+});
+
+it("saves sample-only edits on built-in templates without a save-as prompt", async () => {
+  const controls = renderHarness({
+    folderPath: "C:/project",
+    selectedTemplateId: "common-detection",
+    isLabelDirty: false,
+  });
+  await act(() => controls.labelSamples.choose(savedA.id));
+  expect(controls.labelSamples.dirty).toBe(true);
+  await act(() => controls.saveTemplate());
+  expect(promptsApi.promptText).not.toHaveBeenCalled();
+  expect(tauriApi.saveLabelTemplates).not.toHaveBeenCalled();
+  expect(tauriApi.finishLabelSamples).toHaveBeenCalledWith(1, true);
+  expect(controls.labelSamples.dirty).toBe(false);
+});
+
+it("does not prepare sample files when saving a built-in template is cancelled", async () => {
+  promptsApi.promptText.mockResolvedValue(null);
+  const controls = renderHarness({
+    folderPath: "C:/project",
+    selectedTemplateId: "common-detection",
+  });
+  await act(() => controls.saveTemplate());
+  expect(tauriApi.prepareLabelSamples).not.toHaveBeenCalled();
+});
+
+it("saves renamed labels with their original names for sample migration", async () => {
+  const renamed = { ...savedA, name: "人员" };
+  const setSavedLabels = vi.fn();
+  const controls = renderHarness({
+    folderPath: "C:/project",
+    labels: [renamed, savedB],
+    setSavedLabels,
+  });
+  await act(() => controls.saveTemplate());
+  expect(tauriApi.prepareLabelSamples).toHaveBeenCalledWith("C:/project", [
+    { name: "人员", originalName: "行人", sourcePath: undefined, clear: false },
+    { name: "车辆", originalName: "车辆", sourcePath: undefined, clear: false },
+  ]);
+  expect(tauriApi.finishLabelSamples).toHaveBeenCalledWith(1, true);
+  expect(setSavedLabels).toHaveBeenCalledWith([renamed, savedB]);
 });

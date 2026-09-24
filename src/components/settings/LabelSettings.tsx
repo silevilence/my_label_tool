@@ -3,7 +3,11 @@ import { detectConflicts } from "../../lib/shortcuts";
 import { useShortcutStore } from "../../store/useShortcutStore";
 import { INTERACTION_ZH_CN as interactionText } from "../../i18n/interaction.zh-CN";
 import { Overlay } from "../overlay/Overlay";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { LabelSamples } from "../../hooks/useLabelSamples";
+import { LABEL_SAMPLE_ZH_CN as sampleText } from "../../i18n/label-sample.zh-CN";
+import { sampleNameError } from "../../lib/label-samples";
+import { LabelSampleCell } from "./LabelSampleCell";
 import { DEFAULT_LABEL_COLORS } from "../../lib/defaults/labels";
 import { PROJECT_TEMPLATE_ID } from "../../lib/importers";
 import { confirmAction } from "../../lib/prompts";
@@ -16,6 +20,7 @@ import {
 } from "../../types/annotation";
 
 interface LabelSettingsProps {
+  samples?: LabelSamples;
   labels: LabelConfig[];
   templates: LabelTemplate[];
   pluginTemplateSources: ReadonlyMap<string, string>;
@@ -35,6 +40,7 @@ interface LabelSettingsProps {
 }
 
 export function LabelSettings({
+  samples,
   labels,
   templates,
   pluginTemplateSources,
@@ -55,6 +61,12 @@ export function LabelSettings({
   const [newLabelName, setNewLabelName] = useState("");
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [formError, setFormError] = useState("");
+  const dirty = isDirty || !!samples?.dirty;
+  const sampleConflict = samples?.enabled ? sampleNameError(labels) : "";
+  const refreshSamples = samples?.refresh;
+  useEffect(() => {
+    if (isManageOpen) void refreshSamples?.();
+  }, [isManageOpen, refreshSamples, samples?.revision]);
 
   function addLabel() {
     const name = newLabelName.trim();
@@ -132,6 +144,7 @@ export function LabelSettings({
 
       <div className="mt-3 grid gap-2">
         <select
+          disabled={samples?.busy}
           className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
           value={selectedTemplateId}
           onChange={(event) => onSelectTemplate(event.target.value)}
@@ -152,16 +165,23 @@ export function LabelSettings({
           type="button"
           onClick={() => setIsManageOpen(true)}
         >
-          管理模板和标签{isDirty ? " *" : ""}
+          管理模板和标签{dirty ? " *" : ""}
         </button>
       </div>
 
       {isManageOpen && (
-        <Overlay onClose={() => setIsManageOpen(false)} label={interactionText.labels} size="wide">
-          <section className="scrollbar-dark max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+        <Overlay
+          onClose={() => {
+            if (!samples?.busy) setIsManageOpen(false);
+          }}
+          label={interactionText.labels}
+          size="wide"
+        >
+          <section className="scrollbar-dark max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-slate-100">管理模板和标签</h2>
               <button
+                disabled={samples?.busy}
                 aria-label="关闭"
                 className="rounded border border-slate-700 px-2 py-1 text-sm text-slate-300 hover:bg-slate-800"
                 type="button"
@@ -171,7 +191,7 @@ export function LabelSettings({
               </button>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <fieldset disabled={samples?.busy} className="mt-4 grid min-w-0 grid-cols-2 gap-2">
               <button
                 className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700"
                 type="button"
@@ -182,21 +202,23 @@ export function LabelSettings({
               <button
                 className="rounded bg-sky-500 px-3 py-1 text-sm font-medium text-white hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700"
                 type="button"
-                disabled={!isDirty}
+                disabled={!dirty || !!sampleConflict}
                 onClick={onSaveTemplate}
               >
                 保存
               </button>
               {!canSaveTemplate && (
                 <p className="col-span-2 text-xs leading-relaxed text-amber-300">
-                  {LABEL_DRAFT_ZH_CN.builtInSaveHint}
+                  {samples?.dirty && !isDirty
+                    ? sampleText.onlyImagesHint
+                    : LABEL_DRAFT_ZH_CN.builtInSaveHint}
                 </p>
               )}
               {selectedTemplateId === PROJECT_TEMPLATE_ID && (
                 <button
                   className="rounded bg-emerald-500 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
                   type="button"
-                  disabled={!isDirty}
+                  disabled={!dirty || !!sampleConflict}
                   onClick={onSaveAndUpdateTemplate}
                 >
                   保存并更新标注
@@ -205,7 +227,7 @@ export function LabelSettings({
               <button
                 className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
                 type="button"
-                disabled={!isDirty}
+                disabled={!dirty}
                 onClick={onCancelChanges}
               >
                 取消修改
@@ -226,13 +248,39 @@ export function LabelSettings({
               >
                 删除模板
               </button>
-            </div>
+            </fieldset>
             {isDirty && <p className="mt-3 text-xs text-amber-300">有未保存的标签修改。</p>}
+            {samples?.dirty && <p className="mt-2 text-xs text-amber-300">{sampleText.pending}</p>}
+            <div className="mt-4 flex items-start justify-between gap-4 rounded-lg border border-slate-700 bg-slate-950/50 p-3">
+              <div className="text-xs leading-relaxed text-slate-400">
+                <h3 className="mb-1 font-medium text-slate-200">{sampleText.title}</h3>
+                <p>{samples?.enabled ? sampleText.hint : sampleText.disabled}</p>
+                {samples?.enabled && <p className="mt-1">{sampleText.external}</p>}
+              </div>
+              <button
+                type="button"
+                disabled={!samples?.enabled || samples.busy}
+                className="shrink-0 rounded border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                onClick={() => void samples?.openDirectory()}
+              >
+                {sampleText.open}
+              </button>
+            </div>
+            {(sampleConflict || samples?.error) && (
+              <p role="alert" className="mt-2 text-xs text-red-300">
+                {sampleConflict || samples?.error}
+              </p>
+            )}
+            {(samples?.loading || samples?.busy) && (
+              <p role="status" className="mt-2 text-xs text-sky-300">
+                {samples.busy ? sampleText.saving : sampleText.loading}
+              </p>
+            )}
 
-            <div className="mt-4 space-y-2">
+            <fieldset disabled={samples?.busy} className="mt-4 min-w-0 space-y-2">
               {labels.map((label) => (
                 <div
-                  className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2"
+                  className="grid grid-cols-[minmax(90px,1fr)_auto_auto_auto_auto_auto] items-center gap-2 rounded-lg border border-slate-800 p-2"
                   key={label.id}
                 >
                   <input
@@ -241,6 +289,7 @@ export function LabelSettings({
                     aria-label="标签名称"
                     onChange={(event) => patchLabel(label.id, { name: event.target.value })}
                   />
+                  <LabelSampleCell label={label} samples={samples} conflict={!!sampleConflict} />
                   <input
                     className="h-8 w-10 rounded border border-slate-700 bg-slate-950"
                     type="color"
@@ -281,9 +330,9 @@ export function LabelSettings({
                   </button>
                 </div>
               ))}
-            </div>
+            </fieldset>
 
-            <div className="mt-3 flex gap-2">
+            <fieldset disabled={samples?.busy} className="mt-3 flex min-w-0 gap-2">
               <input
                 aria-label="新标签名称"
                 className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
@@ -303,7 +352,7 @@ export function LabelSettings({
               >
                 新增
               </button>
-            </div>
+            </fieldset>
           </section>
         </Overlay>
       )}
