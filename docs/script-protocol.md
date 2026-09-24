@@ -23,8 +23,10 @@ annotations 遵守原图像素坐标，size 为可选 `{width,height}`，默认�
 
 ## 脚本命令
 
-入口 `annotool.call(name, args)`，常量 `annotool.API_VERSION == 1`。
-命令唯一注册表为 `src-tauri/script-host/src/commands.rs`（含参数、结果、错误、所需段落与实现函数）。
+入口 `annotool.<name>(args)`，例如 `annotool.images()`、`annotool.annotations {imagePath="a.png"}`。
+兼容入口 `annotool.call(name, args)` 保留；两种入口共用参数校验、返回值转换与失败登记。
+常量 `annotool.API_VERSION == 1`；直接函数是兼容性增量，传输协议不变。
+命令唯一注册表为 `src-tauri/script-host/src/commands.rs`（含参数、结果、错误、所需段落与实现函数），Lua 直接函数由该表自动生成。
 
 | 命令 | 参数 | 返回 |
 | --- | --- | --- |
@@ -50,6 +52,7 @@ TIMEOUT、CANCELLED、LINE_LIMIT、HOST_UNAVAILABLE。任何失败不写回。
 ## 扩展
 
 只依赖已有快照：注册一个命令及实现。需要新数据：增加一个可选快照段落及构建逻辑。
+每个命令必须在 `examples/scripts/catalog.json` 登记对应的可执行 `.lua` 示例；新增或修改接口时同步更新示例、界面说明和用户指南。前端与真实宿主验收共用这份目录，宿主测试检查全部注册命令的示例覆盖与执行结果，具体规范见 `AGENTS.md` §7。
 需要宿主动作或惰性拉取：先开 ADR，新增反向请求方向及生命周期控制；v1 不提供。
 新可选字段必须保持旧字段语义，破坏性变更使用新协议版本并协商。
 

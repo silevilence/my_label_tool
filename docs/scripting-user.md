@@ -4,7 +4,7 @@
 应用不会自动发现或运行项目中的脚本。项目配置不保存脚本；脚本库只保存在本机应用数据目录的 `scripts/`。
 
 1. 打开图片项目，检查当前标签与作用域。
-2. 点击「新建脚本」或「从文件打开」，编辑 Lua 文本。默认示例给所有图形连续编号。
+2. 在脚本库选择「内置示例（只读）」或「我的脚本」。也可点击「新建脚本」或「从文件打开」，编辑 Lua 文本；新建默认给所有图形连续编号。
 3. 可选「带入图片尺寸」；读取尺寸需要逐图加载，默认关闭，随脚本保存。
 4. 点击「运行脚本」。未保存的文本也能运行，未提交的图片保持原样。
 5. 需要先核对时开启「先看差异再应用」（默认关闭），运行后选择图片比较前后数据，再应用或取消。
@@ -20,17 +20,19 @@
 
 ## 命令速查
 
-所有调用使用 `annotool.call("命令", 参数表)`，版本常量 `annotool.API_VERSION` 当前为 1。
+使用 `annotool.命令(参数表)` 直接调用 Lua 函数，版本常量 `annotool.API_VERSION` 当前为 1。
+单个表参数也可以省略括号，例如 `annotool.label {name="车辆"}`。使用点号 `.` 调用，无需冒号 `:`。
+旧的 `annotool.call("命令", 参数表)` 仍然兼容，两种写法的参数、返回值与失败处理相同。
 
 | 命令 | 示例 | 返回 |
 | --- | --- | --- |
-| images | `annotool.call("images")` | 有序图片数组（path、name） |
-| label | `annotool.call("label", {name="车辆"})` | 当前标签配置，含 id 和 name；也可按 `{id=查询所得id}` 查询 |
-| annotations | `annotool.call("annotations", {imagePath=image.path})` | 原始快照标注数组 |
-| submit | `annotool.call("submit", {imagePath=image.path, annotations=shapes})` | 登记覆盖结果，尚不写回 |
-| size | `annotool.call("size", {imagePath=image.path})` | width、height；必须先开启带入尺寸 |
-| progress | `annotool.call("progress", {completed=i, total=#images})` | 更新进度 |
-| log | `annotool.call("log", {message="处理完成"})` | 面板日志 |
+| images | `annotool.images()` | 有序图片数组（path、name） |
+| label | `annotool.label({name="车辆"})` | 当前标签配置，含 id 和 name；也可按 `{id=查询所得id}` 查询 |
+| annotations | `annotool.annotations({imagePath=image.path})` | 原始快照标注数组 |
+| submit | `annotool.submit({imagePath=image.path, annotations=shapes})` | 登记覆盖结果，尚不写回 |
+| size | `annotool.size({imagePath=image.path})` | width、height；必须先开启带入尺寸 |
+| progress | `annotool.progress({completed=i, total=#images})` | 更新进度 |
+| log | `annotool.log({message="处理完成"})` | 面板日志 |
 
 参数不含导出格式、解析模式或归一化开关。标注使用当前标签体系，坐标为原图像素：
 矩形 `[x,y,width,height]`、多边形顶点序列、点 `[x,y]`。Lua 表数组从 1 开始。
@@ -38,6 +40,23 @@
 标签名必须唯一；不要硬编码标签 id，持有 label 查询结果的 id。
 
 ## 可直接使用的示例
+
+脚本界面内置 7 个逐功能示例和 3 个组合示例，与「我的脚本」分组展示。
+内置示例的源码和运行选项只读，可查看、运行、导出，不能保存覆盖、重命名或删除。
+点击「复制到我的脚本」会创建独立副本，随后可自由编辑；副本保留示例的尺寸选项。
+尺寸示例自动开启「带入图片尺寸」。修改标注的示例可先开启差异预览，确认后再应用。
+
+| 功能示例 | 行为与条件 |
+| --- | --- |
+| [枚举图片](../examples/scripts/images.lua) | 列出作用域内图片名称与路径，只读 |
+| [查询标签](../examples/scripts/label.lua) | 通过已有标注演示按 ID 和名称查询；至少一个标注，标签名唯一 |
+| [读取标注](../examples/scripts/annotations.lua) | 输出数量、类型、标签与像素坐标，只读 |
+| [提交标注](../examples/scripts/submit.lua) | 给已有标注设置 `attributes.reviewed=true`，会修改标注 |
+| [读取尺寸](../examples/scripts/size.lua) | 输出原图宽高，自动带入尺寸，只读 |
+| [报告进度](../examples/scripts/progress.lua) | 逐图读取并报告进度，只读 |
+| [输出日志](../examples/scripts/log.lua) | 输出处理消息与图片数，只读 |
+
+组合示例：
 
 - [按标签名改派](../examples/scripts/reassign.lua)：项目需有唯一的「车辆」「汽车」两个标签。
 - [坐标修正](../examples/scripts/coordinates.lua)：将坐标改为非负值。

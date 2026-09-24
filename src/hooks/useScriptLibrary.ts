@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_SCRIPT_SOURCE } from "../lib/defaults/scripts";
+import { BUILTIN_SCRIPTS, DEFAULT_SCRIPT_SOURCE } from "../lib/defaults/scripts";
 import {
   exportScriptFile,
   loadScriptLibrary,
@@ -22,7 +22,9 @@ export function useScriptLibrary() {
   const [saved, setSaved] = useState({ source: DEFAULT_SCRIPT_SOURCE, includeDimensions: false });
   const [pending, setPending] = useState(true);
   const working = useRef(false);
-  const dirty = source !== saved.source || includeDimensions !== saved.includeDimensions;
+  const example = BUILTIN_SCRIPTS.find((entry) => entry.id === selectedId);
+  const dirty =
+    !example && (source !== saved.source || includeDimensions !== saved.includeDimensions);
   const selected = library?.scripts.find((entry) => entry.id === selectedId);
   useEffect(() => {
     let mounted = true;
@@ -78,36 +80,52 @@ export function useScriptLibrary() {
   return {
     library,
     selected,
+    selectedId,
+    example,
     source,
-    setSource,
+    setSource: (value: string) => {
+      if (!example) setSource(value);
+    },
     includeDimensions,
-    setIncludeDimensions,
+    setIncludeDimensions: (value: boolean) => {
+      if (!example) setIncludeDimensions(value);
+    },
     pending,
     dirty,
     discardChanges,
     select: (id: string) =>
       work(async () => {
-        if (!library || id === selectedId || !(await discardChanges())) return;
-        const entry = library.scripts.find((entry) => entry.id === id);
-        if (entry)
+        if (id === selectedId || !(await discardChanges())) return;
+        const builtin = BUILTIN_SCRIPTS.find((entry) => entry.id === id);
+        if (builtin) {
+          setDocument(id, builtin.source, builtin.includeDimensions);
+          return;
+        }
+        const entry = library?.scripts.find((entry) => entry.id === id);
+        if (library && entry)
           setDocument(id, await readLibraryScript(library, id), entry.options.includeDimensions);
       }),
-    create: () =>
+    create: (copyExample = false) =>
       work(async () => {
         if (!library || !(await discardChanges())) return;
-        const name = await promptText(text.newScript, text.defaultName);
+        const template = copyExample ? example : undefined;
+        const name = await promptText(
+          template ? text.copyExample : text.newScript,
+          template?.name ?? text.defaultName,
+        );
         if (!name?.trim()) return;
         const entry = {
           id: crypto.randomUUID(),
           name: name.trim(),
-          options: { includeDimensions: false },
+          options: { includeDimensions: template?.includeDimensions ?? false },
         };
-        setLibrary(await saveLibraryScript(library, entry, DEFAULT_SCRIPT_SOURCE));
-        setDocument(entry.id, DEFAULT_SCRIPT_SOURCE, false);
+        const content = template?.source ?? DEFAULT_SCRIPT_SOURCE;
+        setLibrary(await saveLibraryScript(library, entry, content));
+        setDocument(entry.id, content, entry.options.includeDimensions);
       }),
     save: () =>
       work(async () => {
-        if (!library) return;
+        if (!library || example) return;
         const name = selected?.name ?? (await promptText(text.saveAs, text.defaultName));
         if (!name?.trim()) return;
         const entry = {
@@ -148,7 +166,9 @@ export function useScriptLibrary() {
       }),
     export: () =>
       work(async () => {
-        const path = await selectScriptExportPath(`${selected?.name ?? text.defaultName}.lua`);
+        const path = await selectScriptExportPath(
+          `${example?.name ?? selected?.name ?? text.defaultName}.lua`,
+        );
         if (path) {
           splitScriptPath(path);
           await exportScriptFile(path, source);

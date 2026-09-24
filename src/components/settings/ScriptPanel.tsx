@@ -8,6 +8,7 @@ import { SCRIPT_ZH_CN as text } from "../../i18n/script.zh-CN";
 import { Overlay } from "../overlay/Overlay";
 import { ScriptDiffPreview } from "./ScriptDiffPreview";
 import { scopePaths, useAnnotationStore } from "../../store/useAnnotationStore";
+import { BUILTIN_SCRIPTS } from "../../lib/defaults/scripts";
 
 export function ScriptPanel({
   open = true,
@@ -56,18 +57,27 @@ export function ScriptPanel({
           <select
             aria-label={text.library}
             disabled={disabled}
-            value={library.selected?.id ?? ""}
+            value={library.selectedId}
             onChange={(event) => void library.select(event.target.value)}
             className="min-w-40 flex-1 rounded border border-slate-600 bg-slate-950 p-2"
           >
             <option value="" disabled>
               {text.unsavedScript}
             </option>
-            {library.library?.scripts.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.name}
-              </option>
-            ))}
+            <optgroup label={text.builtinScripts}>
+              {BUILTIN_SCRIPTS.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label={text.userScripts}>
+              {library.library?.scripts.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </optgroup>
           </select>
           <button
             disabled={disabled || !library.library}
@@ -77,7 +87,7 @@ export function ScriptPanel({
             {text.newScript}
           </button>
           <button
-            disabled={disabled || !library.library}
+            disabled={disabled || !library.library || !!library.example}
             onClick={() => void library.save()}
             className="rounded border border-sky-600 px-3 py-2 text-sky-300 disabled:opacity-40"
           >
@@ -113,11 +123,28 @@ export function ScriptPanel({
             {text.exportFile}
           </button>
         </div>
+        {library.example && (
+          <aside className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-800/60 bg-amber-950/20 p-3 text-sm">
+            <div>
+              <p className="font-medium text-amber-200">{library.example.name}</p>
+              <p className="mt-1 text-slate-300">{library.example.description}</p>
+              <p className="mt-1 text-xs text-amber-200/70">{text.builtinHint}</p>
+            </div>
+            <button
+              disabled={disabled || !library.library}
+              onClick={() => void library.create(true)}
+              className="rounded border border-amber-700 px-3 py-2 text-amber-200 disabled:opacity-40"
+            >
+              {text.copyExample}
+            </button>
+          </aside>
+        )}
         <p className="text-xs text-slate-400">{text.memoryOnly}</p>
         <textarea
           aria-label={text.editor}
           spellCheck={false}
           disabled={disabled}
+          readOnly={!!library.example}
           value={source}
           onChange={(event) => setSource(event.target.value)}
           className="min-h-64 w-full resize-y rounded border border-slate-700 bg-slate-950 p-4 font-mono text-sm leading-6 text-slate-200 focus:border-sky-400 focus:outline-none"
@@ -126,7 +153,7 @@ export function ScriptPanel({
           <label>
             <input
               type="checkbox"
-              disabled={disabled}
+              disabled={disabled || !!library.example}
               checked={includeDimensions}
               onChange={(event) => setIncludeDimensions(event.target.checked)}
             />{" "}

@@ -1,0 +1,12 @@
+[
+  { "id": "images", "command": "images", "includeDimensions": false },
+  { "id": "label", "command": "label", "includeDimensions": false },
+  { "id": "annotations", "command": "annotations", "includeDimensions": false },
+  { "id": "submit", "command": "submit", "includeDimensions": false },
+  { "id": "size", "command": "size", "includeDimensions": true },
+  { "id": "progress", "command": "progress", "includeDimensions": false },
+  { "id": "log", "command": "log", "includeDimensions": false },
+  { "id": "reassign", "includeDimensions": false },
+  { "id": "coordinates", "includeDimensions": false },
+  { "id": "numbering", "includeDimensions": false }
+]

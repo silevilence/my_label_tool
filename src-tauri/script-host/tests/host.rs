@@ -64,15 +64,20 @@ fn real_process_result_does_not_depend_on_chunk_size() {
 }
 #[test]
 fn caught_invalid_parameters_never_emit_prior_submissions() {
-    let (_, messages) = run("annotool.call('submit', {imagePath='0.png', annotations={}}); pcall(function() annotool.call('submit', {imagePath='0.png', annotations=function() end}) end)", 4, 256, 0);
-    assert!(messages
-        .iter()
-        .all(|event| event["event"] != "result" && event["event"] != "done"));
-    assert_eq!(messages.last().unwrap()["event"], "failed");
-    assert_eq!(
-        messages.last().unwrap()["errors"][0]["code"],
-        "INVALID_ARGUMENT"
-    );
+    for source in [
+        "annotool.call('submit', {imagePath='0.png', annotations={}}); pcall(function() annotool.call('submit', {imagePath='0.png', annotations=function() end}) end)",
+        "annotool.submit {imagePath='0.png', annotations={}}; pcall(function() annotool.submit {imagePath='0.png', annotations=function() end} end)",
+    ] {
+        let (_, messages) = run(source, 4, 256, 0);
+        assert!(messages
+            .iter()
+            .all(|event| event["event"] != "result" && event["event"] != "done"));
+        assert_eq!(messages.last().unwrap()["event"], "failed");
+        assert_eq!(
+            messages.last().unwrap()["errors"][0]["code"],
+            "INVALID_ARGUMENT"
+        );
+    }
 }
 #[test]
 fn watchdog_and_whole_process_memory_limit_are_enforced() {

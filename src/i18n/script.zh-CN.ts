@@ -7,6 +7,40 @@ export const SCRIPT_ZH_CN = {
   invalidLimits: (minMemory: number, maxMemory: number, minTime: number, maxTime: number) =>
     `内存上限须为 ${minMemory}–${maxMemory} MiB，总时限须为 ${minTime}–${maxTime} 秒（整数）`,
   library: "脚本库",
+  builtinScripts: "内置示例（只读）",
+  userScripts: "我的脚本",
+  builtinHint: "内置示例只读，可直接运行；需要修改时请先复制到我的脚本。",
+  copyExample: "复制到我的脚本",
+  examples: {
+    images: {
+      name: "枚举图片 · images",
+      description: "按作用域顺序列出图片名称和路径，不修改标注。",
+    },
+    label: {
+      name: "查询标签 · label",
+      description: "按已有标注的标签 ID 和名称查询；需要至少一个标注，标签名须唯一。",
+    },
+    annotations: {
+      name: "读取标注 · annotations",
+      description: "查看每张图片的标注数量、类型、标签和原图像素坐标。",
+    },
+    submit: {
+      name: "提交标注 · submit",
+      description: "为已有标注设置 reviewed=true，并提交完整数组；会修改标注，可整轮撤销。",
+    },
+    size: { name: "读取尺寸 · size", description: "输出图片宽高，自动带入图片尺寸，不修改标注。" },
+    progress: { name: "报告进度 · progress", description: "逐图读取标注并报告进度，不修改标注。" },
+    log: { name: "输出日志 · log", description: "将处理消息输出到脚本面板，不修改标注。" },
+    reassign: {
+      name: "按标签名改派",
+      description: "将“车辆”改派为“汽车”；需存在这两个唯一名称的标签，会修改标注。",
+    },
+    coordinates: { name: "坐标修正", description: "将负坐标改为 0，会修改标注，可整轮撤销。" },
+    numbering: {
+      name: "跨图编号",
+      description: "按作用域顺序给标注写入连续编号 attributes.sequence，会修改标注。",
+    },
+  },
   limitsTitle: "脚本资源上限",
   limitsSummary: (memory: number, seconds: number) => ` · ${memory} MiB / ${seconds} 秒`,
   memoryLimit: "进程内存上限（MiB）",

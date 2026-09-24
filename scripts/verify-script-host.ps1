@@ -10,7 +10,9 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $Executable) { $Executable = Join-Path $repo 'src-tauri/script-tools/label-script-host.exe' }
-foreach ($sample in @('reassign', 'coordinates', 'numbering')) {
+$catalog = ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $repo 'examples/scripts/catalog.json')))
+foreach ($entry in $catalog) {
+    $sample = $entry.id
     $source = [IO.File]::ReadAllText((Join-Path $repo "examples/scripts/$sample.lua"))
     $labels = @(
         @{id='generated-vehicle'; name='车辆'; color='#fff'; shapeType='rect'},
@@ -19,6 +21,9 @@ foreach ($sample in @('reassign', 'coordinates', 'numbering')) {
     $images = @(0..1 | ForEach-Object {
         @{path="image-$_.png"; name="image-$_.png"; annotations=@(@{id="shape-$_"; labelId='generated-vehicle'; type='rect'; points=@(-1,2,30,40); frameIndex=0})}
     })
+    if ($entry.includeDimensions) {
+        foreach ($sampleImage in $images) { $sampleImage['size'] = @{width=100; height=80} }
+    }
     $messages = @(
         @{op='hello'; version=1; limits=@{maxMemoryMiB=256; timeoutSeconds=30}},
         @{op='section'; name='labels'; items=$labels},
@@ -53,8 +58,12 @@ foreach ($sample in @('reassign', 'coordinates', 'numbering')) {
     $events = @($lines | ForEach-Object { ConvertFrom-Json $_ })
     if ($events[-1].event -ne 'done' -or @($events | Where-Object event -eq 'failed').Count -gt 0) { throw "$sample failed: $lines" }
     $results = @($events | Where-Object event -eq 'result')
-    if ($results.Count -ne 2) { throw "$sample expected two image results" }
+    $expectedResults = if ($sample -in @('submit', 'reassign', 'coordinates', 'numbering')) { 2 } else { 0 }
+    if ($results.Count -ne $expectedResults) { throw "$sample expected $expectedResults image results" }
+    if ($expectedResults -eq 0 -and @($events | Where-Object event -eq 'log').Count -eq 0) { throw "$sample expected log output" }
     switch ($sample) {
+        'submit' { if ($results[0].annotations[0].attributes.reviewed -ne $true) { throw 'Attribute submission failed' } }
+        'progress' { if (@($events | Where-Object { $_.event -eq 'progress' -and $_.completed -eq 2 -and $_.total -eq 2 }).Count -eq 0) { throw 'Progress reporting failed' } }
         'reassign' { if ($results[0].annotations[0].labelId -ne 'generated-car') { throw 'Label resolution failed' } }
         'coordinates' { if ($results[0].annotations[0].points[0] -ne 0) { throw 'Coordinate correction failed' } }
         'numbering' { if ($results[1].annotations[0].attributes.sequence -ne 2) { throw 'Cross-image numbering failed' } }

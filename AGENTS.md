@@ -105,7 +105,7 @@ my_label_tool/
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── examples/plugins/               # 插件开发示例（label-preset-demo / exporter-labelme-demo / prelabel-demo）
-├── examples/scripts/               # 按标签名改派、坐标修正、跨图编号 Lua 示例
+├── examples/scripts/               # Lua 内置示例源文件与 catalog.json：逐命令示例及组合用法
 ├── containers/                     # 独立脚本宿主容器（完整服务端仍在计划区）
 ├── scripts/                        # 插件打包/验证与一次性 ONNX 核对脚本（verify-onnx-graph.py）
 ├── .github/workflows/              # GitHub Actions：ci.yml、official-models.yml、release.yml
@@ -235,6 +235,8 @@ interface LabelTemplate {
 - 如确实需要单文件超过 1000 行，必须在文件开头用注释说明原因和理由。
 
 ## 7. 测试要求
+
+- **Lua 功能与示例同步（强制）**：每个对脚本开放的功能必须有可运行的内置 `.lua` 示例，并登记在 `examples/scripts/catalog.json`；命令示例的 `command` 对应 `src-tauri/script-host/src/commands.rs` 注册名。新增功能或修改功能行为、参数、返回值、调用方式时，必须在同一变更中新增或更新相关示例、界面说明（`src/i18n/script.zh-CN.ts`）与用户文档，不得只改实现。示例需注明前置条件、运行选项及是否修改标注，使用公开 Lua 接口，不硬编码标签 ID。前端从同一目录导入示例，独立于用户脚本库展示，源码与示例选项只读，禁止保存、重命名或删除内置项；复制后生成独立的可编辑用户脚本。提交前运行宿主示例覆盖测试（检查每个命令有示例且所有目录项实际执行成功）、脚本界面只读/分组/复制测试及 `scripts/verify-script-host.ps1`，确保源码、界面和真实宿主一致。
 
 - **Lua 脚本**：开发者规格 `docs/scripting.md`、用户指南 `docs/scripting-user.md`、内部协议 `docs/script-protocol.md`、验证记录 `docs/verification/lua-host.md`。独立宿主测试运行 `cargo test --manifest-path src-tauri/script-host/Cargo.toml`，runner 集成测试 `cargo test --manifest-path src-tauri/Cargo.toml --test script_conformance`；桌面/容器真实示例通过 `scripts/verify-script-host.ps1` 验证。脚本不进入插件注册表、权限或版本面。前端共享校验位于 `src/lib/annotation-validation.ts`；运行编排/脚本库位于 `src/lib/script-*.ts` 与 `src/hooks/useScript*.ts`，进程编排位于 `src-tauri/src/scripting/`，整轮撤销以独立历史条目实现，不能改变普通批量操作逐图撤销语义。
 

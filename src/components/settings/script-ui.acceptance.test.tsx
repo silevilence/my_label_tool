@@ -8,6 +8,8 @@ import { useOverlayStore } from "../../store/useOverlayStore";
 import { SCRIPT_ZH_CN as text } from "../../i18n/script.zh-CN";
 import type { AnnotationShape, LabelConfig } from "../../types/annotation";
 import type { ScriptResult } from "../../types/script";
+import { BUILTIN_SCRIPTS } from "../../lib/defaults/scripts";
+import { confirmAction } from "../../lib/prompts";
 
 const api = vi.hoisted(() => ({
   scriptHostAvailable: vi.fn(),
@@ -45,6 +47,13 @@ function button(name: string) {
 async function click(name: string) {
   await act(async () => button(name).click());
 }
+async function selectScript(id: string) {
+  const select = document.querySelector<HTMLSelectElement>(`select[aria-label="${text.library}"]`)!;
+  await act(async () => {
+    select.value = id;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   api.scriptHostAvailable.mockResolvedValue(true);
@@ -77,7 +86,7 @@ afterEach(() => {
 });
 
 it("offers editable Lua, scope, persisted options and default-off preview", async () => {
-  expect(document.querySelector("textarea")?.value).toContain("annotool.call");
+  expect(document.querySelector("textarea")?.value).toContain("annotool.images()");
   expect(document.body.textContent).toContain(text.scope(1));
   const boxes = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
   expect(boxes.map((box) => box.checked)).toEqual([false, false]);
@@ -146,4 +155,69 @@ it("restores and persists resource defaults", async () => {
     maxMemoryMiB: 256,
     timeoutSeconds: 30,
   });
+});
+
+it("separates every built-in example and prevents editing or persisting it", async () => {
+  expect(document.querySelector(`optgroup[label="${text.builtinScripts}"]`)?.children).toHaveLength(
+    BUILTIN_SCRIPTS.length,
+  );
+  expect(document.querySelector(`optgroup[label="${text.userScripts}"]`)).not.toBeNull();
+  for (const example of BUILTIN_SCRIPTS) {
+    expect(example.name).toBeTruthy();
+    expect(example.description).toBeTruthy();
+    expect(example.source).toBeTruthy();
+    await selectScript(example.id);
+    const editor = document.querySelector("textarea")!;
+    expect(editor.value).toBe(example.source);
+    expect(editor.readOnly).toBe(true);
+    expect(editor.disabled).toBe(false);
+    expect(button(text.saveScript).disabled).toBe(true);
+    expect(button(text.rename).disabled).toBe(true);
+    expect(button(text.deleteScript).disabled).toBe(true);
+    const dimensions = document.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(dimensions.checked).toBe(example.includeDimensions);
+    expect(dimensions.disabled).toBe(true);
+    expect(document.body.textContent).toContain(example.description);
+  }
+  expect(api.exportTextFiles).not.toHaveBeenCalled();
+  expect(api.deleteScriptFile).not.toHaveBeenCalled();
+});
+
+it("copies a built-in with its options into an editable user script without changing the original", async () => {
+  const example = BUILTIN_SCRIPTS.find((entry) => entry.id === "builtin:size")!;
+  await selectScript(example.id);
+  await click(text.copyExample);
+  expect(document.querySelector("textarea")?.readOnly).toBe(false);
+  expect(document.querySelector("textarea")?.value).toBe(example.source);
+  expect(button(text.saveScript).disabled).toBe(false);
+  expect(document.querySelector(`optgroup[label="${text.userScripts}"]`)?.children).toHaveLength(1);
+  const files = api.exportTextFiles.mock.calls[0][1] as { path: string; content: string }[];
+  expect(files.find((file) => file.path.endsWith(".lua"))?.content).toBe(example.source);
+  const index = JSON.parse(files.find((file) => file.path === "index.json")!.content);
+  expect(index.scripts).toHaveLength(1);
+  expect(index.scripts[0].id).not.toContain("builtin:");
+  expect(index.scripts[0].options.includeDimensions).toBe(true);
+  await selectScript(example.id);
+  expect(document.querySelector("textarea")?.readOnly).toBe(true);
+  expect(document.querySelector("textarea")?.value).toBe(example.source);
+});
+
+it("keeps an unsaved user draft when switching to an example is declined", async () => {
+  const dimensions = document.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  await act(async () => dimensions.click());
+  vi.mocked(confirmAction).mockResolvedValueOnce(false);
+  await selectScript("builtin:images");
+  expect(document.querySelector("textarea")?.readOnly).toBe(false);
+  expect(dimensions.checked).toBe(true);
+  expect(button(text.saveScript + text.dirtyMark).disabled).toBe(false);
+});
+
+it("runs a read-only example and returns to an editable new script", async () => {
+  api.runScript.mockResolvedValue([]);
+  await selectScript("builtin:images");
+  await click(text.run);
+  expect(api.runScript.mock.calls[0][2]).toBe(BUILTIN_SCRIPTS[0].source);
+  expect(useAnnotationStore.getState().annotationsByImage.a).toEqual([shape]);
+  await click(text.newScript);
+  expect(document.querySelector("textarea")?.readOnly).toBe(false);
 });

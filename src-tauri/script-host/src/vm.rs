@@ -1,5 +1,5 @@
 use crate::{
-    commands::Context,
+    commands::{Context, COMMANDS},
     protocol::{Failure, Limits, Result, Snapshot},
 };
 use mlua::{chunk::ChunkMode, HookTriggers, Lua, LuaOptions, LuaSerdeExt, StdLib, VmState};
@@ -58,49 +58,51 @@ pub fn execute(
     let result = lua.scope(|scope| {
         let api = lua.create_table()?;
         api.set("API_VERSION", 1)?;
-        api.set(
-            "call",
-            scope.create_function_mut(|lua, mut arguments: mlua::MultiValue| {
-                // Binding/conversion failures must be latched too: pcall may catch them.
-                let converted = (|| {
-                    let name = match arguments.pop_front() {
-                        Some(mlua::Value::String(name)) => name.to_str()?.to_owned(),
-                        _ => {
-                            return Err(mlua::Error::RuntimeError(
-                                "command name must be a string".into(),
-                            ))
-                        }
-                    };
-                    let mut args = match arguments.pop_front() {
-                        None | Some(mlua::Value::Nil) => json!({}),
-                        Some(args) => lua.from_value::<Value>(args)?,
-                    };
-                    // Lua has one empty table literal for both maps and arrays.
-                    // At submit.annotations the contract unambiguously requires an array.
-                    if name == "submit"
-                        && args["annotations"]
-                            .as_object()
-                            .is_some_and(|map| map.is_empty())
-                    {
-                        args["annotations"] = json!([]);
+        let dispatch = scope.create_function_mut(|lua, mut arguments: mlua::MultiValue| {
+            // Binding/conversion failures must be latched too: pcall may catch them.
+            let converted = (|| {
+                let name = match arguments.pop_front() {
+                    Some(mlua::Value::String(name)) => name.to_str()?.to_owned(),
+                    _ => {
+                        return Err(mlua::Error::RuntimeError(
+                            "command name must be a string".into(),
+                        ))
                     }
-                    Ok((name, args))
-                })();
-                let (name, args) = converted.inspect_err(|error| {
-                    context
-                        .borrow_mut()
-                        .failures
-                        .push(Failure::new("INVALID_ARGUMENT", error));
-                })?;
-                let value = context
+                };
+                let mut args = match arguments.pop_front() {
+                    None | Some(mlua::Value::Nil) => json!({}),
+                    Some(args) => lua.from_value::<Value>(args)?,
+                };
+                // Lua has one empty table literal for both maps and arrays.
+                // At submit.annotations the contract unambiguously requires an array.
+                if name == "submit"
+                    && args["annotations"]
+                        .as_object()
+                        .is_some_and(|map| map.is_empty())
+                {
+                    args["annotations"] = json!([]);
+                }
+                Ok((name, args))
+            })();
+            let (name, args) = converted.inspect_err(|error| {
+                context
                     .borrow_mut()
-                    .call(&name, args, emit)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("{}: {}", e.code, e.message)))?;
-                lua.to_value(&value).inspect_err(|error| {
-                    context.borrow_mut().failures.push(lua_error(error.clone()));
-                })
-            })?,
-        )?;
+                    .failures
+                    .push(Failure::new("INVALID_ARGUMENT", error));
+            })?;
+            let value = context
+                .borrow_mut()
+                .call(&name, args, emit)
+                .map_err(|e| mlua::Error::RuntimeError(format!("{}: {}", e.code, e.message)))?;
+            lua.to_value(&value).inspect_err(|error| {
+                context.borrow_mut().failures.push(lua_error(error.clone()));
+            })
+        })?;
+        api.set("call", dispatch.clone())?;
+        // Bind the command name once; both entry points share validation and failure latching.
+        for command in COMMANDS {
+            api.set(command.name, dispatch.bind(command.name)?)?;
+        }
         lua.globals().set("annotool", api)?;
         lua.load(source)
             .set_name("script")
@@ -170,6 +172,125 @@ mod tests {
         );
     }
     #[test]
+    fn builtin_catalog_covers_every_command_and_all_examples_execute() {
+        let catalog: Vec<Value> =
+            serde_json::from_str(include_str!("../../../examples/scripts/catalog.json")).unwrap();
+        for command in COMMANDS {
+            assert!(
+                catalog.iter().any(|entry| entry["command"] == command.name),
+                "Missing example for {}",
+                command.name
+            );
+        }
+        let mut ids = std::collections::HashSet::new();
+        for entry in catalog {
+            let id = entry["id"].as_str().unwrap();
+            assert!(ids.insert(id.to_owned()), "Duplicate example: {id}");
+            if let Some(command) = entry["command"].as_str() {
+                assert!(COMMANDS.iter().any(|registered| registered.name == command));
+            }
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/scripts")
+                .join(format!("{id}.lua"));
+            let source = std::fs::read_to_string(path).unwrap();
+            let mut snapshot = snapshot();
+            if entry["includeDimensions"].as_bool().unwrap() {
+                for image in &mut snapshot.images {
+                    image["size"] = json!({"width":100,"height":80});
+                }
+            }
+            let mut events = vec![];
+            let result = execute(
+                snapshot,
+                &source,
+                &Limits {
+                    max_memory_mi_b: 64,
+                    timeout_seconds: 1,
+                },
+                &mut |event| {
+                    events.push(event);
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert!(result.failures.is_empty(), "{id}: {:?}", result.failures);
+            match id {
+                "submit" => assert_eq!(result.results["a.png"][0]["attributes"]["reviewed"], true),
+                "reassign" | "coordinates" | "numbering" => assert_eq!(result.results.len(), 2),
+                _ => {
+                    assert!(
+                        result.results.is_empty(),
+                        "{id} must not modify annotations"
+                    );
+                    assert!(
+                        !events.is_empty(),
+                        "{id} must demonstrate observable output"
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn direct_functions_and_legacy_calls_share_results_and_events() {
+        let source = r#"
+            local images = api.images()
+            assert(#images == 2 and images[1].path == 'a.png')
+            local target = api.label {name='汽车'}
+            assert(api.label({id=target.id}).name == '汽车')
+            local size = api.size {imagePath=images[1].path}
+            assert(size.width == 100 and size.height == 80)
+            local shapes = api.annotations {imagePath=images[1].path}
+            shapes[1].labelId = target.id
+            assert(api.submit {imagePath=images[1].path, annotations=shapes})
+            assert(api.submit {imagePath=images[2].path, annotations={}})
+            assert(api.progress {completed=2, total=2})
+            assert(api.log {message='处理完成'})
+        "#;
+        let mut outputs = vec![];
+        for direct in [true, false] {
+            let mut snapshot = snapshot();
+            snapshot.images[0]["size"] = json!({"width":100,"height":80});
+            let mut events = vec![];
+            let prelude = if direct {
+                "local api = annotool"
+            } else {
+                "local api = setmetatable({}, {__index=function(_, name) return function(args) return annotool.call(name, args) end end})"
+            };
+            let result = execute(
+                snapshot,
+                &format!("{prelude}\n{source}"),
+                &Limits {
+                    max_memory_mi_b: 64,
+                    timeout_seconds: 1,
+                },
+                &mut |event| {
+                    events.push(event);
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert!(result.failures.is_empty(), "{:?}", result.failures);
+            assert_eq!(result.results["a.png"][0]["labelId"], "generated-b");
+            assert_eq!(result.results["b.png"], json!([]));
+            assert_eq!(
+                events,
+                vec![
+                    json!({"event":"progress","completed":2,"total":2}),
+                    json!({"event":"log","message":"处理完成"}),
+                ]
+            );
+            outputs.push((result.results, events));
+        }
+        assert_eq!(outputs[0], outputs[1]);
+        for command in COMMANDS {
+            let result = run(&format!(
+                "assert(type(annotool.{}) == 'function')",
+                command.name
+            ));
+            assert!(result.failures.is_empty(), "{}", command.name);
+        }
+    }
+    #[test]
     fn unsafe_libraries_bytecode_and_allocation_are_rejected() {
         for source in [
             "io.open('x')",
@@ -199,6 +320,9 @@ mod tests {
     #[test]
     fn caught_binding_and_conversion_errors_invalidate_prior_submissions() {
         for call in [
+            "annotool.submit {imagePath='a.png', annotations=function() end}",
+            "annotool.submit()",
+            "annotool.annotations(42)",
             "annotool.call('submit', {imagePath='a.png', annotations=function() end})",
             "annotool.call({}, {})",
             "annotool.call()",
