@@ -168,7 +168,8 @@ it("separates every built-in example and prevents editing or persisting it", asy
     expect(example.source).toBeTruthy();
     await selectScript(example.id);
     const editor = document.querySelector("textarea")!;
-    expect(editor.value).toBe(example.source);
+    // textarea.value normalizes CRLF/CR to LF, including Windows Git checkouts.
+    expect(editor.value).toBe(example.source.replace(/\r\n?/g, "\n"));
     expect(editor.readOnly).toBe(true);
     expect(editor.disabled).toBe(false);
     expect(button(text.saveScript).disabled).toBe(true);
@@ -188,7 +189,7 @@ it("copies a built-in with its options into an editable user script without chan
   await selectScript(example.id);
   await click(text.copyExample);
   expect(document.querySelector("textarea")?.readOnly).toBe(false);
-  expect(document.querySelector("textarea")?.value).toBe(example.source);
+  expect(document.querySelector("textarea")?.value).toBe(example.source.replace(/\r\n?/g, "\n"));
   expect(button(text.saveScript).disabled).toBe(false);
   expect(document.querySelector(`optgroup[label="${text.userScripts}"]`)?.children).toHaveLength(1);
   const files = api.exportTextFiles.mock.calls[0][1] as { path: string; content: string }[];
@@ -199,7 +200,7 @@ it("copies a built-in with its options into an editable user script without chan
   expect(index.scripts[0].options.includeDimensions).toBe(true);
   await selectScript(example.id);
   expect(document.querySelector("textarea")?.readOnly).toBe(true);
-  expect(document.querySelector("textarea")?.value).toBe(example.source);
+  expect(document.querySelector("textarea")?.value).toBe(example.source.replace(/\r\n?/g, "\n"));
 });
 
 it("keeps an unsaved user draft when switching to an example is declined", async () => {
