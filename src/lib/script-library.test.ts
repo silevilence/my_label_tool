@@ -1,16 +1,38 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { exportScriptFile, loadScriptLibrary, parseScriptIndex, readLibraryScript, removeLibraryScript, saveLibraryScript, splitScriptPath } from "./script-library";
+import {
+  exportScriptFile,
+  loadScriptLibrary,
+  parseScriptIndex,
+  readLibraryScript,
+  removeLibraryScript,
+  saveLibraryScript,
+  splitScriptPath,
+} from "./script-library";
 const fs = vi.hoisted(() => new Map<string, string>());
 vi.mock("./tauri-api", () => ({
   scriptLibraryDirectory: async () => "/data/scripts",
-  readTextFile: async (path: string) => { if (!fs.has(path)) throw new Error("missing"); return fs.get(path); },
-  exportTextFiles: async (directory: string, files: { path: string; content: string }[]) => { for (const file of files) fs.set(`${directory}/${file.path}`, file.content); },
-  deleteScriptFile: async (id: string) => { fs.delete(`/data/scripts/${id}.lua`); },
+  readTextFile: async (path: string) => {
+    if (!fs.has(path)) throw new Error("missing");
+    return fs.get(path);
+  },
+  exportTextFiles: async (directory: string, files: { path: string; content: string }[]) => {
+    for (const file of files) fs.set(`${directory}/${file.path}`, file.content);
+  },
+  deleteScriptFile: async (id: string) => {
+    fs.delete(`/data/scripts/${id}.lua`);
+  },
 }));
-beforeEach(() => { fs.clear(); fs.set("/data/scripts/index.json", '{"schemaVersion":1,"scripts":[]}'); });
+beforeEach(() => {
+  fs.clear();
+  fs.set("/data/scripts/index.json", '{"schemaVersion":1,"scripts":[]}');
+});
 it("persists scripts and options through reload, rename, export and delete using host text commands", async () => {
   let library = await loadScriptLibrary();
-  await saveLibraryScript(library, { id: "id-1", name: "编号", options: { includeDimensions: true } }, "-- 中文\nreturn 1\n");
+  await saveLibraryScript(
+    library,
+    { id: "id-1", name: "编号", options: { includeDimensions: true } },
+    "-- 中文\nreturn 1\n",
+  );
   library = await loadScriptLibrary();
   expect(library.scripts[0].options.includeDimensions).toBe(true);
   const source = await readLibraryScript(library, "id-1");
@@ -24,9 +46,21 @@ it("persists scripts and options through reload, rename, export and delete using
   expect(fs.has("/data/scripts/id-1.lua")).toBe(false);
 });
 it("rejects corrupt indexes, traversal and missing entries", async () => {
-  for (const value of [null, {}, { schemaVersion: 2, scripts: [] }, { schemaVersion: 1, scripts: [null] }, { schemaVersion: 1, scripts: [{ id: "../escape", name: "a", options: { includeDimensions: false } }] }]) expect(() => parseScriptIndex(JSON.stringify(value))).toThrow();
+  for (const value of [
+    null,
+    {},
+    { schemaVersion: 2, scripts: [] },
+    { schemaVersion: 1, scripts: [null] },
+    {
+      schemaVersion: 1,
+      scripts: [{ id: "../escape", name: "a", options: { includeDimensions: false } }],
+    },
+  ])
+    expect(() => parseScriptIndex(JSON.stringify(value))).toThrow();
   const entry = { id: "a", name: "a", options: { includeDimensions: false } };
-  expect(() => parseScriptIndex(JSON.stringify({ schemaVersion: 1, scripts: [entry, entry] }))).toThrow();
+  expect(() =>
+    parseScriptIndex(JSON.stringify({ schemaVersion: 1, scripts: [entry, entry] })),
+  ).toThrow();
   await expect(readLibraryScript(await loadScriptLibrary(), "missing")).rejects.toThrow();
   await expect(removeLibraryScript(await loadScriptLibrary(), "missing")).rejects.toThrow();
   expect(() => splitScriptPath("file.lua")).toThrow();

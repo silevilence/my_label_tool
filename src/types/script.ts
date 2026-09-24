@@ -10,10 +10,21 @@ export interface ScriptSnapshot {
   labels: LabelConfig[];
   images: ScriptImage[];
 }
-export interface ScriptLimits { maxMemoryMiB: number; timeoutSeconds: number }
-export interface ScriptOptions { includeDimensions: boolean }
-export interface ScriptResult { imagePath: string; annotations: unknown[] }
-export interface ScriptFailure { code: string; message: string; imagePath?: string }
+export interface ScriptLimits {
+  maxMemoryMiB: number;
+  timeoutSeconds: number;
+}
+export interface ScriptOptions {
+  includeDimensions: boolean;
+}
+export interface ScriptResult {
+  imagePath: string;
+  annotations: unknown[];
+}
+export interface ScriptFailure {
+  code: string;
+  message: string;
+  imagePath?: string;
+}
 export type ScriptEvent =
-  | { event: "progress"; completed: number; total: number }
-  | { event: "log"; message: string };
+  { event: "progress"; completed: number; total: number } | { event: "log"; message: string };

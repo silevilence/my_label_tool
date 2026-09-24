@@ -11,15 +11,47 @@ export function useScriptLimits() {
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
-    void loadScriptResourceLimits().then((limits) => { validateScriptLimits(limits); if (active) { setValue(limits); setSaved(limits); } }).catch((error: unknown) => { if (active) setError(String(error)); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    void loadScriptResourceLimits()
+      .then((limits) => {
+        validateScriptLimits(limits);
+        if (active) {
+          setValue(limits);
+          setSaved(limits);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) setError(String(error));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
   async function save(next = value) {
     try {
-      validateScriptLimits(next); setLoading(true); setError("");
-      await saveScriptResourceLimits(next); setValue(next); setSaved(next);
-    } catch (error) { const message = error instanceof Error ? error.message : String(error); setError(message); useOperations.getState().pushError(text.limitsTitle, message); }
-    finally { setLoading(false); }
+      validateScriptLimits(next);
+      setLoading(true);
+      setError("");
+      await saveScriptResourceLimits(next);
+      setValue(next);
+      setSaved(next);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setError(message);
+      useOperations.getState().pushError(text.limitsTitle, message);
+    } finally {
+      setLoading(false);
+    }
   }
-  return { value, setValue, saved, loading, error, save, restore: () => save({ ...DEFAULT_SCRIPT_LIMITS }) };
+  return {
+    value,
+    setValue,
+    saved,
+    loading,
+    error,
+    save,
+    restore: () => save({ ...DEFAULT_SCRIPT_LIMITS }),
+  };
 }
