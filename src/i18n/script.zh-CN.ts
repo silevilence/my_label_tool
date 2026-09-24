@@ -1,4 +1,5 @@
 export const SCRIPT_ZH_CN = {
+  title: "Lua 脚本",
   invalidAnnotation: "标注必须是对象",
   invalidLabel: "标注标签为空或不存在",
   invalidShape: "图形类型无效或与标签不兼容",

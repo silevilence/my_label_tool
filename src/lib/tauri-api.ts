@@ -1,6 +1,15 @@
 import type { VideoExtractionSettings } from "../types/project-settings";
 import { extractionSettings } from "./project-settings";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import type { ScriptEvent, ScriptLimits, ScriptResult, ScriptSnapshot } from "../types/script";
+
+export function scriptHostAvailable(): Promise<boolean> { return invoke("script_host_available"); }
+export function runScript(runId: string, snapshot: ScriptSnapshot, source: string, limits: ScriptLimits, onEvent: (event: ScriptEvent) => void): Promise<ScriptResult[]> {
+  const channel = new Channel<ScriptEvent>();
+  channel.onmessage = onEvent;
+  return invoke("run_script", { runId, snapshot, source, limits, onEvent: channel });
+}
+export function cancelScript(runId: string): Promise<void> { return invoke("cancel_script", { runId }); }
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { ProjectVideo, VideoImportResult, VideoProject } from "../types/video";
 import { VIDEO_ZH_CN as videoText } from "../i18n/video.zh-CN";

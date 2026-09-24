@@ -7,6 +7,7 @@ pub use media::onnx_graph::inspect_file as inspect_onnx_graph_file;
 mod models;
 pub mod plugins;
 mod process_control;
+pub mod scripting;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +22,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::run_script,
+            commands::cancel_script,
+            commands::script_host_available,
             commands::import_video,
             commands::reextract_video,
             commands::cancel_video_import,
@@ -86,6 +90,7 @@ pub fn run() {
                 tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
             ) {
                 commands::cancel_all_pt_conversions_and_wait();
+                scripting::registry::shutdown();
                 media::video::shutdown();
                 commands::cancel_all_prelabel_tasks();
                 commands::cancel_all_runtime_downloads();

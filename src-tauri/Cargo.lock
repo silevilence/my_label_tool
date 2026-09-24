@@ -1734,6 +1734,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "label-script-host"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "windows",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1936,6 +1946,7 @@ dependencies = [
  "dunce",
  "futures-util",
  "image",
+ "label-script-host",
  "libc",
  "ort",
  "reqwest",

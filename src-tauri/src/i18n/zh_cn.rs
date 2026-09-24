@@ -922,3 +922,10 @@ pub fn onnx_graph_error(context: &str, offset: usize, reason: &str) -> String {
 pub fn onnx_graph_task_failed(error: impl std::fmt::Display) -> String {
     format!("ONNX 结构解析任务失败：{error}")
 }
+
+pub fn script_host_unavailable() -> String {
+    "当前交付未包含脚本宿主，请安装包含脚本宿主的完整版本".into()
+}
+pub fn script_execution_failed(error: impl std::fmt::Display) -> String {
+    format!("脚本执行失败：{error}")
+}
