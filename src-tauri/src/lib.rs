@@ -1,3 +1,4 @@
+pub mod acp;
 mod commands;
 mod i18n;
 mod media;
@@ -22,6 +23,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::run_acp_agent,
+            commands::cancel_acp_agent,
+            commands::respond_acp_permission,
             commands::list_label_samples,
             commands::preview_project_label_sample,
             commands::create_label_sample_crop,
@@ -103,6 +107,7 @@ pub fn run() {
             ) {
                 commands::cancel_all_pt_conversions_and_wait();
                 scripting::registry::shutdown();
+                acp::registry::shutdown();
                 media::label_sample_crops::shutdown();
                 media::video::shutdown();
                 commands::cancel_all_prelabel_tasks();

@@ -33,7 +33,7 @@ pub(crate) struct PipedJobProcess {
     stdout: Option<File>,
     stderr: Option<File>,
     terminated: bool,
-    _sandbox: AppContainerLaunch,
+    _sandbox: Option<AppContainerLaunch>,
 }
 
 // SAFETY: every HANDLE is uniquely owned by this guard. Moving the guard to
@@ -49,24 +49,62 @@ impl PipedJobProcess {
         environment_overrides: &[(&str, &str)],
         environment_removals: &[&str],
     ) -> Result<Self, String> {
+        Self::spawn_inner(
+            executable,
+            arguments,
+            working_directory,
+            Some(sandbox),
+            Some(windows_environment_block_filtered(
+                environment_overrides,
+                environment_removals,
+            )?),
+        )
+    }
+
+    /// User-configured local ACP Agent. Plugin callers must use `spawn`, which
+    /// always requires AppContainer and the filtered plugin environment.
+    pub(crate) fn spawn_acp(
+        executable: &Path,
+        arguments: &[String],
+        working_directory: &Path,
+    ) -> Result<Self, String> {
+        Self::spawn_inner(executable, arguments, working_directory, None, None)
+    }
+
+    fn spawn_inner(
+        executable: &Path,
+        arguments: &[String],
+        working_directory: &Path,
+        sandbox: Option<PluginSandbox<'_>>,
+        environment: Option<Vec<u16>>,
+    ) -> Result<Self, String> {
         let executable = resolve_windows_executable(executable)?;
         let display = executable.path.to_string_lossy();
         let mut command_line = windows_command_line(executable.path.as_os_str(), arguments)?;
         let current_directory = wide_null(working_directory.as_os_str())?;
-        let environment =
-            windows_environment_block_filtered(environment_overrides, environment_removals)?;
         let security = SECURITY_ATTRIBUTES {
             nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
             bInheritHandle: true.into(),
             ..Default::default()
         };
-        let mut app_container = AppContainerLaunch::prepare(
-            sandbox.identity,
-            sandbox.package_root,
-            executable.runtime_root.as_deref(),
-            sandbox.allow_network,
-        )?;
-        let mut security_capabilities = app_container.security_capabilities();
+        let mut app_container = sandbox
+            .map(|sandbox| {
+                AppContainerLaunch::prepare(
+                    sandbox.identity,
+                    sandbox.package_root,
+                    executable.runtime_root.as_deref(),
+                    sandbox.allow_network,
+                )
+            })
+            .transpose()?;
+        let mut security_capabilities = app_container
+            .as_mut()
+            .map(|container| container.security_capabilities());
+        let attribute_count = if security_capabilities.is_some() {
+            2
+        } else {
+            1
+        };
 
         // SAFETY: only the three child pipe endpoints are inherited. The child
         // stays suspended until it belongs to the kill-on-close Job Object.
@@ -111,7 +149,8 @@ impl PipedJobProcess {
             }
 
             let mut attribute_size = 0;
-            let _ = InitializeProcThreadAttributeList(None, 2, None, &mut attribute_size);
+            let _ =
+                InitializeProcThreadAttributeList(None, attribute_count, None, &mut attribute_size);
             if attribute_size == 0 {
                 let error = windows::core::Error::from_win32();
                 close_many(&[
@@ -130,7 +169,7 @@ impl PipedJobProcess {
                 LPPROC_THREAD_ATTRIBUTE_LIST(attribute_storage.as_mut_ptr().cast());
             if let Err(error) = InitializeProcThreadAttributeList(
                 Some(attribute_list),
-                2,
+                attribute_count,
                 None,
                 &mut attribute_size,
             ) {
@@ -167,31 +206,33 @@ impl PipedJobProcess {
                 ]);
                 return Err(text::process_stdio_setup_failed(error));
             }
-            if let Err(error) = UpdateProcThreadAttribute(
-                attribute_list,
-                0,
-                windows::Win32::System::Threading::PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES
-                    as usize,
-                Some(
-                    (&mut security_capabilities
-                        as *mut windows::Win32::Security::SECURITY_CAPABILITIES)
-                        .cast(),
-                ),
-                size_of::<windows::Win32::Security::SECURITY_CAPABILITIES>(),
-                None,
-                None,
-            ) {
-                DeleteProcThreadAttributeList(attribute_list);
-                close_many(&[
-                    stdin_read,
-                    stdin_write,
-                    stdout_read,
-                    stdout_write,
-                    stderr_read,
-                    stderr_write,
-                    job,
-                ]);
-                return Err(text::plugin_sandbox_launch_failed(error));
+            if let Some(security_capabilities) = security_capabilities.as_mut() {
+                if let Err(error) = UpdateProcThreadAttribute(
+                    attribute_list,
+                    0,
+                    windows::Win32::System::Threading::PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES
+                        as usize,
+                    Some(
+                        (security_capabilities
+                            as *mut windows::Win32::Security::SECURITY_CAPABILITIES)
+                            .cast(),
+                    ),
+                    size_of::<windows::Win32::Security::SECURITY_CAPABILITIES>(),
+                    None,
+                    None,
+                ) {
+                    DeleteProcThreadAttributeList(attribute_list);
+                    close_many(&[
+                        stdin_read,
+                        stdin_write,
+                        stdout_read,
+                        stdout_write,
+                        stderr_read,
+                        stderr_write,
+                        job,
+                    ]);
+                    return Err(text::plugin_sandbox_launch_failed(error));
+                }
             }
             let startup = STARTUPINFOEXW {
                 StartupInfo: windows::Win32::System::Threading::STARTUPINFOW {
@@ -211,8 +252,13 @@ impl PipedJobProcess {
                 None,
                 None,
                 true,
-                CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
-                Some(environment.as_ptr().cast()),
+                CREATE_SUSPENDED
+                    | CREATE_UNICODE_ENVIRONMENT
+                    | EXTENDED_STARTUPINFO_PRESENT
+                    | windows::Win32::System::Threading::CREATE_NO_WINDOW,
+                environment
+                    .as_ref()
+                    .map(|environment| environment.as_ptr().cast()),
                 PCWSTR(current_directory.as_ptr()),
                 &raw const startup.StartupInfo,
                 &mut info,

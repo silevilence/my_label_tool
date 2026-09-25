@@ -1,4 +1,6 @@
+mod acp;
 mod image_deletion;
+pub use acp::*;
 mod script;
 pub use script::*;
 mod script_library;

@@ -1,4 +1,15 @@
 import type { VideoExtractionSettings } from "../types/project-settings";
+import type { AcpConfig, AcpEvent, AcpResult } from "../types/acp";
+
+export function runAcpAgent(runId: string, config: AcpConfig, prompt: string, onEvent: (event: AcpEvent) => void): Promise<AcpResult> {
+  const channel = new Channel<AcpEvent>();
+  channel.onmessage = onEvent;
+  return invoke("run_acp_agent", { runId, config, prompt, onEvent: channel });
+}
+export function cancelAcpAgent(runId: string): Promise<void> { return invoke("cancel_acp_agent", { runId }); }
+export function respondAcpPermission(runId: string, requestId: string, optionId: string | null): Promise<void> {
+  return invoke("respond_acp_permission", { runId, requestId, optionId });
+}
 import type { LabelSample, LabelSampleChange, LabelSampleBounds, LabelSampleCrop } from "../types/label-sample";
 import { LABEL_SAMPLE_ZH_CN as sampleText } from "../i18n/label-sample.zh-CN";
 

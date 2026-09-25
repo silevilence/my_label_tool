@@ -130,11 +130,11 @@
   - [x] 补全提示与内置示例、界面命令说明同源维护，宿主新增或修改命令时不出现第二份不一致的提示文本
   - 验收：编辑内置示例时高亮正确，输入命令前缀可补全出注册表命令名，补全接受后代码语法正确；脚本编辑、校验、运行与保存无回归，现有脚本相关测试全部通过
 
-- [ ] **实现 ACP Client 协议接入与 Agent 会话管理**
-  - [ ] 以 ACP（Agent Client Protocol）客户端身份对接用户在本机配置的 ACP Agent：按用户配置的命令与参数以子进程方式启动，经 stdio 完成 JSON-RPC `initialize` 握手与协议版本、能力协商
-  - [ ] 提供会话生命周期管理：新建会话、流式接收 `session/update`、请求可取消、Agent 进程崩溃或断连时有明确反馈并正确回收资源
-  - [ ] Agent 的 `session/request_permission` 请求逐次转发给用户确认，用户拒绝或未确认时操作不执行；Agent 不得绕过确认直接获得文件或项目数据访问
-  - [ ] 保持离线定位：Agent 进程由用户本机配置启动，不经任何在线服务中转；ACP 通道独立于插件注册表与权限模型，不改变插件 API 与协议版本面
+- [x] **实现 ACP Client 协议接入与 Agent 会话管理**
+  - [x] 以 ACP（Agent Client Protocol）客户端身份对接用户在本机配置的 ACP Agent：按用户配置的命令与参数以子进程方式启动，经 stdio 完成 JSON-RPC `initialize` 握手与协议版本、能力协商
+  - [x] 提供会话生命周期管理：新建会话、流式接收 `session/update`、请求可取消、Agent 进程崩溃或断连时有明确反馈并正确回收资源
+  - [x] Agent 的 `session/request_permission` 请求逐次转发给用户确认，用户拒绝或未确认时操作不执行；Agent 不得绕过确认直接获得文件或项目数据访问
+  - [x] 保持离线定位：Agent 进程由用户本机配置启动，不经任何在线服务中转；ACP 通道独立于插件注册表与权限模型，不改变插件 API 与协议版本面
   - 验收：以协议桩进程（沿用 script/plugin conformance 的桩进程模式）自动化验证 `initialize`、`session/new`、`session/prompt`、`session/update` 流式与 `session/request_permission` 往返；进程崩溃、断连、取消与权限拒绝均有明确反馈；未获用户确认的敏感操作不落地
 
 - [ ] **通过 ACP Agent 辅助编写 Lua 脚本**

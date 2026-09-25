@@ -108,6 +108,7 @@ my_label_tool/
 │   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs、script*.rs、label_samples.rs、image_deletion.rs）、models、bin（插件校验/测试桩、inspect_onnx_graph 开发 CLI）
 │   │   ├── media/                  # 图像/视频/模型处理：onnx_metadata.rs、onnx_wire.rs、onnx_graph/（结构解析与静态形状推导）、pt_conversion.rs、prelabel/（runtime、pipeline、inference）、video.rs + video_reextract.rs（ffmpeg 抽帧）、thumbnail.rs、image_deletion.rs + image_recycle_windows.rs（回收站删除）、label_samples.rs + label_sample_crops.rs（标签样例图与项目标注裁剪）
 │   │   ├── scripting/              # 脚本进程编排：runner（快照分块、NDJSON 收发、取消）与运行注册表
+│   │   ├── acp/                    # 宿主 ACP 客户端：JSON-RPC 会话、流式事件、逐次权限确认与进程回收
 │   │   ├── plugins/                # 插件框架：manifest、protocol、runtime、permissions、registry、config
 │   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
 │   ├── tests/                      # 集成测试（plugin_conformance.rs、script_conformance.rs）
@@ -144,6 +145,7 @@ my_label_tool/
 | `export_text_files` | 批量写入文本文件（VOC XML / YOLO txt），路径需为相对安全路径 |
 | `read_text_file` | 读取单个文本文件内容（导入用） |
 | `run_script` / `cancel_script` / `script_host_available` | 宿主专用 Lua 脚本：作用域快照、分段传输、全量结果缓冲与取消；读取机器级上限，不向插件开放 |
+| `run_acp_agent` / `cancel_acp_agent` / `respond_acp_permission` | 宿主专用 ACP 本机 Agent：独立临时目录中的新会话、流式回复、逐次权限确认与取消；不提供文件/项目/终端接口，不属于插件或 Lua 协议，见 docs/acp.md |
 | `script_library_directory` / `delete_script_file` | 宿主脚本库目录初始化与安全删除；脚本内容及索引读写仍复用 `read_text_file` / `export_text_files` |
 | `load_script_resource_limits` / `save_script_resource_limits` | 机器级脚本进程内存与总时限；默认值及范围共享 `src/lib/defaults/script-limits.json`，不写入项目配置 |
 | `list_text_files` | 按扩展名列出文件夹下文本文件（导入用） |

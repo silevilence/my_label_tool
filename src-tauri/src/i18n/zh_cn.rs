@@ -926,6 +926,25 @@ pub fn onnx_graph_task_failed(error: impl std::fmt::Display) -> String {
 pub fn script_host_unavailable() -> String {
     "当前交付未包含脚本宿主，请安装包含脚本宿主的完整版本".into()
 }
+
+pub const ACP_CONFIG: &str = "ACP Agent 配置无效：请检查程序、参数与 1–600 秒超时";
+pub const ACP_PROTOCOL: &str = "ACP Agent 返回了无效协议数据";
+pub const ACP_DISCONNECTED: &str = "ACP Agent 已退出或连接中断";
+pub const ACP_LIMIT: &str = "ACP 请求或响应超过容量限制";
+pub const ACP_CANCELLED: &str = "ACP 请求已取消，脚本未修改";
+pub const ACP_TIMEOUT: &str = "ACP 请求超时，脚本未修改";
+pub const ACP_VERSION: &str = "ACP Agent 协议版本不兼容，需要版本 1";
+pub const ACP_BUSY: &str = "ACP 会话正在运行或请求标识无效";
+pub const ACP_PERMISSION_EXPIRED: &str = "ACP 权限请求已失效或已答复";
+pub const ACP_PERMISSION_REJECTED: &str = "ACP 权限请求已拒绝，本轮回复不应用到脚本";
+pub const ACP_PERMISSION_TITLE: &str = "Agent 请求执行操作";
+pub const ACP_METHOD_DENIED: &str = "此客户端不提供文件、项目数据或终端访问";
+pub fn acp_start_failed(error: impl std::fmt::Display) -> String {
+    format!("ACP Agent 启动或执行失败：{error}")
+}
+pub fn acp_agent_error(error: &serde_json::Value) -> String {
+    format!("ACP Agent 请求失败：{error}")
+}
 pub fn script_execution_failed(error: impl std::fmt::Display) -> String {
     format!("脚本执行失败：{error}")
 }
@@ -938,15 +957,30 @@ pub fn script_invalid_limits() -> String {
     "脚本资源上限无效，请恢复默认或输入允许范围内的整数".into()
 }
 
-pub const LABEL_SAMPLE_DIRECTORY: &str = "样例图目录或文件无效；icon 必须是项目内的普通目录，不能使用链接。";
-pub const LABEL_SAMPLE_IMAGE: &str = "样例图必须是有效的 PNG/JPG/JPEG/BMP，单文件不超过 16 MiB，单次修改不超过 128 MiB。";
+pub const LABEL_SAMPLE_DIRECTORY: &str =
+    "样例图目录或文件无效；icon 必须是项目内的普通目录，不能使用链接。";
+pub const LABEL_SAMPLE_IMAGE: &str =
+    "样例图必须是有效的 PNG/JPG/JPEG/BMP，单文件不超过 16 MiB，单次修改不超过 128 MiB。";
 pub const LABEL_SAMPLE_BUSY: &str = "样例图保存正在进行中或事务已失效。";
 pub const LABEL_SAMPLE_CHANGED: &str = "样例图文件在保存期间被外部修改，请重新打开标签管理后重试。";
 pub const LABEL_SAMPLE_CROP_SOURCE: &str = "样例图裁剪来源必须是当前项目目录内的图片。";
 pub const LABEL_SAMPLE_CROP_BOUNDS: &str = "标注裁剪范围无效或位于图片之外。";
 #[cfg(not(windows))]
 pub const LABEL_SAMPLE_WINDOWS: &str = "打开样例图目录仅支持 Windows。";
-pub fn label_sample_error(error: impl std::fmt::Display) -> String { format!("样例图操作失败：{error}") }
-pub fn label_sample_name(name: &str) -> String { format!("标签「{name}」无法生成有效的 Windows 文件名。") }
-pub fn label_sample_conflict(name: &str) -> String { format!("样例图文件名冲突（不区分大小写）：{name}。请修改标签名称或清理 icon 目录中的同名图片。") }
-pub fn label_sample_rollback(error: impl std::fmt::Display, rollback: impl std::fmt::Display) -> String { format!("{error}；样例图恢复失败：{rollback}") }
+pub fn label_sample_error(error: impl std::fmt::Display) -> String {
+    format!("样例图操作失败：{error}")
+}
+pub fn label_sample_name(name: &str) -> String {
+    format!("标签「{name}」无法生成有效的 Windows 文件名。")
+}
+pub fn label_sample_conflict(name: &str) -> String {
+    format!(
+        "样例图文件名冲突（不区分大小写）：{name}。请修改标签名称或清理 icon 目录中的同名图片。"
+    )
+}
+pub fn label_sample_rollback(
+    error: impl std::fmt::Display,
+    rollback: impl std::fmt::Display,
+) -> String {
+    format!("{error}；样例图恢复失败：{rollback}")
+}

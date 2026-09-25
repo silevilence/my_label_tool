@@ -7,7 +7,8 @@ export type OperationResource =
   | "video-frames"
   | "model-download"
   | "onnx-runtime"
-  | "app-update";
+  | "app-update"
+  | "acp-agent";
 type Resources = OperationResource | readonly OperationResource[];
 export type OperationKind = "success" | "warning" | "error";
 export interface OperationView {

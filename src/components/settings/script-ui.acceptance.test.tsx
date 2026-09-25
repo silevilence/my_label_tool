@@ -3,7 +3,7 @@ import { startCompletion, completionStatus, acceptCompletion } from "@codemirror
 import { undo, redo } from "@codemirror/commands";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { ScriptPanel } from "./ScriptPanel";
 import { useAnnotationStore } from "../../store/useAnnotationStore";
 import { useOperations } from "../../store/useOperations";
@@ -42,6 +42,15 @@ const shape: AnnotationShape = {
 };
 let root: Root;
 let host: HTMLDivElement;
+// jsdom has no layout engine; CodeMirror measures ranges asynchronously.
+beforeAll(() => {
+  Range.prototype.getClientRects = () => Object.assign([], { item: () => null });
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+});
+afterAll(() => {
+  Reflect.deleteProperty(Range.prototype, "getClientRects");
+  Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+});
 function button(name: string) {
   const button = [...document.querySelectorAll("button")].find((b) => b.textContent === name);
   if (!button) throw new Error(`Missing ${name}`);

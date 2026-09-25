@@ -95,7 +95,11 @@ impl AppContainerLaunch {
         let _keep_storage_alive = &self.capability_storage;
         SECURITY_CAPABILITIES {
             AppContainerSid: self.sid,
-            Capabilities: self.capabilities.as_mut_ptr(),
+            Capabilities: if self.capabilities.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                self.capabilities.as_mut_ptr()
+            },
             CapabilityCount: self.capabilities.len() as u32,
             Reserved: 0,
         }
