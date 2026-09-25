@@ -1,4 +1,6 @@
 export const SCRIPT_ZH_CN = {
+  invalidCommandRegistry: "脚本命令注册表无法解析，请检查宿主命令定义",
+  commandReference: "宿主命令说明",
   hideRun: "收起，继续标注",
   title: "Lua 脚本",
   invalidLibrary: "脚本库索引无效，请检查应用数据目录中的 scripts/index.json",

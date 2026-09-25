@@ -1,3 +1,6 @@
+import { EditorView } from "@codemirror/view";
+import { startCompletion, completionStatus, acceptCompletion } from "@codemirror/autocomplete";
+import { undo, redo } from "@codemirror/commands";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -86,7 +89,9 @@ afterEach(() => {
 });
 
 it("offers editable Lua, scope, persisted options and default-off preview", async () => {
-  expect(document.querySelector("textarea")?.value).toContain("annotool.images()");
+  expect(
+    EditorView.findFromDOM(document.querySelector(".cm-editor")!)?.state.doc.toString(),
+  ).toContain("annotool.images()");
   expect(document.body.textContent).toContain(text.scope(1));
   const boxes = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
   expect(boxes.map((box) => box.checked)).toEqual([false, false]);
@@ -98,6 +103,50 @@ it("offers editable Lua, scope, persisted options and default-off preview", asyn
     JSON.parse(files.find((file) => file.path === "index.json")!.content).scripts[0].options
       .includeDimensions,
   ).toBe(true);
+});
+
+it("accepts host completions and preserves editor undo/redo", async () => {
+  const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  await act(async () => {
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: "annotool.im" },
+      selection: { anchor: 11 },
+    });
+    startCompletion(view);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  expect(completionStatus(view.state)).toBe("active");
+  await act(async () => {
+    expect(acceptCompletion(view)).toBe(true);
+  });
+  expect(view.state.doc.toString()).toBe("annotool.images");
+  await act(async () => {
+    undo(view);
+  });
+  expect(view.state.doc.toString()).toBe("annotool.im");
+  await act(async () => {
+    redo(view);
+  });
+  expect(view.state.doc.toString()).toBe("annotool.images");
+});
+
+it("uses Escape to close completion before dismissing the panel", async () => {
+  const close = vi.fn();
+  await act(async () => root.render(<ScriptPanel labels={labels} onClose={close} />));
+  const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  await act(async () => {
+    startCompletion(view);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  await act(async () => {
+    view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  expect(close).not.toHaveBeenCalled();
+  expect(completionStatus(view.state)).toBeNull();
+  await act(async () => {
+    view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  expect(close).toHaveBeenCalledOnce();
 });
 it("keeps cancellation visible and discards even a late successful result", async () => {
   let resolve!: (results: ScriptResult[]) => void;
@@ -167,11 +216,10 @@ it("separates every built-in example and prevents editing or persisting it", asy
     expect(example.description).toBeTruthy();
     expect(example.source).toBeTruthy();
     await selectScript(example.id);
-    const editor = document.querySelector("textarea")!;
-    // textarea.value normalizes CRLF/CR to LF, including Windows Git checkouts.
-    expect(editor.value).toBe(example.source.replace(/\r\n?/g, "\n"));
-    expect(editor.readOnly).toBe(true);
-    expect(editor.disabled).toBe(false);
+    const editor = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+    expect(editor.state.doc.toString()).toBe(example.source.replace(/\r\n?/g, "\n"));
+    expect(editor.state.readOnly).toBe(true);
+    expect(editor.contentDOM.getAttribute("aria-disabled")).toBe("false");
     expect(button(text.saveScript).disabled).toBe(true);
     expect(button(text.rename).disabled).toBe(true);
     expect(button(text.deleteScript).disabled).toBe(true);
@@ -188,8 +236,10 @@ it("copies a built-in with its options into an editable user script without chan
   const example = BUILTIN_SCRIPTS.find((entry) => entry.id === "builtin:size")!;
   await selectScript(example.id);
   await click(text.copyExample);
-  expect(document.querySelector("textarea")?.readOnly).toBe(false);
-  expect(document.querySelector("textarea")?.value).toBe(example.source.replace(/\r\n?/g, "\n"));
+  expect(EditorView.findFromDOM(document.querySelector(".cm-editor")!)?.state.readOnly).toBe(false);
+  expect(EditorView.findFromDOM(document.querySelector(".cm-editor")!)?.state.doc.toString()).toBe(
+    example.source.replace(/\r\n?/g, "\n"),
+  );
   expect(button(text.saveScript).disabled).toBe(false);
   expect(document.querySelector(`optgroup[label="${text.userScripts}"]`)?.children).toHaveLength(1);
   const files = api.exportTextFiles.mock.calls[0][1] as { path: string; content: string }[];
@@ -199,8 +249,10 @@ it("copies a built-in with its options into an editable user script without chan
   expect(index.scripts[0].id).not.toContain("builtin:");
   expect(index.scripts[0].options.includeDimensions).toBe(true);
   await selectScript(example.id);
-  expect(document.querySelector("textarea")?.readOnly).toBe(true);
-  expect(document.querySelector("textarea")?.value).toBe(example.source.replace(/\r\n?/g, "\n"));
+  expect(EditorView.findFromDOM(document.querySelector(".cm-editor")!)?.state.readOnly).toBe(true);
+  expect(EditorView.findFromDOM(document.querySelector(".cm-editor")!)?.state.doc.toString()).toBe(
+    example.source.replace(/\r\n?/g, "\n"),
+  );
 });
 
 it("keeps an unsaved user draft when switching to an example is declined", async () => {
@@ -208,7 +260,7 @@ it("keeps an unsaved user draft when switching to an example is declined", async
   await act(async () => dimensions.click());
   vi.mocked(confirmAction).mockResolvedValueOnce(false);
   await selectScript("builtin:images");
-  expect(document.querySelector("textarea")?.readOnly).toBe(false);
+  expect(EditorView.findFromDOM(document.querySelector(".cm-editor")!)?.state.readOnly).toBe(false);
   expect(dimensions.checked).toBe(true);
   expect(button(text.saveScript + text.dirtyMark).disabled).toBe(false);
 });
@@ -220,5 +272,5 @@ it("runs a read-only example and returns to an editable new script", async () =>
   expect(api.runScript.mock.calls[0][2]).toBe(BUILTIN_SCRIPTS[0].source);
   expect(useAnnotationStore.getState().annotationsByImage.a).toEqual([shape]);
   await click(text.newScript);
-  expect(document.querySelector("textarea")?.readOnly).toBe(false);
+  expect(EditorView.findFromDOM(document.querySelector(".cm-editor")!)?.state.readOnly).toBe(false);
 });

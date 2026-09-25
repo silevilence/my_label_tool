@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { LabelConfig } from "../../types/annotation";
 import { useScriptRun } from "../../hooks/useScriptRun";
 import { useScriptLibrary } from "../../hooks/useScriptLibrary";
@@ -9,6 +9,8 @@ import { Overlay } from "../overlay/Overlay";
 import { ScriptDiffPreview } from "./ScriptDiffPreview";
 import { scopePaths, useAnnotationStore } from "../../store/useAnnotationStore";
 import { BUILTIN_SCRIPTS } from "../../lib/defaults/scripts";
+import { LuaEditor, type LuaEditorHandle } from "./LuaEditor";
+import { SCRIPT_COMMAND_DOCUMENTATION } from "../../lib/script-commands";
 
 export function ScriptPanel({
   open = true,
@@ -20,6 +22,7 @@ export function ScriptPanel({
   onClose: () => void;
 }) {
   const library = useScriptLibrary();
+  const editor = useRef<LuaEditorHandle>(null);
   const limits = useScriptLimits();
   const { source, setSource, includeDimensions, setIncludeDimensions } = library;
   const [previewFirst, setPreviewFirst] = useState(false);
@@ -31,7 +34,7 @@ export function ScriptPanel({
     <Overlay
       open={open}
       onClose={onClose}
-      canDismiss={!library.pending}
+      canDismiss={() => !editor.current?.closeCompletion() && !library.pending}
       label={text.title}
       size="wide"
       operationFeedback
@@ -137,15 +140,20 @@ export function ScriptPanel({
           </aside>
         )}
         <p className="text-xs text-slate-400">{text.memoryOnly}</p>
-        <textarea
-          aria-label={text.editor}
-          spellCheck={false}
+        <LuaEditor
+          ref={editor}
+          key={library.selectedId}
           disabled={disabled}
           readOnly={!!library.example}
           value={source}
-          onChange={(event) => setSource(event.target.value)}
-          className="min-h-64 w-full resize-y rounded border border-slate-700 bg-slate-950 p-4 font-mono text-sm leading-6 text-slate-200 focus:border-sky-400 focus:outline-none"
+          onChange={setSource}
         />
+        <details className="text-xs text-slate-300">
+          <summary>{text.commandReference}</summary>
+          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap">
+            {SCRIPT_COMMAND_DOCUMENTATION}
+          </pre>
+        </details>
         <div className="flex flex-wrap gap-5 text-sm">
           <label>
             <input
