@@ -9,10 +9,14 @@ import { useAnnotationStore } from "../../store/useAnnotationStore";
 import { useOperations } from "../../store/useOperations";
 import { useOverlayStore } from "../../store/useOverlayStore";
 import { SCRIPT_ZH_CN as text } from "../../i18n/script.zh-CN";
+import { ACP_ZH_CN as acpText } from "../../i18n/acp.zh-CN";
+import { ACP_CONFIG_STORAGE_KEY } from "../../lib/defaults/acp";
 import type { AnnotationShape, LabelConfig } from "../../types/annotation";
 import type { ScriptResult } from "../../types/script";
 import { BUILTIN_SCRIPTS } from "../../lib/defaults/scripts";
-import { confirmAction } from "../../lib/prompts";
+import { confirmAction, promptText } from "../../lib/prompts";
+import type { AcpEvent, AcpResult } from "../../types/acp";
+import realGeneratedSource from "../../../docs/verification/acp-generated.lua?raw";
 
 const api = vi.hoisted(() => ({
   scriptHostAvailable: vi.fn(),
@@ -26,6 +30,9 @@ const api = vi.hoisted(() => ({
   selectScriptExportPath: vi.fn(),
   loadScriptResourceLimits: vi.fn(),
   saveScriptResourceLimits: vi.fn(),
+  runAcpAgent: vi.fn(),
+  cancelAcpAgent: vi.fn().mockResolvedValue(undefined),
+  respondAcpPermission: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../lib/tauri-api", () => api);
 vi.mock("../../lib/prompts", () => ({
@@ -67,6 +74,10 @@ async function selectScript(id: string) {
   });
 }
 beforeEach(async () => {
+  localStorage.setItem(
+    ACP_CONFIG_STORAGE_KEY,
+    JSON.stringify({ executable: "test-agent.exe", args: ["acp"], timeoutSeconds: 30 }),
+  );
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   api.scriptHostAvailable.mockResolvedValue(true);
   api.cancelScript.mockResolvedValue(undefined);
@@ -95,6 +106,7 @@ afterEach(() => {
   host.remove();
   useOverlayStore.setState({ stack: [] });
   vi.clearAllMocks();
+  localStorage.clear();
 });
 
 it("offers editable Lua, scope, persisted options and default-off preview", async () => {
@@ -282,4 +294,109 @@ it("runs a read-only example and returns to an editable new script", async () =>
   expect(useAnnotationStore.getState().annotationsByImage.a).toEqual([shape]);
   await click(text.newScript);
   expect(EditorView.findFromDOM(document.querySelector(".cm-editor")!)?.state.readOnly).toBe(false);
+});
+
+const generated = realGeneratedSource.replace(/\r\n?/g, "\n");
+function streamDraft(emit: (event: AcpEvent) => void) {
+  emit({
+    event: "update",
+    sessionId: "test",
+    update: {
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: `\`\`\`lua\n${generated}\`\`\`` },
+    },
+  });
+}
+async function instruction() {
+  const input = document.querySelector<HTMLTextAreaElement>(
+    `textarea[aria-label="${acpText.instruction}"]`,
+  )!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+      input,
+      "记录生成结果",
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+function source() {
+  return EditorView.findFromDOM(document.querySelector(".cm-editor")!)!.state.doc.toString();
+}
+it("streams an independent draft, saves only on confirmation and runs the new editable script", async () => {
+  await selectScript("builtin:images");
+  const original = source();
+  api.runAcpAgent.mockImplementation(async (_id, _config, _prompt, emit) => {
+    streamDraft(emit);
+    return { sessionId: "test", stopReason: "end_turn" };
+  });
+  await instruction();
+  await click(acpText.generate);
+  expect(source()).toBe(original);
+  expect(api.exportTextFiles).not.toHaveBeenCalled();
+  const preview = document.querySelector(`pre[aria-label="${acpText.diff}"]`)?.textContent;
+  for (const line of generated.trim().split("\n")) expect(preview).toContain(line);
+  const prompt = api.runAcpAgent.mock.calls[0][2] as string;
+  expect(prompt).toContain("annotool.images");
+  expect(prompt).not.toContain('"points"');
+  expect(prompt).not.toContain("a.png");
+  vi.mocked(promptText).mockResolvedValueOnce(null);
+  await click(acpText.saveDraft);
+  expect(api.exportTextFiles).not.toHaveBeenCalled();
+  await click(acpText.saveDraft);
+  expect(source()).toBe(generated);
+  expect(EditorView.findFromDOM(document.querySelector(".cm-editor")!)!.state.readOnly).toBe(false);
+  const files = api.exportTextFiles.mock.calls[0][1] as { path: string; content: string }[];
+  expect(files.find((file) => file.path.endsWith(".lua"))?.content).toBe(generated);
+  api.runScript.mockResolvedValue([]);
+  await click(text.run);
+  expect(api.runScript.mock.calls[0][2]).toBe(generated);
+  await selectScript("builtin:images");
+  expect(source()).toBe(original);
+});
+
+it.each(["cancel", "failure", "reject"] as const)(
+  "preserves the editor and library on AI %s",
+  async (mode) => {
+    let finish!: (value: AcpResult) => void;
+    let fail!: (reason: Error) => void;
+    api.runAcpAgent.mockImplementation((_id, _config, _prompt, emit) => {
+      streamDraft(emit);
+      if (mode === "reject")
+        emit({
+          event: "permission",
+          requestId: "1",
+          title: "read file",
+          options: [{ optionId: "yes", name: "yes", kind: "allow_once" }],
+        });
+      return new Promise<AcpResult>((resolve, reject) => {
+        finish = resolve;
+        fail = reject;
+      });
+    });
+    const original = source();
+    await instruction();
+    await click(acpText.generate);
+    if (mode === "cancel") await click(acpText.cancel);
+    if (mode === "reject") await click(acpText.deny);
+    await act(async () => {
+      if (mode === "failure") fail(new Error("disconnected"));
+      else finish({ sessionId: "test", stopReason: "end_turn" });
+    });
+    expect(source()).toBe(original);
+    expect(api.exportTextFiles).not.toHaveBeenCalled();
+    expect(document.querySelector(`section[aria-label="${acpText.draft}"]`)).toBeNull();
+  },
+);
+
+it("blocks saving a draft after its original script changes", async () => {
+  api.runAcpAgent.mockImplementation(async (_id, _config, _prompt, emit) => {
+    streamDraft(emit);
+    return { sessionId: "test", stopReason: "end_turn" };
+  });
+  await instruction();
+  await click(acpText.generate);
+  await selectScript("builtin:images");
+  expect(button(acpText.saveDraft).disabled).toBe(true);
+  expect(document.body.textContent).toContain(acpText.stale);
+  expect(api.exportTextFiles).not.toHaveBeenCalled();
 });

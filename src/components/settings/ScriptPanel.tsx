@@ -9,8 +9,9 @@ import { Overlay } from "../overlay/Overlay";
 import { ScriptDiffPreview } from "./ScriptDiffPreview";
 import { scopePaths, useAnnotationStore } from "../../store/useAnnotationStore";
 import { BUILTIN_SCRIPTS } from "../../lib/defaults/scripts";
-import { LuaEditor, type LuaEditorHandle } from "./LuaEditor";
+import { LuaEditor, closeFocusedLuaCompletion, type LuaEditorHandle } from "./LuaEditor";
 import { SCRIPT_COMMAND_DOCUMENTATION } from "../../lib/script-commands";
+import { ScriptAssistant } from "./ScriptAssistant";
 
 export function ScriptPanel({
   open = true,
@@ -34,7 +35,9 @@ export function ScriptPanel({
     <Overlay
       open={open}
       onClose={onClose}
-      canDismiss={() => !editor.current?.closeCompletion() && !library.pending}
+      canDismiss={() =>
+        !closeFocusedLuaCompletion() && !editor.current?.closeCompletion() && !library.pending
+      }
       label={text.title}
       size="wide"
       operationFeedback
@@ -154,6 +157,13 @@ export function ScriptPanel({
             {SCRIPT_COMMAND_DOCUMENTATION}
           </pre>
         </details>
+        <ScriptAssistant
+          source={source}
+          documentId={library.selectedId}
+          includeDimensions={includeDimensions}
+          disabled={disabled || !library.library}
+          onSave={library.saveGenerated}
+        />
         <div className="flex flex-wrap gap-5 text-sm">
           <label>
             <input

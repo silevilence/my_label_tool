@@ -11,6 +11,7 @@ import {
 import { readTextFile, selectScriptExportPath, selectScriptFile } from "../lib/tauri-api";
 import { confirmAction, promptText } from "../lib/prompts";
 import { SCRIPT_ZH_CN as text } from "../i18n/script.zh-CN";
+import { ACP_ZH_CN as acpText } from "../i18n/acp.zh-CN";
 import { useOperations } from "../store/useOperations";
 
 export function useScriptLibrary() {
@@ -92,6 +93,23 @@ export function useScriptLibrary() {
     pending,
     dirty,
     discardChanges,
+    saveGenerated: async (content: string) => {
+      let saved = false;
+      await work(async () => {
+        if (!library || !(await discardChanges())) return;
+        const name = await promptText(acpText.saveDraft, acpText.generatedName);
+        if (!name?.trim()) return;
+        const entry = {
+          id: crypto.randomUUID(),
+          name: name.trim(),
+          options: { includeDimensions },
+        };
+        setLibrary(await saveLibraryScript(library, entry, content));
+        setDocument(entry.id, content, includeDimensions);
+        saved = true;
+      });
+      return saved;
+    },
     select: (id: string) =>
       work(async () => {
         if (id === selectedId || !(await discardChanges())) return;

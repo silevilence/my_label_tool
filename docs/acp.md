@@ -18,6 +18,10 @@ Windows 在恢复 Agent 主线程前将进程加入 kill-on-close Job Object；�
 
 ## 验证
 
+脚本面板配置与草稿操作见 [用户指南](scripting-user.md#ai-辅助编写可选)。提示词使用与补全/命令参考相同的命令注册表，回复只有正常结束且恰好包含一个完整 Lua 代码块时才成为候选；候选以 diff 展示，确认后创建新脚本。原脚本、选择项或运行选项变化会使候选过期。失败保留上一份候选和脚本库。
+
+真实 Agent 验收需显式运行 `scripts/verify-acp-agent.ps1`，默认测试不会调用模型服务。传入用户指定的程序路径及参数，脚本只发合成测试上下文，拒绝全部权限请求，并将生成结果交给实际 Lua 宿主。已验证的 omp 参数与证据见 [验证记录](verification/acp-agent.md)。
+
 `cargo test --manifest-path src-tauri/Cargo.toml --test acp_conformance` 使用真实桩子进程验证协商、会话、流式输出、权限往返、拒绝与未确认、文件请求拒绝、版本不兼容、崩溃、断连、超时、非法消息、超限及取消。前端会话测试验证迟到结果丢弃和逐次确认。
 
 参考：[ACP 初始化](https://agentclientprotocol.com/protocol/v1/initialization)、[会话建立](https://agentclientprotocol.com/protocol/v1/session-setup)、[提示轮次](https://agentclientprotocol.com/protocol/v1/prompt-turn)。

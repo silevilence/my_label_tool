@@ -12,6 +12,11 @@ import { SCRIPT_ZH_CN as text } from "../../i18n/script.zh-CN";
 export interface LuaEditorHandle {
   closeCompletion: () => boolean;
 }
+export function closeFocusedLuaCompletion() {
+  const focused = document.activeElement;
+  const view = focused instanceof HTMLElement ? EditorView.findFromDOM(focused) : null;
+  return view ? closeCompletion(view) : false;
+}
 const externalChange = Annotation.define<boolean>();
 
 export const LuaEditor = forwardRef<
