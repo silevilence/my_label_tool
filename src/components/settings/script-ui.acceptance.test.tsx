@@ -137,6 +137,9 @@ it("accepts host completions and preserves editor undo/redo", async () => {
     await new Promise((resolve) => setTimeout(resolve, 350));
   });
   expect(completionStatus(view.state)).toBe("active");
+  expect(document.querySelector('[role="listbox"]')?.getAttribute("aria-label")).toBe(
+    text.editorPhrases.Completions,
+  );
   await act(async () => {
     expect(acceptCompletion(view)).toBe(true);
   });
@@ -398,5 +401,64 @@ it("blocks saving a draft after its original script changes", async () => {
   await selectScript("builtin:images");
   expect(button(acpText.saveDraft).disabled).toBe(true);
   expect(document.body.textContent).toContain(acpText.stale);
+  expect(api.exportTextFiles).not.toHaveBeenCalled();
+});
+
+it("preserves undo through the first save but resets it when opening another document", async () => {
+  const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  const original = view.state.doc.toString();
+  await act(async () =>
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: "local edited = true" },
+    }),
+  );
+  await click(text.saveScript + text.dirtyMark);
+  expect(EditorView.findFromDOM(document.querySelector(".cm-editor")!)).toBe(view);
+  await act(async () => {
+    expect(undo(view)).toBe(true);
+  });
+  expect(source()).toBe(original);
+  await selectScript("builtin:images");
+  const other = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  expect(other).not.toBe(view);
+  expect(undo(other)).toBe(false);
+});
+
+it("keeps edited AI drafts when hiding and reopening, and dismisses their completion first", async () => {
+  const close = vi.fn();
+  api.runAcpAgent.mockImplementation(async (_id, _config, _prompt, emit) => {
+    streamDraft(emit);
+    return { sessionId: "test", stopReason: "end_turn" };
+  });
+  await instruction();
+  await click(acpText.generate);
+  const candidate = EditorView.findFromDOM(
+    document.querySelectorAll<HTMLElement>(".cm-editor")[1],
+  )!;
+  await act(async () =>
+    candidate.dispatch({
+      changes: { from: 0, to: candidate.state.doc.length, insert: "annotool.im" },
+      selection: { anchor: 11 },
+    }),
+  );
+  await act(async () => root.render(<ScriptPanel open={false} labels={labels} onClose={close} />));
+  await act(async () => root.render(<ScriptPanel labels={labels} onClose={close} />));
+  const restored = EditorView.findFromDOM(document.querySelectorAll<HTMLElement>(".cm-editor")[1])!;
+  expect(restored.state.doc.toString()).toBe("annotool.im");
+  await act(async () => {
+    // Opening details makes this editor focusable in the real UI.
+    restored.dom.closest("details")!.open = true;
+    restored.focus();
+    startCompletion(restored);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  expect(completionStatus(restored.state)).toBe("active");
+  await act(async () =>
+    restored.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    ),
+  );
+  expect(completionStatus(restored.state)).toBeNull();
+  expect(close).not.toHaveBeenCalled();
   expect(api.exportTextFiles).not.toHaveBeenCalled();
 });

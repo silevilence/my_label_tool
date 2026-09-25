@@ -12,6 +12,7 @@ import { BUILTIN_SCRIPTS } from "../../lib/defaults/scripts";
 import { LuaEditor, closeFocusedLuaCompletion, type LuaEditorHandle } from "./LuaEditor";
 import { SCRIPT_COMMAND_DOCUMENTATION } from "../../lib/script-commands";
 import { ScriptAssistant } from "./ScriptAssistant";
+import { useScriptAssistant } from "../../hooks/useScriptAssistant";
 
 export function ScriptPanel({
   open = true,
@@ -31,6 +32,14 @@ export function ScriptPanel({
   const count = useAnnotationStore((state) => scopePaths(state).length);
   // Hiding retains the editor and active run; switching scripts still confirms discard.
   const disabled = run.busy || library.pending;
+  // Keep assistant drafts and its session alive when the panel is hidden.
+  const assistant = useScriptAssistant({
+    source,
+    documentId: String(library.documentVersion),
+    includeDimensions,
+    disabled: disabled || !library.library,
+    onSave: library.saveGenerated,
+  });
   return (
     <Overlay
       open={open}
@@ -145,7 +154,7 @@ export function ScriptPanel({
         <p className="text-xs text-slate-400">{text.memoryOnly}</p>
         <LuaEditor
           ref={editor}
-          key={library.selectedId}
+          key={library.documentVersion}
           disabled={disabled}
           readOnly={!!library.example}
           value={source}
@@ -157,13 +166,7 @@ export function ScriptPanel({
             {SCRIPT_COMMAND_DOCUMENTATION}
           </pre>
         </details>
-        <ScriptAssistant
-          source={source}
-          documentId={library.selectedId}
-          includeDimensions={includeDimensions}
-          disabled={disabled || !library.library}
-          onSave={library.saveGenerated}
-        />
+        <ScriptAssistant assistant={assistant} />
         <div className="flex flex-wrap gap-5 text-sm">
           <label>
             <input

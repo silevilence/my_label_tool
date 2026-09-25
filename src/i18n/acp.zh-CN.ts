@@ -7,6 +7,7 @@ export const ACP_ZH_CN = {
   rejected: "已拒绝 Agent 权限请求，脚本未修改",
   incomplete: "Agent 未正常完成回复，请重新尝试",
   permission: "Agent 请求权限",
+  permissionDetails: "本次操作详情（由 Agent 提供）",
   permissionHint: "仅本次请求有效。不提供项目数据、文件或终端访问；未经确认不会回复允许。",
   allowOnce: "仅允许本次",
   deny: "拒绝",

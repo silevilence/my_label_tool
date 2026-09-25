@@ -95,11 +95,18 @@ it("does not answer permissions until confirmation and discards refused replies"
       event: "permission",
       requestId: "p",
       title: "tool",
+      details: {
+        rawInput: { command: "read private-file" },
+        locations: [{ path: "private-file" }],
+      },
       options: [{ optionId: "yes", name: "allow", kind: "allow_once" }],
     }),
   );
   expect(api.respondAcpPermission).not.toHaveBeenCalled();
   expect(document.body.textContent).toContain(text.permission);
+  expect(
+    document.querySelector(`pre[aria-label="${text.permissionDetails}"]`)?.textContent,
+  ).toContain("read private-file");
   await act(async () => {
     [...document.querySelectorAll("button")]
       .find((button) => button.textContent === text.deny)!
@@ -124,4 +131,49 @@ it("marks non-success stop reasons as failures", async () => {
   });
   expect(await result).toBeNull();
   expect(useOperations.getState().operations[0].status).toBe("failed");
+});
+
+it("discards a late success even when the cancellation IPC fails", async () => {
+  api.cancelAcpAgent.mockRejectedValueOnce(new Error("cancel IPC failed"));
+  let result!: Promise<string | null>;
+  await act(async () => {
+    result = session.run(config, "test");
+  });
+  await act(async () => session.cancel());
+  expect(useOperations.getState().canStart("acp-agent")).toBe(false);
+  await act(async () => {
+    emit(chunk("late"));
+    resolve({ sessionId: "s", stopReason: "end_turn" });
+    await result;
+  });
+  expect(await result).toBeNull();
+  expect(session.reply).toBe("");
+});
+
+it("keeps the resource and rejects output when both permission and cancel IPC fail", async () => {
+  api.respondAcpPermission.mockRejectedValueOnce(new Error("permission IPC failed"));
+  api.cancelAcpAgent.mockRejectedValueOnce(new Error("cancel IPC failed"));
+  let result!: Promise<string | null>;
+  await act(async () => {
+    result = session.run(config, "test");
+  });
+  await act(async () =>
+    emit({
+      event: "permission",
+      requestId: "p",
+      title: "tool",
+      options: [{ optionId: "yes", name: "allow", kind: "allow_once" }],
+    }),
+  );
+  await act(async () => {
+    await expect(session.respond("p", "yes")).resolves.toBeUndefined();
+  });
+  expect(useOperations.getState().canStart("acp-agent")).toBe(false);
+  expect(session.permissions).toEqual([]);
+  await act(async () => {
+    resolve({ sessionId: "s", stopReason: "end_turn" });
+    await result;
+  });
+  expect(await result).toBeNull();
+  expect(useOperations.getState().canStart("acp-agent")).toBe(true);
 });

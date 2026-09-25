@@ -141,7 +141,7 @@ pub fn run(
                     control.register_permission(&token)?;
                     pending.insert(token.clone(), (id, options.clone()));
                     emit(
-                        json!({"event":"permission","requestId":token,"title":params["toolCall"]["title"].as_str().unwrap_or(text::ACP_PERMISSION_TITLE),"options":options}),
+                        json!({"event":"permission","requestId":token,"title":params["toolCall"]["title"].as_str().unwrap_or(text::ACP_PERMISSION_TITLE),"options":options,"details":params["toolCall"]}),
                     );
                 }
                 _ if value.get("id").is_some() => {

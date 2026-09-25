@@ -70,6 +70,7 @@ fn permissions_require_each_explicit_response_and_never_grant_always() {
             &control,
             &mut |event: Value| {
                 if event["event"] == "permission" {
+                    assert_eq!(event["details"]["rawInput"]["command"], "read private-file");
                     control
                         .respond(
                             event["requestId"].as_str().unwrap(),

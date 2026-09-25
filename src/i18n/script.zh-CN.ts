@@ -1,4 +1,5 @@
 export const SCRIPT_ZH_CN = {
+  editorPhrases: { Completions: "代码补全" },
   invalidCommandRegistry: "脚本命令注册表无法解析，请检查宿主命令定义",
   commandReference: "宿主命令说明",
   hideRun: "收起，继续标注",

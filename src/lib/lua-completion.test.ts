@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { CompletionContext } from "@codemirror/autocomplete";
 import { EditorState } from "@codemirror/state";
-import { StreamLanguage } from "@codemirror/language";
-import { lua } from "@codemirror/legacy-modes/mode/lua";
+import { syntaxTree } from "@codemirror/language";
+import { LUA_LANGUAGE } from "./lua-language";
 import { luaCompletions } from "./lua-completion";
 import {
   parseScriptCommands,
@@ -16,7 +16,7 @@ function complete(doc: string, explicit = false, readOnly = false) {
     new CompletionContext(
       EditorState.create({
         doc,
-        extensions: [StreamLanguage.define(lua), EditorState.readOnly.of(readOnly)],
+        extensions: [LUA_LANGUAGE, EditorState.readOnly.of(readOnly)],
       }),
       doc.length,
       explicit,
@@ -24,6 +24,22 @@ function complete(doc: string, explicit = false, readOnly = false) {
   );
 }
 describe("Lua completions", () => {
+  it("classifies Lua 5.4 keywords and supported library names", () => {
+    const state = EditorState.create({
+      doc: 'goto finish\nmath.tointeger(1)\nutf8.len("中")',
+      extensions: [LUA_LANGUAGE],
+    });
+    const tokens: Record<string, string> = {};
+    syntaxTree(state).iterate({
+      enter(node) {
+        if (!node.type.isTop) tokens[state.sliceDoc(node.from, node.to)] = node.name;
+      },
+    });
+    expect(tokens.goto).toBe("keyword");
+    expect(tokens["math.tointeger"]).toBe("variableName.standard");
+    expect(tokens["utf8.len"]).toBe("variableName.standard");
+    expect(tokens['"中"']).toBe("string");
+  });
   it("uses every registered command with its signature and shared description", () => {
     const result = complete("annotool.im")!;
     expect(result.from).toBe(0);

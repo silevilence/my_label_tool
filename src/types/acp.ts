@@ -12,7 +12,13 @@ export interface AcpPermissionOption {
 export type AcpEvent =
   | { event: "session"; sessionId: string; agentInfo: unknown; capabilities: unknown }
   | { event: "update"; sessionId: string; update: unknown }
-  | { event: "permission"; requestId: string; title: string; options: AcpPermissionOption[] };
+  | {
+      event: "permission";
+      requestId: string;
+      title: string;
+      options: AcpPermissionOption[];
+      details?: unknown;
+    };
 export interface AcpResult {
   sessionId: string;
   stopReason: string;

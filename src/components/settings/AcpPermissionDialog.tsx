@@ -25,6 +25,14 @@ export function AcpPermissionDialog({
       <section className="space-y-4 rounded-xl border border-slate-600 bg-slate-900 p-5 text-slate-100">
         <h2 className="font-semibold">{text.permission}</h2>
         <p className="break-words">{permission.title}</p>
+        {permission.details != null && (
+          <pre
+            aria-label={text.permissionDetails}
+            className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950 p-3 text-xs"
+          >
+            {JSON.stringify(permission.details, null, 2)}
+          </pre>
+        )}
         <p className="text-sm text-slate-400">{text.permissionHint}</p>
         <div className="flex flex-wrap gap-3">
           <button

@@ -13,6 +13,7 @@ export function useAcpSession() {
   const active = useRef<OperationHandle | null>(null);
   const mounted = useRef(true);
   const rejected = useRef(false);
+  const cancelled = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -32,7 +33,12 @@ export function useAcpSession() {
     }
     active.current = operation;
     rejected.current = false;
-    operation.setCancel(() => cancelAcpAgent(operation.id));
+    cancelled.current = false;
+    operation.setCancel(() => {
+      // Cancellation intent survives an IPC failure and a later successful reply.
+      cancelled.current = true;
+      return cancelAcpAgent(operation.id);
+    });
     operation.progress(null, text.connecting);
     setBusy(true);
     setReply("");
@@ -41,7 +47,7 @@ export function useAcpSession() {
     let response = "";
     try {
       const result = await runAcpAgent(operation.id, config, prompt, (event) => {
-        if (!mounted.current || operation.cancelRequested || active.current !== operation) return;
+        if (!mounted.current || cancelled.current || active.current !== operation) return;
         if (event.event === "session") {
           setSessionId(event.sessionId);
           operation.progress(null, text.streaming);
@@ -65,7 +71,7 @@ export function useAcpSession() {
           }
         }
       });
-      if (operation.cancelRequested || !mounted.current) {
+      if (cancelled.current || !mounted.current) {
         operation.complete(text.cancelled, "warning");
         return null;
       }
@@ -77,8 +83,7 @@ export function useAcpSession() {
       operation.complete(text.completed);
       return response;
     } catch (error) {
-      if (operation.cancelRequested || !mounted.current)
-        operation.complete(text.cancelled, "warning");
+      if (cancelled.current || !mounted.current) operation.complete(text.cancelled, "warning");
       else if (rejected.current) operation.complete(text.rejected, "warning");
       else operation.fail(error);
       return null;
@@ -93,7 +98,7 @@ export function useAcpSession() {
   async function respond(requestId: string, optionId: string | null) {
     const operation = active.current;
     const permission = permissions.find((pending) => pending.requestId === requestId);
-    if (!operation || !permission || operation.cancelRequested) return;
+    if (!operation || !permission || cancelled.current) return;
     const option = permission.options.find(
       (option) => option.optionId === optionId && option.kind === "allow_once",
     );
@@ -104,8 +109,15 @@ export function useAcpSession() {
         setPermissions((pending) => pending.filter((entry) => entry.requestId !== requestId));
     } catch (error) {
       rejected.current = true;
-      operation.fail(error);
-      await cancelAcpAgent(operation.id);
+      // Retain the operation's resource until the running request settles.
+      operation.progress(null, String(error));
+      if (mounted.current)
+        setPermissions((pending) => pending.filter((entry) => entry.requestId !== requestId));
+      try {
+        await cancelAcpAgent(operation.id);
+      } catch (cancelError) {
+        operation.progress(null, String(cancelError));
+      }
     }
   }
   return {

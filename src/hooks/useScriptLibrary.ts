@@ -17,6 +17,7 @@ import { useOperations } from "../store/useOperations";
 export function useScriptLibrary() {
   const [library, setLibrary] = useState<ScriptLibrary | null>(null);
   const [selectedId, setSelectedId] = useState("");
+  const [documentVersion, setDocumentVersion] = useState(0);
   const [source, setSource] = useState(DEFAULT_SCRIPT_SOURCE);
   const [includeDimensions, setIncludeDimensions] = useState(false);
   const [saved, setSaved] = useState({ source: DEFAULT_SCRIPT_SOURCE, includeDimensions: false });
@@ -71,7 +72,8 @@ export function useScriptLibrary() {
       setPending(false);
     }
   }
-  function setDocument(id: string, content: string, dimensions: boolean) {
+  function setDocument(id: string, content: string, dimensions: boolean, replace = true) {
+    if (replace) setDocumentVersion((version) => version + 1);
     setSelectedId(id);
     setSource(content);
     setIncludeDimensions(dimensions);
@@ -81,6 +83,7 @@ export function useScriptLibrary() {
     library,
     selected,
     selectedId,
+    documentVersion,
     example,
     source,
     setSource: (value: string) => {
@@ -151,7 +154,7 @@ export function useScriptLibrary() {
           options: { includeDimensions },
         };
         setLibrary(await saveLibraryScript(library, entry, source));
-        setDocument(entry.id, source, includeDimensions);
+        setDocument(entry.id, source, includeDimensions, false);
       }),
     rename: () =>
       work(async () => {

@@ -2,8 +2,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Annotation, Compartment, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
-import { lua } from "@codemirror/legacy-modes/mode/lua";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { LUA_LANGUAGE } from "../../lib/lua-language";
 import { autocompletion, closeCompletion, completionKeymap } from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
 import { luaCompletions } from "../../lib/lua-completion";
@@ -47,7 +47,8 @@ export const LuaEditor = forwardRef<
         extensions: [
           lineNumbers(),
           history(),
-          StreamLanguage.define(lua),
+          LUA_LANGUAGE,
+          EditorState.phrases.of(text.editorPhrases),
           autocompletion({ override: [luaCompletions], defaultKeymap: false }),
           keymap.of([...completionKeymap, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,

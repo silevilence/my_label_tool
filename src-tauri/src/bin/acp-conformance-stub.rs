@@ -72,7 +72,7 @@ fn main() {
                     "permission" => {
                         prompt_id = id.clone();
                         emit(
-                            json!({"jsonrpc":"2.0","id":"permission-1","method":"session/request_permission","params":{"sessionId":"test-session","toolCall":{"title":"test tool"},"options":[{"optionId":"yes","name":"allow","kind":"allow_once"},{"optionId":"no","name":"deny","kind":"reject_once"},{"optionId":"forever","name":"always","kind":"allow_always"}]}}),
+                            json!({"jsonrpc":"2.0","id":"permission-1","method":"session/request_permission","params":{"sessionId":"test-session","toolCall":{"title":"test tool","rawInput":{"command":"read private-file"}},"options":[{"optionId":"yes","name":"allow","kind":"allow_once"},{"optionId":"no","name":"deny","kind":"reject_once"},{"optionId":"forever","name":"always","kind":"allow_always"}]}}),
                         );
                         continue;
                     }
