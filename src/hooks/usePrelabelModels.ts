@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useTextReadStore } from "../store/useTextReadStore";
+import { useEffect, useRef, useState } from "react";
 import { loadPrelabelModelLibrary, savePrelabelModelLibrary } from "../lib/tauri-api";
 import {
   EMPTY_PRELABEL_MODEL_LIBRARY,
@@ -14,14 +15,18 @@ import {
 import { PRELABEL_ZH_CN } from "../i18n/prelabel.zh-CN";
 
 export function usePrelabelModels(setError: (message: string) => void) {
+  const readerRevision = useTextReadStore((state) => state.revision);
+  const loadedOnce = useRef(false);
   const [library, setLibrary] = useState<PrelabelModelLibrary>(EMPTY_PRELABEL_MODEL_LIBRARY);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    if (loadedOnce.current) return;
     let active = true;
     void loadPrelabelModelLibrary()
       .then((loaded) => {
         if (active) {
+          loadedOnce.current = true;
           setLibrary(loaded);
           setIsLoaded(true);
         }
@@ -35,7 +40,7 @@ export function usePrelabelModels(setError: (message: string) => void) {
     return () => {
       active = false;
     };
-  }, [setError]);
+  }, [setError, readerRevision]);
 
   async function persist(nextLibrary: PrelabelModelLibrary) {
     await savePrelabelModelLibrary(nextLibrary);

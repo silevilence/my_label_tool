@@ -8,7 +8,8 @@ export type OperationResource =
   | "model-download"
   | "onnx-runtime"
   | "app-update"
-  | "acp-agent";
+  | "acp-agent"
+  | "text-read-settings";
 type Resources = OperationResource | readonly OperationResource[];
 export type OperationKind = "success" | "warning" | "error";
 export interface OperationView {

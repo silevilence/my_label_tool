@@ -234,8 +234,8 @@ fn prepare_plugin_install_inner(
             text::PLUGIN_ARCHIVE_MISSING_MANIFEST.to_string(),
         ));
     }
-    let manifest_json: serde_json::Value = serde_json::from_reader(
-        fs::File::open(&manifest_path)
+    let manifest_json: serde_json::Value = serde_json::from_str(
+        &crate::text_read::read(&manifest_path)
             .map_err(|error| invalid_package(text::plugin_archive_open_failed(error)))?,
     )
     .map_err(|error| invalid_package(text::plugin_archive_read_failed(error)))?;
@@ -729,10 +729,9 @@ fn load_plugin_registry_unlocked(app_data_dir: &Path) -> PluginRegistrySnapshot 
             warning: None,
         };
     }
-    match fs::File::open(path)
-        .map_err(serde_json::Error::io)
-        .and_then(serde_json::from_reader::<_, Vec<PluginRegistryEntry>>)
-    {
+    match crate::text_read::read(path).and_then(|json| {
+        serde_json::from_str::<Vec<PluginRegistryEntry>>(&json).map_err(|error| error.to_string())
+    }) {
         Ok(mut plugins) if registry_entries_are_valid(&plugins) => {
             for plugin in &mut plugins {
                 if PermissionPolicy::from_grants(&plugin.grants).is_err() {
@@ -756,10 +755,16 @@ fn load_plugin_registry_unlocked(app_data_dir: &Path) -> PluginRegistrySnapshot 
             }
         }
         Err(error) => {
-            eprintln!("{}", text::plugin_registry_load_failed(error));
+            eprintln!("{}", text::plugin_registry_load_failed(&error));
             PluginRegistrySnapshot {
                 plugins: Vec::new(),
-                warning: Some(text::PLUGIN_REGISTRY_LOAD_WARNING.to_string()),
+                warning: Some(
+                    [
+                        text::PLUGIN_REGISTRY_LOAD_WARNING.to_string(),
+                        text::plugin_registry_load_failed(error),
+                    ]
+                    .join("；"),
+                ),
             }
         }
     }
@@ -1087,8 +1092,8 @@ fn save_plugin_registry(
 }
 
 fn read_manifest(path: &Path) -> Result<PluginManifest, PluginRegistryError> {
-    let value: serde_json::Value = serde_json::from_reader(
-        fs::File::open(path)
+    let value: serde_json::Value = serde_json::from_str(
+        &crate::text_read::read(path)
             .map_err(|error| invalid_package(text::plugin_archive_open_failed(error)))?,
     )
     .map_err(|error| invalid_package(text::plugin_archive_read_failed(error)))?;

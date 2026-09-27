@@ -9,6 +9,7 @@ mod models;
 pub mod plugins;
 mod process_control;
 pub mod scripting;
+mod text_read;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,6 +17,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            text_read::initialize();
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
@@ -52,6 +54,11 @@ pub fn run() {
             commands::export_annotations_json,
             commands::export_text_files,
             commands::read_text_file,
+            commands::read_text_files,
+            commands::get_text_read_settings,
+            commands::preview_text_read,
+            commands::configure_text_read,
+            commands::cancel_text_read,
             commands::list_text_files,
             commands::load_label_configs,
             commands::save_label_configs,
@@ -106,6 +113,7 @@ pub fn run() {
                 tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
             ) {
                 commands::cancel_all_pt_conversions_and_wait();
+                text_read::shutdown();
                 scripting::registry::shutdown();
                 acp::registry::shutdown();
                 media::label_sample_crops::shutdown();

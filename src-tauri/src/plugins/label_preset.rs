@@ -5,7 +5,6 @@ use crate::models::annotation::{LabelConfig, LabelTemplate};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::io::Read;
 use std::path::Path;
 
 pub const LABEL_PRESET_FILE_NAME: &str = "labels.json";
@@ -108,19 +107,10 @@ pub(crate) fn read_label_preset_file(path: &Path) -> Result<Vec<u8>, String> {
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(text::PLUGIN_LABEL_PRESET_MISSING.to_string());
     }
-    let file = fs::File::open(path).map_err(text::plugin_label_preset_read_failed)?;
-    if file
-        .metadata()
-        .map_err(text::plugin_label_preset_read_failed)?
-        .len()
-        > MAX_LABEL_PRESET_BYTES
-    {
+    if metadata.len() > MAX_LABEL_PRESET_BYTES {
         return Err(text::PLUGIN_LABEL_PRESET_TOO_LARGE.to_string());
     }
-    let mut bytes = Vec::new();
-    file.take(MAX_LABEL_PRESET_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(text::plugin_label_preset_read_failed)?;
+    let bytes = crate::text_read::read(path)?.into_bytes();
     if bytes.len() as u64 > MAX_LABEL_PRESET_BYTES {
         return Err(text::PLUGIN_LABEL_PRESET_TOO_LARGE.to_string());
     }

@@ -21,6 +21,7 @@ import { detectConflicts, shortcutKey } from "../../lib/shortcuts";
 import { SHORTCUT_ZH_CN as shortcutText } from "../../i18n/shortcuts.zh-CN";
 import { PRELABEL_RESOURCE_ZH_CN as resourceText } from "../../i18n/prelabel-resource.zh-CN";
 import { PrelabelResourceSettings } from "./PrelabelResourceSettings";
+import { TextReadSettings } from "./TextReadSettings";
 import { usePrelabelResourceStore } from "../../store/usePrelabelResourceStore";
 
 interface ShortcutSettingsProps {
@@ -360,6 +361,7 @@ export function ShortcutSettings({
             </div>
           ))}
         </div>
+        <TextReadSettings />
       </section>
     </Overlay>
   );

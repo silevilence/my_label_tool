@@ -34,64 +34,73 @@ use crate::plugins::runtime::{
 use tauri::ipc::Channel;
 
 #[tauri::command]
-pub fn install_plugin(
+pub async fn install_plugin(
     app: tauri::AppHandle,
     path: PathBuf,
     project_dir: Option<PathBuf>,
 ) -> Result<PluginInstallPreview, String> {
-    let app_data_dir = plugin_app_data_dir(&app)?;
-    prepare_plugin_install_for_project(&app_data_dir, &path, project_dir.as_deref())
-        .map_err(command_error)
+    super::host_text_io(move || {
+        let app_data_dir = plugin_app_data_dir(&app)?;
+        prepare_plugin_install_for_project(&app_data_dir, &path, project_dir.as_deref())
+            .map_err(command_error)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn authorize_plugin(
+pub async fn authorize_plugin(
     app: tauri::AppHandle,
     install_token: String,
     grants: Option<Vec<PluginPermissionGrant>>,
     project_dir: Option<PathBuf>,
 ) -> Result<Option<PluginRegistryEntry>, String> {
-    let app_data_dir = plugin_app_data_dir(&app)?;
-    let _maintenance = if grants.is_some() {
-        let plugin_id =
-            pending_plugin_install_id(&app_data_dir, &install_token).map_err(command_error)?;
-        Some(begin_plugin_maintenance(&plugin_id).map_err(runtime_command_error)?)
-    } else {
-        None
-    };
-    authorize_plugin_install_for_project(
-        &app_data_dir,
-        &install_token,
-        grants,
-        project_dir.as_deref(),
-    )
-    .map_err(command_error)
+    super::host_text_io(move || {
+        let app_data_dir = plugin_app_data_dir(&app)?;
+        let _maintenance = if grants.is_some() {
+            let plugin_id =
+                pending_plugin_install_id(&app_data_dir, &install_token).map_err(command_error)?;
+            Some(begin_plugin_maintenance(&plugin_id).map_err(runtime_command_error)?)
+        } else {
+            None
+        };
+        authorize_plugin_install_for_project(
+            &app_data_dir,
+            &install_token,
+            grants,
+            project_dir.as_deref(),
+        )
+        .map_err(command_error)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn uninstall_plugin(app: tauri::AppHandle, plugin_id: String) -> Result<(), String> {
-    let app_data_dir = plugin_app_data_dir(&app)?;
-    let _maintenance = begin_plugin_maintenance(&plugin_id).map_err(runtime_command_error)?;
-    uninstall_registered_plugin(&app_data_dir, &plugin_id).map_err(command_error)
+pub async fn uninstall_plugin(app: tauri::AppHandle, plugin_id: String) -> Result<(), String> {
+    super::host_text_io(move || {
+        let app_data_dir = plugin_app_data_dir(&app)?;
+        let _maintenance = begin_plugin_maintenance(&plugin_id).map_err(runtime_command_error)?;
+        uninstall_registered_plugin(&app_data_dir, &plugin_id).map_err(command_error)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn list_plugins(app: tauri::AppHandle) -> Result<PluginRegistrySnapshot, String> {
-    Ok(load_plugin_registry(&plugin_app_data_dir(&app)?))
+pub async fn list_plugins(app: tauri::AppHandle) -> Result<PluginRegistrySnapshot, String> {
+    super::host_text_io(move || Ok(load_plugin_registry(&plugin_app_data_dir(&app)?))).await
 }
 
 #[tauri::command]
-pub fn load_plugin_label_presets(
+pub async fn load_plugin_label_presets(
     app: tauri::AppHandle,
 ) -> Result<PluginLabelPresetSnapshot, String> {
-    Ok(load_presets(&plugin_app_data_dir(&app)?))
+    super::host_text_io(move || Ok(load_presets(&plugin_app_data_dir(&app)?))).await
 }
 
 #[tauri::command]
-pub fn load_plugin_export_formats(
+pub async fn load_plugin_export_formats(
     app: tauri::AppHandle,
 ) -> Result<PluginExportFormatSnapshot, String> {
-    Ok(load_export_formats(&plugin_app_data_dir(&app)?))
+    super::host_text_io(move || Ok(load_export_formats(&plugin_app_data_dir(&app)?))).await
 }
 
 #[tauri::command]
@@ -117,14 +126,17 @@ pub fn cancel_plugin_export(export_id: String) -> Result<PluginExportCancellatio
 }
 
 #[tauri::command]
-pub fn load_plugin_prelabel_sources(
+pub async fn load_plugin_prelabel_sources(
     app: tauri::AppHandle,
     project_folder: Option<PathBuf>,
 ) -> Result<PluginPrelabelSourceSnapshot, String> {
-    Ok(load_prelabel_sources(
-        &plugin_app_data_dir(&app)?,
-        project_folder.as_deref(),
-    ))
+    super::host_text_io(move || {
+        Ok(load_prelabel_sources(
+            &plugin_app_data_dir(&app)?,
+            project_folder.as_deref(),
+        ))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -152,56 +164,73 @@ pub fn cancel_plugin_prelabel(
 }
 
 #[tauri::command]
-pub fn set_plugin_enabled(
+pub async fn set_plugin_enabled(
     app: tauri::AppHandle,
     plugin_id: String,
     enabled: bool,
 ) -> Result<PluginRegistryEntry, String> {
-    let app_data_dir = plugin_app_data_dir(&app)?;
-    let updated =
-        set_registered_plugin_enabled(&app_data_dir, &plugin_id, enabled).map_err(command_error)?;
-    if !enabled {
-        stop_plugin_process(&plugin_id);
-    }
-    Ok(updated)
+    super::host_text_io(move || {
+        let app_data_dir = plugin_app_data_dir(&app)?;
+        let updated = set_registered_plugin_enabled(&app_data_dir, &plugin_id, enabled)
+            .map_err(command_error)?;
+        if !enabled {
+            stop_plugin_process(&plugin_id);
+        }
+        Ok(updated)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_plugin_status(
+pub async fn get_plugin_status(
     app: tauri::AppHandle,
     plugin_id: String,
 ) -> Result<PluginRegistryEntry, String> {
-    get_registered_plugin(&plugin_app_data_dir(&app)?, &plugin_id).map_err(command_error)
+    super::host_text_io(move || {
+        get_registered_plugin(&plugin_app_data_dir(&app)?, &plugin_id).map_err(command_error)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn clear_plugin_failures(
+pub async fn clear_plugin_failures(
     app: tauri::AppHandle,
     plugin_id: String,
 ) -> Result<PluginRegistryEntry, String> {
-    let app_data_dir = plugin_app_data_dir(&app)?;
-    clear_registered_plugin_failures(&app_data_dir, &plugin_id).map_err(command_error)
+    super::host_text_io(move || {
+        let app_data_dir = plugin_app_data_dir(&app)?;
+        clear_registered_plugin_failures(&app_data_dir, &plugin_id).map_err(command_error)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_plugin_runtime_settings(app: tauri::AppHandle) -> Result<PluginRuntimeSettings, String> {
-    load_plugin_runtime_settings(&plugin_app_data_dir(&app)?).map_err(command_error)
+pub async fn get_plugin_runtime_settings(
+    app: tauri::AppHandle,
+) -> Result<PluginRuntimeSettings, String> {
+    super::host_text_io(move || {
+        load_plugin_runtime_settings(&plugin_app_data_dir(&app)?).map_err(command_error)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn set_plugin_safe_mode(
+pub async fn set_plugin_safe_mode(
     app: tauri::AppHandle,
     safe_mode: bool,
 ) -> Result<PluginRuntimeSettings, String> {
-    let settings = save_plugin_runtime_settings(
-        &plugin_app_data_dir(&app)?,
-        PluginRuntimeSettings { safe_mode },
-    )
-    .map_err(command_error)?;
-    if safe_mode {
-        shutdown_all_plugin_processes();
-    }
-    Ok(settings)
+    super::host_text_io(move || {
+        let settings = save_plugin_runtime_settings(
+            &plugin_app_data_dir(&app)?,
+            PluginRuntimeSettings { safe_mode },
+        )
+        .map_err(command_error)?;
+        if safe_mode {
+            shutdown_all_plugin_processes();
+        }
+        Ok(settings)
+    })
+    .await
 }
 
 #[tauri::command]

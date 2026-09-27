@@ -50,7 +50,8 @@ fn validate_directory(root: &Path) -> Result<PluginValidationReport, String> {
     let mut issues = validate_file_sizes(files.iter().map(|(_, size)| *size));
     let manifest_path = root.join("manifest.json");
     let manifest_value = if manifest_path.is_file() {
-        let bytes = fs::read(&manifest_path)
+        let bytes = crate::text_read::read(&manifest_path)
+            .map(String::into_bytes)
             .map_err(|error| text::plugin_validator_read_failed(&manifest_path, error))?;
         match serde_json::from_slice(&bytes) {
             Ok(value) => value,

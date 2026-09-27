@@ -1,3 +1,4 @@
+vi.mock("../settings/TextReadSettings", () => ({ TextReadSettings: () => null }));
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";

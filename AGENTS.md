@@ -144,6 +144,7 @@ my_label_tool/
 | `export_annotations_json` | 将标注数据写入指定 JSON 文件 |
 | `export_text_files` | 批量写入文本文件（VOC XML / YOLO txt），路径需为相对安全路径 |
 | `read_text_file` | 读取单个文本文件内容（导入用） |
+| `read_text_files` / `get_text_read_settings` / `preview_text_read` / `configure_text_read` / `cancel_text_read` | 宿主专用批量文本读取与原生/Python/命令适配器设置、命令预览、自检与取消；Windows 机器级启动配置存 HKCU，不写入项目、不向插件或 Lua 开放；见 docs/text-read-adapter.md |
 | `run_script` / `cancel_script` / `script_host_available` | 宿主专用 Lua 脚本：作用域快照、分段传输、全量结果缓冲与取消；读取机器级上限，不向插件开放 |
 | `run_acp_agent` / `cancel_acp_agent` / `respond_acp_permission` | 宿主专用 ACP 本机 Agent：独立临时目录中的新会话、流式回复、逐次权限确认与取消；不提供文件/项目/终端接口，不属于插件或 Lua 协议，见 docs/acp.md |
 | `script_library_directory` / `delete_script_file` | 宿主脚本库目录初始化与安全删除；脚本内容及索引读写仍复用 `read_text_file` / `export_text_files` |

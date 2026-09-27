@@ -121,13 +121,13 @@ fn run(command: &mut Command, folder: &Path) -> Result<Vec<u8>, String> {
         }
     };
     if !status.success() {
-        let detail = fs::read_to_string(&errors).unwrap_or_default();
+        let detail = crate::text_read::read(&errors).map_err(failure)?;
         return Err(failure(detail.chars().take(2000).collect::<String>()));
     }
     if fs::metadata(&output).map_err(failure)?.len() > MAX_LOG_BYTES {
         return Err(text::VIDEO_LIMIT.to_string());
     }
-    let bytes = fs::read(&output).map_err(failure)?;
+    let bytes = crate::text_read::read(&output)?.into_bytes();
     fs::remove_file(output).map_err(failure)?;
     fs::remove_file(errors).map_err(failure)?;
     Ok(bytes)
@@ -359,7 +359,7 @@ pub fn load(folder: &Path) -> Result<Option<VideoProject>, String> {
     if fs::metadata(&path).map_err(failure)?.len() > MAX_LOG_BYTES {
         return Err(text::VIDEO_LIMIT.to_string());
     }
-    let video = serde_json::from_slice(&fs::read(path).map_err(failure)?).map_err(failure)?;
+    let video = serde_json::from_str(&crate::text_read::read(path)?).map_err(failure)?;
     validate(&video, folder)?;
     Ok(Some(video))
 }

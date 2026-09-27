@@ -46,13 +46,13 @@ fn read(path: &Path) -> Result<PrelabelResourceLimits, String> {
     let _guard = SETTINGS_IO
         .lock()
         .map_err(text::prelabel_resource_settings_failed)?;
-    let contents = match fs::read_to_string(path) {
-        Ok(contents) => contents,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(PrelabelResourceLimits::default())
-        }
-        Err(error) => return Err(text::prelabel_resource_settings_failed(error)),
-    };
+    if !path
+        .try_exists()
+        .map_err(text::prelabel_resource_settings_failed)?
+    {
+        return Ok(PrelabelResourceLimits::default());
+    }
+    let contents = crate::text_read::read(path)?;
     let limits: PrelabelResourceLimits =
         serde_json::from_str(&contents).map_err(text::prelabel_resource_settings_failed)?;
     limits.max_output_elements()?;

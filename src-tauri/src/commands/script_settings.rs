@@ -33,8 +33,8 @@ fn save(directory: &Path, value: &Limits) -> Result<(), String> {
     )
 }
 #[tauri::command]
-pub fn load_script_resource_limits(app: tauri::AppHandle) -> Result<Limits, String> {
-    load(&directory(&app)?)
+pub async fn load_script_resource_limits(app: tauri::AppHandle) -> Result<Limits, String> {
+    super::host_text_io(move || load(&directory(&app)?)).await
 }
 #[tauri::command]
 pub fn save_script_resource_limits(app: tauri::AppHandle, value: Limits) -> Result<(), String> {

@@ -60,7 +60,7 @@ fn replace_with(
     {
         return Err(text::VIDEO_REEXTRACT_PATH.to_string());
     }
-    let manifest = fs::read(old.join(video::MANIFEST)).map_err(text::video_failed)?;
+    let manifest = crate::text_read::read(old.join(video::MANIFEST))?;
     let names: Vec<_> = std::iter::once(video::MANIFEST.to_string())
         .chain(metadata.frames.iter().map(|frame| frame.name.clone()))
         .collect();
@@ -81,7 +81,7 @@ fn replace_with(
         for name in &names {
             plain(&old.join(name), false)?;
         }
-        if fs::read(old.join(video::MANIFEST)).map_err(text::video_failed)? != manifest {
+        if crate::text_read::read(old.join(video::MANIFEST))? != manifest {
             return Err(text::VIDEO_REEXTRACT_CHANGED.to_string());
         }
         retire(&project, &old, &names, recycle)

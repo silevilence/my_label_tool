@@ -1,3 +1,4 @@
+import { useTextReadStore } from "./store/useTextReadStore";
 import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
 import { usePanTermination } from "./hooks/usePanTermination";
@@ -538,7 +539,10 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
+  const textReadRevision = useTextReadStore((state) => state.revision);
+  const labelsLoaded = useRef(false);
   useEffect(() => {
+    if (labelsLoaded.current) return;
     let cancelled = false;
 
     Promise.all([
@@ -568,6 +572,7 @@ function App() {
           setCurrentLabelId(nextLabels[0].id);
         }
         if (!cancelled) {
+          labelsLoaded.current = true;
           pluginPresetsRef.current = pluginSnapshot.presets;
           pluginTemplateIdsRef.current = merged.pluginTemplateIds;
           setPluginTemplateIds(merged.pluginTemplateIds);
@@ -593,7 +598,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [textReadRevision]);
 
   useEffect(() => {
     let cancelled = false;

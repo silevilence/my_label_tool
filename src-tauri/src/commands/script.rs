@@ -49,6 +49,7 @@ pub async fn run_script(
 ) -> Result<Vec<ScriptResult>, Vec<Failure>> {
     let registration = registry::Registration::new(run_id).map_err(|e| vec![e])?;
     let limits = super::load_script_resource_limits(app.clone())
+        .await
         .map_err(|e| vec![Failure::new("INVALID_ARGUMENT", e)])?;
     let path = host_path(&app).map_err(|e| vec![Failure::new("HOST_UNAVAILABLE", e)])?;
     tauri::async_runtime::spawn_blocking(move || {

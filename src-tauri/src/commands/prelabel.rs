@@ -37,21 +37,29 @@ pub fn find_converted_onnx(pt_path: PathBuf) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub fn load_prelabel_model_library(app: tauri::AppHandle) -> Result<PrelabelModelLibrary, String> {
-    let path = prelabel_model_library_path(&app)?;
-    if !path.exists() {
-        return Ok(PrelabelModelLibrary::default());
-    }
-    read_prelabel_model_library(&path)
+pub async fn load_prelabel_model_library(
+    app: tauri::AppHandle,
+) -> Result<PrelabelModelLibrary, String> {
+    super::host_text_io(move || {
+        let path = prelabel_model_library_path(&app)?;
+        if !path.exists() {
+            return Ok(PrelabelModelLibrary::default());
+        }
+        read_prelabel_model_library(&path)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn save_prelabel_model_library(
+pub async fn save_prelabel_model_library(
     app: tauri::AppHandle,
     library: PrelabelModelLibrary,
 ) -> Result<(), String> {
-    let path = prelabel_model_library_path(&app)?;
-    write_prelabel_model_library(&path, &library)
+    super::host_text_io(move || {
+        let path = prelabel_model_library_path(&app)?;
+        write_prelabel_model_library(&path, &library)
+    })
+    .await
 }
 
 fn ensure_extension(path: &Path, expected: &str) -> Result<(), String> {
@@ -76,7 +84,7 @@ fn prelabel_model_library_path(app: &tauri::AppHandle) -> Result<PathBuf, String
 }
 
 fn read_prelabel_model_library(path: &Path) -> Result<PrelabelModelLibrary, String> {
-    let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let json = crate::text_read::read(path)?;
     let library: PrelabelModelLibrary =
         serde_json::from_str(&json).map_err(text::invalid_library)?;
     validate_library(&library)?;

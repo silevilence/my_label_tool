@@ -14,7 +14,7 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::mpsc,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Condvar, Mutex, MutexGuard,
     },
     thread,
@@ -337,7 +337,7 @@ fn handle_file_proxy_request_with_cancellation(
     cancellation: Option<&ProxyCancellation>,
 ) -> ResponseOutcome {
     match method {
-        "fs.read" => proxy_read(policy, params),
+        "fs.read" => proxy_read(policy, params, cancellation),
         "fs.write" => proxy_write(policy, params, cancellation),
         _ => ResponseOutcome::Error(ProtocolError::new(
             ProtocolErrorCode::MethodNotFound,
@@ -402,6 +402,7 @@ fn dispatch_proxy_job(
 struct ProxyCancellation {
     state: Arc<(Mutex<ProxyJobState>, Condvar)>,
     deadline: Instant,
+    read_cancel: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -419,6 +420,7 @@ impl ProxyCancellation {
             deadline: Instant::now()
                 .checked_add(timeout)
                 .unwrap_or_else(Instant::now),
+            read_cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -461,6 +463,7 @@ impl ProxyCancellation {
         loop {
             match *state {
                 ProxyJobState::Pending => {
+                    self.read_cancel.store(true, Ordering::SeqCst);
                     *state = ProxyJobState::Cancelled;
                     wake.notify_all();
                     return false;
@@ -495,7 +498,11 @@ fn reserve_proxy_worker() -> Result<(), ProxyDispatchError> {
         .map_err(|_| ProxyDispatchError::Unavailable)
 }
 
-fn proxy_read(policy: &FileProxyPolicy, params: &Value) -> ResponseOutcome {
+fn proxy_read(
+    policy: &FileProxyPolicy,
+    params: &Value,
+    cancellation: Option<&ProxyCancellation>,
+) -> ResponseOutcome {
     let Ok(params) = serde_json::from_value::<PluginFsReadParams>(params.clone()) else {
         return invalid_proxy_argument();
     };
@@ -513,6 +520,35 @@ fn proxy_read(policy: &FileProxyPolicy, params: &Value) -> ResponseOutcome {
         }
         Err(_) => return proxy_io_error(),
     };
+    // Authorization and an open handle precede adapter execution. On Windows
+    // the handle denies writes/deletion, preventing replacement while the
+    // trusted host reader opens this same resolved file by name.
+    if matches!(params.encoding, PluginFsReadEncoding::Utf8) {
+        let path = match opened_file_path(&file) {
+            Ok(path) => path,
+            Err(_) => return proxy_io_error(),
+        };
+        let cancel = cancellation
+            .map(|c| c.read_cancel.clone())
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+        let content = match crate::text_read::read_cancellable(&path, cancel) {
+            Ok(content) if content.len() as u64 <= MAX_PROXY_FILE_BYTES => content,
+            Ok(_) => return proxy_io_error(),
+            Err(error) => {
+                return ResponseOutcome::Error(ProtocolError::new(
+                    ProtocolErrorCode::InternalError,
+                    error,
+                ))
+            }
+        };
+        if ensure_opened_path_allowed(policy, FileAccess::Read, &path).is_err() {
+            return proxy_io_error();
+        }
+        return serialize_proxy_result(PluginFsReadResult {
+            content_utf8: Some(content),
+            content_base64: None,
+        });
+    }
     let mut content = Vec::with_capacity(metadata.len() as usize);
     if file
         .by_ref()
@@ -523,19 +559,10 @@ fn proxy_read(policy: &FileProxyPolicy, params: &Value) -> ResponseOutcome {
     {
         return proxy_io_error();
     }
-    match params.encoding {
-        PluginFsReadEncoding::Utf8 => match String::from_utf8(content) {
-            Ok(content_utf8) => serialize_proxy_result(PluginFsReadResult {
-                content_utf8: Some(content_utf8),
-                content_base64: None,
-            }),
-            Err(_) => proxy_io_error(),
-        },
-        PluginFsReadEncoding::Base64 => serialize_proxy_result(PluginFsReadResult {
-            content_utf8: None,
-            content_base64: Some(base64::engine::general_purpose::STANDARD.encode(content)),
-        }),
-    }
+    serialize_proxy_result(PluginFsReadResult {
+        content_utf8: None,
+        content_base64: Some(base64::engine::general_purpose::STANDARD.encode(content)),
+    })
 }
 
 fn proxy_write(
@@ -649,7 +676,14 @@ fn open_authorized_read(policy: &FileProxyPolicy, path: &Path) -> Result<fs::Fil
             text::PLUGIN_PROXY_FILE_INVALID,
         ));
     }
-    let file = fs::File::open(lexical).map_err(|_| {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(1); // FILE_SHARE_READ; deny rename/delete/write races.
+    }
+    let file = options.open(lexical).map_err(|_| {
         ProtocolError::new(
             ProtocolErrorCode::InvalidArgument,
             text::PLUGIN_PROXY_FILE_INVALID,
@@ -1079,6 +1113,53 @@ mod tests {
         }])
         .expect_err("relative persisted grants must be rejected");
         assert_eq!(error.kind, PermissionErrorKind::InvalidGrant);
+    }
+
+    #[test]
+    fn text_proxy_uses_reader_after_authorization_and_blocks_reader_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("protected.txt");
+        fs::write(&path, [0xff, 0xfe]).unwrap();
+        let root_path = fs::canonicalize(root.path()).unwrap();
+        let path = fs::canonicalize(path).unwrap();
+        let policy = FileProxyPolicy::from_grants(&[grant("fs.read", &root_path)]).unwrap();
+        let python = std::env::var("TEXT_READ_TEST_PYTHON")
+            .unwrap_or_else(|_| if cfg!(windows) { "python" } else { "python3" }.into());
+        let mut config = crate::text_read::Config {
+            mode: "command".into(), timeout_ms: 10000,
+            values: std::collections::HashMap::from([
+                ("executable".into(), python),
+                ("arguments".into(), serde_json::to_string(&["-c", "import json,sys;r=json.load(sys.stdin);print(json.dumps(['plain text']*len(r['paths'])))"]).unwrap()),
+            ]),
+        };
+        crate::text_read::with_test_config(config.clone(), || {
+            assert_eq!(
+                handle_file_proxy_request(&policy, "fs.read", &json!({"path":path})),
+                ResponseOutcome::Result(json!({"contentUtf8":"plain text"}))
+            );
+            assert!(matches!(
+                handle_file_proxy_request(
+                    &FileProxyPolicy::from_grants(&[]).unwrap(),
+                    "fs.read",
+                    &json!({"path":path})
+                ),
+                ResponseOutcome::Error(_)
+            ));
+        });
+        config.values.insert(
+            "executable".into(),
+            root.path()
+                .join("missing.exe")
+                .to_string_lossy()
+                .into_owned(),
+        );
+        crate::text_read::with_test_config(config, || {
+            assert!(matches!(
+                handle_file_proxy_request(&policy, "fs.read", &json!({"path":path})),
+                ResponseOutcome::Error(_)
+            ));
+        });
+        assert_eq!(fs::read(path).unwrap(), [0xff, 0xfe]);
     }
 
     #[test]

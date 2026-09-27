@@ -34,6 +34,7 @@ vi.mock("../lib/tauri-api", async (original) => ({
   selectExportPath: vi.fn().mockResolvedValue("C:/output/annotations.coco.json"),
   listTextFiles: vi.fn(),
   readTextFile: vi.fn(),
+  readTextFiles: vi.fn((paths: string[]) => Promise.all(paths.map((path) => readTextFile(path)))),
   migratePluginConfigs: vi.fn().mockResolvedValue({ configs: [], issues: [] }),
 }));
 vi.mock("../lib/app-utils", async (original) => ({

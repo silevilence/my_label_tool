@@ -1,3 +1,5 @@
+import { useOperations } from "../store/useOperations";
+import { TEXT_READ_ZH_CN as textReadText } from "../i18n/text-read.zh-CN";
 import type { VideoExtractionSettings } from "../types/project-settings";
 import type { AcpConfig, AcpEvent, AcpResult } from "../types/acp";
 
@@ -270,7 +272,48 @@ export function exportTextFiles(outputDir: string, files: TextExportFile[]): Pro
 }
 
 export function readTextFile(path: string): Promise<string> {
-  return invoke<string>("read_text_file", { path });
+  return readTextFiles([path]).then((contents) => contents[0]);
+}
+
+export async function readTextFiles(
+  paths: string[],
+  requestId: string = crypto.randomUUID(),
+): Promise<string[]> {
+  const operation = useOperations.getState().begin({
+    label: textReadText.readFiles(paths.length),
+    resource: [],
+    cancel: async () => {
+      await cancelTextRead(requestId);
+    },
+  });
+  try {
+    const result = await invoke<string[]>("read_text_files", { paths, requestId });
+    if (operation.cancelRequested) throw new Error(textReadText.cancelled);
+    operation.complete();
+    return result;
+  } catch (error) {
+    operation.fail(error);
+    throw error;
+  }
+}
+
+export function getTextReadSettings(): Promise<import("../types/text-read").TextReadSettings> {
+  return invoke("get_text_read_settings");
+}
+export function previewTextRead(
+  config: import("../types/text-read").TextReadConfig,
+): Promise<import("../types/text-read").TextReadPlan> {
+  return invoke("preview_text_read", { config });
+}
+export function configureTextRead(
+  config: import("../types/text-read").TextReadConfig,
+  requestId: string,
+  save: boolean,
+): Promise<import("../types/text-read").TextReadCheck> {
+  return invoke("configure_text_read", { config, requestId, save });
+}
+export function cancelTextRead(requestId: string): Promise<boolean> {
+  return invoke("cancel_text_read", { requestId });
 }
 
 export function listTextFiles(folderPath: string, extension: string): Promise<TextFileEntry[]> {

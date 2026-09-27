@@ -71,6 +71,15 @@ impl PipedJobProcess {
         Self::spawn_inner(executable, arguments, working_directory, None, None)
     }
 
+    /// Trusted, user-configured host tools; never used to launch plugins.
+    pub(crate) fn spawn_host(
+        executable: &Path,
+        arguments: &[String],
+        working_directory: &Path,
+    ) -> Result<Self, String> {
+        Self::spawn_inner(executable, arguments, working_directory, None, None)
+    }
+
     fn spawn_inner(
         executable: &Path,
         arguments: &[String],

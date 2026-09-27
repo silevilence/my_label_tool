@@ -1,3 +1,4 @@
+import { useTextReadStore } from "../store/useTextReadStore";
 import { useEffect, useRef, useState } from "react";
 import { BUILTIN_SCRIPTS, DEFAULT_SCRIPT_SOURCE } from "../lib/defaults/scripts";
 import {
@@ -15,6 +16,8 @@ import { ACP_ZH_CN as acpText } from "../i18n/acp.zh-CN";
 import { useOperations } from "../store/useOperations";
 
 export function useScriptLibrary() {
+  const readerRevision = useTextReadStore((state) => state.revision);
+  const loadedOnce = useRef(false);
   const [library, setLibrary] = useState<ScriptLibrary | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [documentVersion, setDocumentVersion] = useState(0);
@@ -28,12 +31,14 @@ export function useScriptLibrary() {
     !example && (source !== saved.source || includeDimensions !== saved.includeDimensions);
   const selected = library?.scripts.find((entry) => entry.id === selectedId);
   useEffect(() => {
+    if (loadedOnce.current) return;
     let mounted = true;
     void loadScriptLibrary()
       .then(async (value) => {
         const entry = value.scripts[0];
         const source = entry ? await readLibraryScript(value, entry.id) : DEFAULT_SCRIPT_SOURCE;
         if (!mounted) return;
+        loadedOnce.current = true;
         setLibrary(value);
         setSelectedId(entry?.id ?? "");
         setSource(source);
@@ -50,7 +55,7 @@ export function useScriptLibrary() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [readerRevision]);
   async function discardChanges() {
     return (
       !dirty ||

@@ -13,6 +13,9 @@ const api = vi.hoisted(() => ({
   selectExportJsonPath: vi.fn(),
   listTextFiles: vi.fn(),
   readTextFile: vi.fn(),
+  readTextFiles: vi.fn((paths: string[]) =>
+    Promise.all(paths.map((path) => api.readTextFile(path))),
+  ),
   migratePluginConfigs: vi.fn(),
 }));
 vi.mock("../lib/tauri-api", async (original) => ({

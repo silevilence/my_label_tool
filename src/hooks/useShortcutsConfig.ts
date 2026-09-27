@@ -1,18 +1,23 @@
+import { useTextReadStore } from "../store/useTextReadStore";
 import { useShortcutStore } from "../store/useShortcutStore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { mergeShortcuts } from "../lib/app-utils";
 import { DEFAULT_SHORTCUTS, SHORTCUT_ACTIONS, type ShortcutMap } from "../lib/defaults/shortcuts";
 import { loadShortcuts, saveShortcuts } from "../lib/tauri-api";
 
 export function useShortcutsConfig(setError: (message: string) => void) {
+  const readerRevision = useTextReadStore((state) => state.revision);
+  const loadedOnce = useRef(false);
   const [shortcuts, setShortcuts] = useState<ShortcutMap>(DEFAULT_SHORTCUTS);
 
   useEffect(() => {
+    if (loadedOnce.current) return;
     let cancelled = false;
 
     loadShortcuts()
       .then((savedShortcuts) => {
         if (!cancelled) {
+          loadedOnce.current = true;
           setShortcuts(mergeShortcuts(savedShortcuts));
         }
       })
@@ -25,7 +30,7 @@ export function useShortcutsConfig(setError: (message: string) => void) {
     return () => {
       cancelled = true;
     };
-  }, [setError]);
+  }, [setError, readerRevision]);
 
   useEffect(() => useShortcutStore.getState().configure(shortcuts), [shortcuts]);
 

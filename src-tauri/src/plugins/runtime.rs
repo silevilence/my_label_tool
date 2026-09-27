@@ -80,9 +80,9 @@ fn load_plugin_runtime_settings_unlocked(
     if !path.is_file() {
         return Ok(PluginRuntimeSettings::default());
     }
-    let file = fs::File::open(path)
+    let contents = crate::text_read::read(path)
         .map_err(|error| settings_error(text::plugin_settings_read_failed(error)))?;
-    serde_json::from_reader(file)
+    serde_json::from_str(&contents)
         .map_err(|error| settings_error(text::plugin_settings_read_failed(error)))
 }
 

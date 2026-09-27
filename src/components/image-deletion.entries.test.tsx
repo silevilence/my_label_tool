@@ -1,3 +1,4 @@
+vi.mock("./settings/TextReadSettings", () => ({ TextReadSettings: () => null }));
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/defaults/video";
 import { SHORTCUT_ZH_CN as shortcutText } from "../i18n/shortcuts.zh-CN";
 import { act } from "react";

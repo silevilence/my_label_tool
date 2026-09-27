@@ -1,4 +1,6 @@
 mod acp;
+mod text_read;
+pub use text_read::*;
 mod image_deletion;
 pub use acp::*;
 mod script;
@@ -42,6 +44,15 @@ use tauri::Manager;
 use crate::models::annotation::{LabelConfig, LabelTemplate};
 use crate::{i18n::zh_cn as text, media::image_listing};
 pub use image_listing::ImageFile;
+
+/// File-backed settings may invoke a slow external reader. Keep IPC responsive.
+async fn host_text_io<T: Send + 'static>(
+    action: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(action)
+        .await
+        .map_err(crate::i18n::zh_cn::text_read_failed)?
+}
 
 #[derive(Serialize)]
 pub struct TextFileEntry {
@@ -90,9 +101,9 @@ pub fn export_text_files(output_dir: PathBuf, files: Vec<TextExportFile>) -> Res
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_text_file(path: PathBuf) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|error| error.to_string())
+    crate::text_read::read(path)
 }
 
 #[tauri::command]
@@ -145,13 +156,16 @@ fn is_safe_relative_path(path: &Path) -> bool {
 }
 
 #[tauri::command]
-pub fn load_label_configs(app: tauri::AppHandle) -> Result<Vec<LabelConfig>, String> {
-    let path = label_configs_path(&app)?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
+pub async fn load_label_configs(app: tauri::AppHandle) -> Result<Vec<LabelConfig>, String> {
+    host_text_io(move || {
+        let path = label_configs_path(&app)?;
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
 
-    read_label_configs(&path)
+        read_label_configs(&path)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -161,13 +175,16 @@ pub fn save_label_configs(app: tauri::AppHandle, labels: Vec<LabelConfig>) -> Re
 }
 
 #[tauri::command]
-pub fn load_label_templates(app: tauri::AppHandle) -> Result<Vec<LabelTemplate>, String> {
-    let path = label_templates_path(&app)?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
+pub async fn load_label_templates(app: tauri::AppHandle) -> Result<Vec<LabelTemplate>, String> {
+    host_text_io(move || {
+        let path = label_templates_path(&app)?;
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
 
-    read_label_templates(&path)
+        read_label_templates(&path)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -180,13 +197,16 @@ pub fn save_label_templates(
 }
 
 #[tauri::command]
-pub fn load_shortcuts(app: tauri::AppHandle) -> Result<HashMap<String, String>, String> {
-    let path = shortcuts_path(&app)?;
-    if !path.exists() {
-        return Ok(HashMap::new());
-    }
+pub async fn load_shortcuts(app: tauri::AppHandle) -> Result<HashMap<String, String>, String> {
+    host_text_io(move || {
+        let path = shortcuts_path(&app)?;
+        if !path.exists() {
+            return Ok(HashMap::new());
+        }
 
-    read_shortcuts(&path)
+        read_shortcuts(&path)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -226,7 +246,7 @@ fn shortcuts_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 fn read_label_configs(path: &Path) -> Result<Vec<LabelConfig>, String> {
-    let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let json = crate::text_read::read(path)?;
     serde_json::from_str(&json).map_err(|error| error.to_string())
 }
 
@@ -236,7 +256,7 @@ fn write_label_configs(path: &Path, labels: &[LabelConfig]) -> Result<(), String
 }
 
 fn read_label_templates(path: &Path) -> Result<Vec<LabelTemplate>, String> {
-    let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let json = crate::text_read::read(path)?;
     serde_json::from_str(&json).map_err(|error| error.to_string())
 }
 
@@ -246,7 +266,7 @@ fn write_label_templates(path: &Path, templates: &[LabelTemplate]) -> Result<(),
 }
 
 fn read_shortcuts(path: &Path) -> Result<HashMap<String, String>, String> {
-    let json = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let json = crate::text_read::read(path)?;
     serde_json::from_str(&json).map_err(|error| error.to_string())
 }
 

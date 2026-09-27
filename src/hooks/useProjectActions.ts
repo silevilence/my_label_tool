@@ -40,6 +40,7 @@ import {
   listTextFiles,
   migratePluginConfigs,
   readTextFile,
+  readTextFiles,
   selectExportFolder,
   selectExportJsonPath,
   selectExportPath,
@@ -633,12 +634,8 @@ export function useProjectActions({
       throw new Error(`目录中没有 .${extension} 文件`);
     }
 
-    return Promise.all(
-      files.map(async (file) => ({
-        ...file,
-        content: await readTextFile(file.path),
-      })),
-    );
+    const contents = await readTextFiles(files.map((file) => file.path));
+    return files.map((file, index) => ({ ...file, content: contents[index] }));
   }
 
   async function imageSizesByBaseName(currentImages: ImageFile[]): Promise<Map<string, ImageSize>> {

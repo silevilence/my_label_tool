@@ -24,6 +24,9 @@ const tauriMocks = vi.hoisted(() => ({
   loadShortcuts: vi.fn(),
   migratePluginConfigs: vi.fn(),
   readTextFile: vi.fn(),
+  readTextFiles: vi.fn((paths: string[]) =>
+    Promise.all(paths.map((path) => tauriMocks.readTextFile(path))),
+  ),
   selectImageFolder: vi.fn(),
   selectExportFolder: vi.fn(),
 }));
@@ -512,6 +515,16 @@ describe("App YOLO folder auto load", () => {
     expect(promptsMocks.confirmAction).not.toHaveBeenCalled();
     expect(tauriMocks.exportAnnotationsJson).not.toHaveBeenCalled();
     expect(document.body.querySelector("[data-testid='labels']")?.textContent).toBe("人,车,其他");
+  });
+
+  it("reads all YOLO label files in one batch and preserves data on adapter failure", async () => {
+    tauriMocks.readTextFiles.mockRejectedValueOnce(new Error("reader timeout"));
+    await renderAndOpenFolder();
+    expect(tauriMocks.readTextFiles).toHaveBeenCalledTimes(1);
+    expect(tauriMocks.readTextFiles.mock.calls[0][0].length).toBeGreaterThan(1);
+    expect(tauriMocks.exportAnnotationsJson).not.toHaveBeenCalled();
+    expect(useAnnotationStore.getState().annotationsByImage).toEqual({});
+    expect(templateValue()).toBe("common-detection");
   });
 
   it("falls back to the default labels and reports the error when loading fails", async () => {

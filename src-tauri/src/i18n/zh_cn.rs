@@ -984,3 +984,6 @@ pub fn label_sample_rollback(
 ) -> String {
     format!("{error}；样例图恢复失败：{rollback}")
 }
+#[path = "text_read_zh_cn.rs"]
+mod text_read;
+pub use text_read::*;
