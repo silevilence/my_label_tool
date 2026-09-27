@@ -73,7 +73,20 @@ export function TextReadSettings() {
       const result = await configureTextRead(config, id, save);
       if (save) useTextReadStore.getState().changed();
       setMessage(save ? text.saved : result.message);
-      setSettings(await getTextReadSettings());
+      const latest = await getTextReadSettings();
+      setSettings(latest);
+      if (
+        !save &&
+        !latest.startupError &&
+        result.config.mode === latest.config.mode &&
+        result.config.timeoutMs === latest.config.timeoutMs &&
+        Object.keys(result.config.values).length === Object.keys(latest.config.values).length &&
+        Object.entries(result.config.values).every(
+          ([key, value]) => latest.config.values[key] === value,
+        )
+      ) {
+        useTextReadStore.getState().changed();
+      }
       operation.complete(save ? text.saved : result.message);
     } catch (error) {
       setMessage(String(error));

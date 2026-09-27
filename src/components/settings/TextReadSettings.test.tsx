@@ -79,7 +79,35 @@ it("shows self-check failures, preserves active settings and allows a retry", as
   await act(async () => button(text.check).click());
   expect(api.configureTextRead).toHaveBeenLastCalledWith(native, expect.any(String), false);
   expect(host.textContent).toContain("check passed");
+  expect(useTextReadStore.getState().revision).toBe(1);
 });
+it("does not retry readers when only an unapplied draft passes self-check", async () => {
+  act(() => {
+    const select = host.querySelector("select")!;
+    select.value = "demo";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  api.configureTextRead.mockResolvedValue({
+    config: { ...native, mode: "demo" },
+    ok: true,
+    message: "check passed",
+  });
+  await act(async () => button(text.preview).click());
+  await act(async () => button(text.check).click());
+  expect(useTextReadStore.getState().revision).toBe(0);
+});
+it.each([
+  { ...native, timeoutMs: 1000 },
+  { ...native, values: { executable: "different.exe" } },
+])(
+  "does not retry readers when checked parameters differ from active settings: %j",
+  async (config) => {
+    api.configureTextRead.mockResolvedValue({ config, ok: true, message: "check passed" });
+    await act(async () => button(text.preview).click());
+    await act(async () => button(text.check).click());
+    expect(useTextReadStore.getState().revision).toBe(0);
+  },
+);
 it("cancels the specific pending check", async () => {
   let reject!: (error: unknown) => void;
   api.configureTextRead.mockImplementation(

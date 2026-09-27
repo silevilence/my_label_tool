@@ -18,6 +18,8 @@ import { useOperations } from "../store/useOperations";
 export function useScriptLibrary() {
   const readerRevision = useTextReadStore((state) => state.revision);
   const loadedOnce = useRef(false);
+  // Recovery may finish after the user has edited or selected a document.
+  const documentTouched = useRef(false);
   const [library, setLibrary] = useState<ScriptLibrary | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [documentVersion, setDocumentVersion] = useState(0);
@@ -36,10 +38,14 @@ export function useScriptLibrary() {
     void loadScriptLibrary()
       .then(async (value) => {
         const entry = value.scripts[0];
-        const source = entry ? await readLibraryScript(value, entry.id) : DEFAULT_SCRIPT_SOURCE;
+        const source =
+          entry && !documentTouched.current
+            ? await readLibraryScript(value, entry.id)
+            : DEFAULT_SCRIPT_SOURCE;
         if (!mounted) return;
         loadedOnce.current = true;
         setLibrary(value);
+        if (documentTouched.current) return;
         setSelectedId(entry?.id ?? "");
         setSource(source);
         const includeDimensions = entry?.options.includeDimensions ?? false;
@@ -78,6 +84,7 @@ export function useScriptLibrary() {
     }
   }
   function setDocument(id: string, content: string, dimensions: boolean, replace = true) {
+    documentTouched.current = true;
     if (replace) setDocumentVersion((version) => version + 1);
     setSelectedId(id);
     setSource(content);
@@ -92,11 +99,17 @@ export function useScriptLibrary() {
     example,
     source,
     setSource: (value: string) => {
-      if (!example) setSource(value);
+      if (!example) {
+        documentTouched.current = true;
+        setSource(value);
+      }
     },
     includeDimensions,
     setIncludeDimensions: (value: boolean) => {
-      if (!example) setIncludeDimensions(value);
+      if (!example) {
+        documentTouched.current = true;
+        setIncludeDimensions(value);
+      }
     },
     pending,
     dirty,
