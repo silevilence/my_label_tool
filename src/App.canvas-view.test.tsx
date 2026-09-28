@@ -126,7 +126,7 @@ it("preserves zoom and pan through status cards, expiry, and host resizing", asy
   resize(800, 532);
   expect(fixture.layout!.imageLayout).toBe(view);
   await act(async () => vi.advanceTimersByTimeAsync(5000));
-  expect(host.querySelector('[role="status"]')).toBeNull();
+  expect(host.querySelector('main [role="status"]')).toBeNull();
   resize(800, 600);
   expect(fixture.layout!.imageLayout).toBe(view);
   resize(0, 0);

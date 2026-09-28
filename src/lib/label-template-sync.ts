@@ -1,4 +1,11 @@
-import type { AnnotationShape, LabelConfig } from "../types/annotation";
+import type { AnnotationShape, LabelConfig, LabelTemplate } from "../types/annotation";
+import type { ProjectConfig } from "./importers";
+
+export function withActiveProjectTemplate(templates: LabelTemplate[], projectConfig: ProjectConfig | null): LabelTemplate[] {
+  if (!projectConfig) return templates;
+  const projectTemplate = { ...projectConfig.template, labels: projectConfig.labels };
+  return [...templates.filter(template => template.id !== projectTemplate.id), projectTemplate];
+}
 
 export interface LabelTemplateChange {
   added: LabelConfig[];

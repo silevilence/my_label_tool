@@ -46,6 +46,7 @@ export async function selectLabelSample(): Promise<string | null> {
 }
 import { extractionSettings } from "./project-settings";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { assertManualMutationAllowed } from "../store/useOperations";
 import type { McpPoll, McpResult, McpStatus } from "../types/mcp";
 export function mcpPoll(): Promise<McpPoll> { return invoke("mcp_poll"); }
 export function mcpToken(): Promise<string> { return invoke("mcp_token"); }
@@ -271,10 +272,12 @@ export async function selectOnnxRuntimeDll(): Promise<string | null> {
 }
 
 export function exportAnnotationsJson(outputPath: string, data: unknown): Promise<void> {
+  assertManualMutationAllowed();
   return invoke("export_annotations_json", { outputPath, data });
 }
 
 export function exportTextFiles(outputDir: string, files: TextExportFile[]): Promise<void> {
+  assertManualMutationAllowed();
   return invoke("export_text_files", { outputDir, files });
 }
 
@@ -332,6 +335,7 @@ export function loadLabelConfigs(): Promise<LabelConfig[]> {
 }
 
 export function saveLabelConfigs(labels: LabelConfig[]): Promise<void> {
+  assertManualMutationAllowed();
   return invoke("save_label_configs", { labels });
 }
 
@@ -340,6 +344,7 @@ export function loadLabelTemplates(): Promise<LabelTemplate[]> {
 }
 
 export function saveLabelTemplates(templates: LabelTemplate[]): Promise<void> {
+  assertManualMutationAllowed();
   return invoke("save_label_templates", { templates });
 }
 

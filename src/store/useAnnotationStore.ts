@@ -1,4 +1,5 @@
 import { validateAnnotationCore } from "../lib/annotation-validation";
+import { assertManualMutationAllowed } from "./useOperations";
 import type { ImageFile } from "../lib/tauri-api";
 import { create } from "zustand";
 import { annotationSnapshotsEqual, annotationValuesEqual } from "../lib/annotation-utils";
@@ -79,7 +80,12 @@ interface AnnotationHistoryEntry {
 const HISTORY_LIMIT = 100;
 let nextHistoryGroupId = 1;
 
-export const useAnnotationStore = create<AnnotationState>((set, get) => ({
+export const useAnnotationStore = create<AnnotationState>((setState, get) => {
+  const set = (next: Partial<AnnotationState> | ((state: AnnotationState) => Partial<AnnotationState>)) => {
+    assertManualMutationAllowed();
+    setState(next);
+  };
+  return ({
   images: [],
   selectedPath: "",
   scopeStack: [{ kind: "project" }],
@@ -456,7 +462,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       ),
     })),
   selectShape: (annotationId) => set({ selectedShapeId: annotationId }),
-}));
+  });
+});
 
 function applyImageHistory(
   state: AnnotationState,

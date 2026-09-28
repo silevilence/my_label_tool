@@ -1,5 +1,7 @@
 import { useTextReadStore } from "./store/useTextReadStore";
-import { useMcpConnection } from "./hooks/useMcpConnection";
+import { useMcpWorkspace } from "./hooks/useMcpWorkspace";
+import { McpControlBar } from "./components/settings/McpControlBar";
+import { withActiveProjectTemplate } from "./lib/label-template-sync";
 import { McpPanel } from "./components/settings/McpPanel";
 import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
@@ -84,7 +86,6 @@ import { updateProjectPrelabelMappings } from "./lib/prelabel-mapping";
 import "./App.css";
 
 function App() {
-  const mcp = useMcpConnection();
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const selectedRectRef = useRef<KonvaRect | null>(null);
   const transformerRef = useRef<KonvaTransformer | null>(null);
@@ -755,11 +756,14 @@ function App() {
   });
 
   usePanTermination(isPanning, panStateRef, suppressContextMenuRef, endPan);
+  const mcp = useMcpWorkspace({ folderPath, labels, canGrant: () => labelsLoaded.current && gesture.state === "idle" });
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <McpPanel status={mcp.status} error={mcp.error} />
-      <div className="min-h-0 flex-1">
+      <McpPanel status={mcp.status} error={mcp.error} onRevoke={() => mcp.controller.control.revoke()}>
+        <McpControlBar controller={mcp.controller} state={mcp.control} />
+      </McpPanel>
+      <div ref={mcp.gateRef} className="min-h-0 flex-1">
       <AppLayout
         labelSamples={labelSamples}
         reextractVideo={
@@ -980,18 +984,3 @@ function App() {
 }
 
 export default App;
-
-function withActiveProjectTemplate(
-  templates: LabelTemplate[],
-  projectConfig: ProjectConfig | null,
-): LabelTemplate[] {
-  if (!projectConfig) {
-    return templates;
-  }
-
-  const projectTemplate = {
-    ...projectConfig.template,
-    labels: projectConfig.labels,
-  };
-  return [...templates.filter((template) => template.id !== projectTemplate.id), projectTemplate];
-}

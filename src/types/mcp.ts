@@ -1,4 +1,14 @@
 /** Host-only MCP bridge. Independent of plugin and project file contracts. */
+export type McpPermission = "annotations" | "save" | "export" | "prelabel";
+export interface McpControlState {
+  mode: "human" | "pending" | "mcp" | "locked";
+  permissions: McpPermission[];
+  expiresAt: number;
+  sessionId: string | null;
+  client: string;
+  leaseId: string | null;
+  reason: string | null;
+}
 export interface McpSession {
   id: string;
   client: string;

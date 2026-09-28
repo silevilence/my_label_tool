@@ -154,7 +154,9 @@ async fn handle(State(host): State<Arc<Host>>, request: Request<Body>) -> Respon
         }
     };
     // Recheck after awaiting the body: rotation/stop must revoke in-flight authorization too.
-    if let Err(response) = authorize(&host, &headers) { return *response; }
+    if let Err(response) = authorize(&host, &headers) {
+        return *response;
+    }
     let value: Value = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
         Err(_) => return error(StatusCode::BAD_REQUEST, -32700, text::INVALID, Value::Null),

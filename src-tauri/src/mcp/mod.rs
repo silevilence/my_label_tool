@@ -28,7 +28,12 @@ pub fn catalog() -> Value {
         serde_json::from_str(include_str!("../../../docs/mcp-tools.json")).unwrap_or_default();
     Value::Array(
         all.into_iter()
-            .filter(|v| v["name"] == "app_state")
+            .filter(|v| {
+                v["name"] == "app_state"
+                    || v["name"]
+                        .as_str()
+                        .is_some_and(|n| n.starts_with("control_"))
+            })
             .collect(),
     )
 }

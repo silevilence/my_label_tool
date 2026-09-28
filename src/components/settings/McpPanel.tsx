@@ -8,10 +8,12 @@ export function McpPanel({
   status,
   error,
   children,
+  onRevoke,
 }: {
   status: McpStatus | null;
   error: string;
   children?: React.ReactNode;
+  onRevoke?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [address, setAddress] = useState("127.0.0.1");
@@ -26,6 +28,7 @@ export function McpPanel({
     : "";
   async function configure(enabled: boolean, rotate = false) {
     if (rotate && !(await confirmAction(text.rotateConfirm))) return;
+    onRevoke?.();
     setBusy(true);
     setMessage("");
     try {

@@ -37,6 +37,7 @@ export interface OperationHandle {
   setCancel(cancel?: () => void | Promise<void>): void;
 }
 interface OperationInput {
+  owner?: "mcp";
   label: string;
   resource: Resources;
   cancel?: () => void | Promise<void>;
@@ -44,9 +45,10 @@ interface OperationInput {
   allowAnnotationEditing?: boolean;
 }
 interface Operations {
+  mcpControlled: boolean;
   operations: OperationView[];
   begin(input: OperationInput): OperationHandle;
-  canStart(resources: Resources, intent?: "operation" | "annotation-edit"): boolean;
+  canStart(resources: Resources, intent?: "operation" | "annotation-edit", owner?: "mcp"): boolean;
   canEditAnnotations(): boolean;
   cancel(id: string): Promise<void>;
   dismiss(id: string): void;
@@ -57,8 +59,10 @@ const asResources = (resources: Resources): readonly OperationResource[] =>
   typeof resources === "string" ? [resources] : resources;
 const cancellations = new Map<string, () => void | Promise<void>>();
 export const useOperations = create<Operations>((set, get) => ({
+  mcpControlled: false,
   operations: [],
-  canStart: (resources, intent = "operation") =>
+  canStart: (resources, intent = "operation", owner) =>
+    (!get().mcpControlled || owner === "mcp") &&
     !get().operations.some(
       (op) =>
         op.status === "running" &&
@@ -74,7 +78,7 @@ export const useOperations = create<Operations>((set, get) => ({
     ),
   canEditAnnotations: () => get().canStart("project-annotations", "annotation-edit"),
   begin: (input) => {
-    if (!get().canStart(input.resource)) throw new Error(text.busy);
+    if (!get().canStart(input.resource, "operation", input.owner)) throw new Error(text.busy);
     const id = crypto.randomUUID();
     const update = (patch: Partial<OperationView>) =>
       set((state) => ({
@@ -245,7 +249,17 @@ export const useOperations = create<Operations>((set, get) => ({
 }));
 
 export function tryBeginOperation(input: OperationInput): OperationHandle | null {
-  return useOperations.getState().canStart(input.resource)
+  return useOperations.getState().canStart(input.resource, "operation", input.owner)
     ? useOperations.getState().begin(input)
     : null;
+}
+
+let mcpMutationDepth = 0;
+/** Only synchronous, validated MCP commits may cross the manual mutation gate. */
+export function withMcpMutation<T>(commit: () => T): T {
+  mcpMutationDepth++;
+  try { return commit(); } finally { mcpMutationDepth--; }
+}
+export function assertManualMutationAllowed(): void {
+  if (useOperations.getState().mcpControlled && !mcpMutationDepth) throw new Error(text.busy);
 }

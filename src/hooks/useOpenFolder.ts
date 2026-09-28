@@ -10,6 +10,8 @@ import type { ProjectVideo } from "../types/video";
 import { mergeProjectImages, projectVideos, projectFrameIndices } from "../lib/project-media";
 import { videoFrameIndices, videoImages } from "../lib/video-images";
 import { useAnnotationStore } from "../store/useAnnotationStore";
+import { tryBeginOperation } from "../store/useOperations";
+import { MCP_ZH_CN as mcpText } from "../i18n/mcp.zh-CN";
 
 export function useOpenFolder({
   maybeLoadProjectConfig,
@@ -29,6 +31,8 @@ export function useOpenFolder({
   setProjectVideos?: (videos: ProjectVideo[]) => void;
 }) {
   async function openFolder(requestedPath?: string) {
+    const operation = tryBeginOperation({ label: mcpText.openProject, resource: "project-annotations" });
+    if (!operation) { setError(mcpText.busy); return false; }
     setError("");
 
     try {
@@ -63,6 +67,8 @@ export function useOpenFolder({
     } catch (caughtError: unknown) {
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
       return false;
+    } finally {
+      operation.complete();
     }
   }
 

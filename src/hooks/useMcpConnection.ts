@@ -2,14 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { mcpPoll, mcpResolve } from "../lib/tauri-api";
 import type { McpCall, McpResult, McpStatus } from "../types/mcp";
 import { MCP_ZH_CN as text } from "../i18n/mcp.zh-CN";
+import { mcpResult } from "../lib/mcp-controller";
 
-export function mcpResult(value: Record<string, unknown>, isError = false): McpResult {
-  return {
-    content: [{ type: "text", text: JSON.stringify(value) }],
-    structuredContent: value,
-    isError,
-  };
-}
 export function useMcpConnection(
   handler?: (call: McpCall, status: McpStatus) => McpResult,
   onStatus?: (status: McpStatus) => void,
