@@ -17,16 +17,25 @@ export class McpAnnotations {
   private paths = new Map<string, string>();
   private source: ReturnType<typeof useAnnotationStore.getState>["images"] | null = null;
   reset() {
-    this.ids.clear(); this.paths.clear(); this.source = null;
+    this.ids.clear();
+    this.paths.clear();
+    this.source = null;
   }
   private refresh() {
     const images = useAnnotationStore.getState().images;
     if (images === this.source) return;
-    const paths = new Set(images.map(image => image.path));
-    for (const [path, id] of this.ids) if (!paths.has(path)) { this.ids.delete(path); this.paths.delete(id); }
-    for (const image of images) if (!this.ids.has(image.path)) {
-      const id = crypto.randomUUID(); this.ids.set(image.path, id); this.paths.set(id, image.path);
-    }
+    const paths = new Set(images.map((image) => image.path));
+    for (const [path, id] of this.ids)
+      if (!paths.has(path)) {
+        this.ids.delete(path);
+        this.paths.delete(id);
+      }
+    for (const image of images)
+      if (!this.ids.has(image.path)) {
+        const id = crypto.randomUUID();
+        this.ids.set(image.path, id);
+        this.paths.set(id, image.path);
+      }
     this.source = images;
   }
   images() {

@@ -242,6 +242,28 @@ it("times out a pending overwrite without writing", async () => {
   expect(c.jobs.status("s", task)).toMatchObject({ status: "cancelled", code: "TIMEOUT" });
   expect(api.mcpCommitOutput).not.toHaveBeenCalled();
 });
+it("retries cancellation after native registration and reports revocation independently of native errors", async () => {
+  let reject!: (error: Error) => void;
+  let progress!: Parameters<typeof api.runPrelabelInference>[3];
+  vi.mocked(api.runPrelabelInference).mockImplementationOnce((_id, _model, _paths, onProgress) => {
+    progress = onProgress;
+    return new Promise((_resolve, fail) => {
+      reject = fail;
+    });
+  });
+  const task = start("prelabel_start", {
+    modelId: "model",
+    imageIds: c.annotations.images().map((i) => i.id),
+  });
+  await vi.waitFor(() => expect(progress).toBeDefined());
+  c.control.revoke();
+  expect(api.cancelPrelabelInference).toHaveBeenCalledTimes(1);
+  progress({ event: "modelLoading" });
+  expect(api.cancelPrelabelInference).toHaveBeenCalledTimes(2);
+  reject(new Error("native abort at C:/secret"));
+  expect(await done(task, "cancelled")).toMatchObject({ code: "CONTROL_REVOKED" });
+  expect(useAnnotationStore.getState().undoStack).toHaveLength(0);
+});
 it("serializes all built-in formats using existing exporters and protects YOLO shape constraints", () => {
   const data = {
     labels: context.labels,

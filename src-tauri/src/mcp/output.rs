@@ -106,6 +106,7 @@ impl Host {
         lease: String,
         groups: Vec<OutputGroup>,
     ) -> Result<Preview, String> {
+        require_safe_output_platform()?;
         {
             let mut inner = self.lock()?;
             inner.sweep();
@@ -145,6 +146,18 @@ impl Host {
             return Err(text::OUTPUT_CANCELLED.into());
         }
         commit(prepared, overwrite)
+    }
+}
+fn require_safe_output_platform() -> Result<(), String> {
+    // Directory handles do not prevent rename on Unix; an openat/renameat implementation
+    // is required there before claiming the Windows path-race guarantee.
+    #[cfg(windows)]
+    {
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Err(text::OUTPUT_PLATFORM.into())
     }
 }
 fn check_authority(inner: &super::Inner, session: &str, lease: &str) -> Result<(), String> {
@@ -255,6 +268,9 @@ fn lock_directory(
         if create && !current.try_exists().map_err(text::failed)? {
             fs::create_dir(&current).map_err(text::failed)?;
         }
+        if handles.len() >= 16_384 {
+            return Err(text::LIMIT.into());
+        }
         handles.push(open_checked(&current, true)?);
         seen.insert(current.clone());
     }
@@ -301,6 +317,7 @@ fn stage(groups: Vec<OutputGroup>) -> Result<Prepared, String> {
     };
     let mut directories = HashSet::new();
     let mut targets = HashSet::new();
+    let mut backup_bytes = 0u64;
     // Validate every relative path before creating any directories or staging any content.
     for group in &groups {
         for file in &group.files {
@@ -331,6 +348,10 @@ fn stage(groups: Vec<OutputGroup>) -> Result<Prepared, String> {
             let hash = fingerprint(&target)?;
             let backup = if hash.is_some() {
                 let mut old = open_checked(&target, false)?;
+                backup_bytes += old.metadata().map_err(text::failed)?.len();
+                if backup_bytes > 64 * 1024 * 1024 {
+                    return Err(text::LIMIT.into());
+                }
                 let mut backup = NamedTempFile::new_in(parent).map_err(text::failed)?;
                 std::io::copy(&mut old, &mut backup).map_err(text::failed)?;
                 Some(backup)
@@ -472,6 +493,26 @@ mod tests {
         assert!(stage(group(dir.path(), &[("a.json", "a"), ("A.json", "b")])).is_err());
         fs::create_dir(dir.path().join("folder")).unwrap();
         assert!(stage(group(dir.path(), &[("folder", "x")])).is_err());
+    }
+    #[test]
+    fn bounds_total_backup_bytes_without_overwriting_existing_files() {
+        let root = tempfile::tempdir().unwrap();
+        for name in ["first.json", "second.json"] {
+            File::create(root.path().join(name))
+                .unwrap()
+                .set_len(33 * 1024 * 1024)
+                .unwrap();
+        }
+        assert!(stage(group(
+            root.path(),
+            &[("first.json", "a"), ("second.json", "b")]
+        ))
+        .is_err());
+        assert_eq!(
+            fs::metadata(root.path().join("first.json")).unwrap().len(),
+            33 * 1024 * 1024
+        );
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 2); // Temporary backups removed on failure.
     }
     #[cfg(windows)]
     #[test]

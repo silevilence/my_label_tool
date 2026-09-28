@@ -52,6 +52,7 @@ async fn initialize(url: &str, token: &str, version: &str) -> String {
 }
 
 #[tokio::test]
+#[cfg(windows)]
 async fn output_authority_revocation_cancellation_disconnect_and_shutdown() {
     let (host, dir, url, token) = fixture().await;
     let sid = initialize(&url, &token, VERSIONS[2]).await;

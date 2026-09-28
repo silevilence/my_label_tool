@@ -258,7 +258,11 @@ let mcpMutationDepth = 0;
 /** Only synchronous, validated MCP commits may cross the manual mutation gate. */
 export function withMcpMutation<T>(commit: () => T): T {
   mcpMutationDepth++;
-  try { return commit(); } finally { mcpMutationDepth--; }
+  try {
+    return commit();
+  } finally {
+    mcpMutationDepth--;
+  }
 }
 export function assertManualMutationAllowed(): void {
   if (useOperations.getState().mcpControlled && !mcpMutationDepth) throw new Error(text.busy);

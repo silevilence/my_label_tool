@@ -206,6 +206,12 @@ export async function runMcpPrelabel(
   try {
     job.check();
     const result = await runPrelabelInference(job.id, model, paths, (e) => {
+      // Cancellation can arrive before the native task finishes registering. Its first progress
+      // event proves registration has happened, so retry cancellation at every subsequent boundary.
+      if (job.signal.aborted) {
+        cancel();
+        return;
+      }
       if (e.event === "completed") job.progress(Math.round((e.index / e.total) * 95));
     });
     job.check();

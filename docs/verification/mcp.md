@@ -48,3 +48,13 @@
 预打标新增 MCP 编排使用确定性推理桩验证追加、原子提交与取消；本次没有新下载模型或运行模型服务。原有本地推理单测在 Rust 全量回归中执行。
 
 - 项目任务提交前复核：113 文件 / 712 前端测试通过，行覆盖率 96.06%，typecheck、lint、clippy、Rust 全量串行测试、前端生产构建通过。快速审核的阻塞项已修复；全面审核另行进行。
+
+## 全面审核与最终回归
+
+- 审核范围为 `55e03a6` 之后的五项 MCP 任务及最终修复；[完整审核报告](mcp-review.md) 记录需求、质量、插件边界七个维度及验收限制。最终无阻塞项。
+- 修复预打标在原生任务登记前取消的竞态：后续进度边界重试取消，取消后不提交标注。任务保留 CONTROL_REVOKED / CANCELLED / TIMEOUT 的原始原因，不被原生异常覆盖。
+- 限制已有文件备份总量为 64 MiB、目录句柄为 16384；超限测试确认原文件保留且暂存文件清理。安全文件输出仅在 Windows 开放，其他系统显式失败。
+- `npm run typecheck`、`npm run lint`、`cargo clippy --manifest-path src-tauri/Cargo.toml` 全部通过。
+- `npm run test:coverage -- --maxWorkers=4`：113 文件、713 测试通过；配置统计范围内语句 95.75%、分支 91.42%、函数 97.78%、行 96.08%，满足项目阈值。
+- `cargo test --manifest-path src-tauri/Cargo.toml -- --test-threads=1`：291 单元测试通过、14 项沿用既有忽略设置；6 ACP、1 插件、4 脚本集成测试通过，真实 Agent 测试 1 项保持忽略。MCP 专项共 9 项通过。未测量 Rust 覆盖率。
+- 最终修复未改变连接配置和令牌。Cherry Studio 与真实桌面 SDK 验收范围见上节；新增安全边界与取消竞态通过自动化回归验证。

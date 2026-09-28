@@ -21,14 +21,14 @@ pub fn run() {
             text_read::initialize();
             use tauri::Manager;
             match app.path().app_data_dir() {
-              Ok(directory) => {
-                tauri::async_runtime::spawn(
-                    mcp::host()
-                        .clone()
-                        .initialize_owned(directory.join("mcp.json")),
-                );
-              }
-              Err(error) => mcp::host().initialization_error(error),
+                Ok(directory) => {
+                    tauri::async_runtime::spawn(
+                        mcp::host()
+                            .clone()
+                            .initialize_owned(directory.join("mcp.json")),
+                    );
+                }
+                Err(error) => mcp::host().initialization_error(error),
             }
             #[cfg(desktop)]
             app.handle()

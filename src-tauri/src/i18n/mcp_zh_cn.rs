@@ -18,3 +18,5 @@ pub const OUTPUT_ROLLBACK: &str = "MCP 文件写入失败且回滚未全部成�
 pub fn output_rollback(paths: &[std::path::PathBuf]) -> String {
     format!("{}：{:?}", OUTPUT_ROLLBACK, paths)
 }
+#[cfg(not(windows))]
+pub const OUTPUT_PLATFORM: &str = "MCP 安全文件输出目前仅支持 Windows";

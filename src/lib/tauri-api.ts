@@ -3,22 +3,46 @@ import { TEXT_READ_ZH_CN as textReadText } from "../i18n/text-read.zh-CN";
 import type { VideoExtractionSettings } from "../types/project-settings";
 import type { AcpConfig, AcpEvent, AcpResult } from "../types/acp";
 
-export function runAcpAgent(runId: string, config: AcpConfig, prompt: string, onEvent: (event: AcpEvent) => void): Promise<AcpResult> {
+export function runAcpAgent(
+  runId: string,
+  config: AcpConfig,
+  prompt: string,
+  onEvent: (event: AcpEvent) => void,
+): Promise<AcpResult> {
   const channel = new Channel<AcpEvent>();
   channel.onmessage = onEvent;
   return invoke("run_acp_agent", { runId, config, prompt, onEvent: channel });
 }
-export function cancelAcpAgent(runId: string): Promise<void> { return invoke("cancel_acp_agent", { runId }); }
-export function respondAcpPermission(runId: string, requestId: string, optionId: string | null): Promise<void> {
+export function cancelAcpAgent(runId: string): Promise<void> {
+  return invoke("cancel_acp_agent", { runId });
+}
+export function respondAcpPermission(
+  runId: string,
+  requestId: string,
+  optionId: string | null,
+): Promise<void> {
   return invoke("respond_acp_permission", { runId, requestId, optionId });
 }
-import type { LabelSample, LabelSampleChange, LabelSampleBounds, LabelSampleCrop } from "../types/label-sample";
+import type {
+  LabelSample,
+  LabelSampleChange,
+  LabelSampleBounds,
+  LabelSampleCrop,
+} from "../types/label-sample";
 import { LABEL_SAMPLE_ZH_CN as sampleText } from "../i18n/label-sample.zh-CN";
 
-export function previewProjectLabelSample(folder: string, path: string, bounds: LabelSampleBounds): Promise<string> {
+export function previewProjectLabelSample(
+  folder: string,
+  path: string,
+  bounds: LabelSampleBounds,
+): Promise<string> {
   return invoke("preview_project_label_sample", { folder, path, bounds });
 }
-export function createLabelSampleCrop(folder: string, path: string, bounds: LabelSampleBounds): Promise<LabelSampleCrop> {
+export function createLabelSampleCrop(
+  folder: string,
+  path: string,
+  bounds: LabelSampleBounds,
+): Promise<LabelSampleCrop> {
   return invoke("create_label_sample_crop", { folder, path, bounds });
 }
 export function discardLabelSampleCrop(path: string): Promise<void> {
@@ -41,50 +65,101 @@ export function openLabelSampleDirectory(folder: string): Promise<void> {
   return invoke("open_label_sample_directory", { folder });
 }
 export async function selectLabelSample(): Promise<string | null> {
-  const path = await open({ multiple: false, filters: [{ name: sampleText.fileFilter, extensions: ["png", "jpg", "jpeg", "bmp"] }] });
+  const path = await open({
+    multiple: false,
+    filters: [{ name: sampleText.fileFilter, extensions: ["png", "jpg", "jpeg", "bmp"] }],
+  });
   return typeof path === "string" ? path : null;
 }
 import { extractionSettings } from "./project-settings";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { assertManualMutationAllowed } from "../store/useOperations";
 import type { McpPoll, McpResult, McpStatus } from "../types/mcp";
-export function mcpPoll(): Promise<McpPoll> { return invoke("mcp_poll"); }
-export function mcpToken(): Promise<string> { return invoke("mcp_token"); }
-export function mcpConfigure(enabled: boolean, address: string, port: number, rotate = false): Promise<McpStatus> {
+export function mcpPoll(): Promise<McpPoll> {
+  return invoke("mcp_poll");
+}
+export function mcpToken(): Promise<string> {
+  return invoke("mcp_token");
+}
+export function mcpConfigure(
+  enabled: boolean,
+  address: string,
+  port: number,
+  rotate = false,
+): Promise<McpStatus> {
   return invoke("mcp_configure", { enabled, address, port, rotate });
 }
-export function mcpResolve(id: string, result: McpResult): Promise<void> { return invoke("mcp_resolve", { id, result }); }
-export function mcpSetAuthority(authority: { epoch: number; sessionId: string | null; leaseId: string | null; expiresAt: number }): Promise<void> {
+export function mcpResolve(id: string, result: McpResult): Promise<void> {
+  return invoke("mcp_resolve", { id, result });
+}
+export function mcpSetAuthority(authority: {
+  epoch: number;
+  sessionId: string | null;
+  leaseId: string | null;
+  expiresAt: number;
+}): Promise<void> {
   return invoke("mcp_set_authority", { authority });
 }
-export function mcpPrepareOutput(taskId: string, session: string, lease: string, groups: { root: string; files: { path: string; content: string }[] }[]): Promise<{ overwrites: number; files: number }> {
+export function mcpPrepareOutput(
+  taskId: string,
+  session: string,
+  lease: string,
+  groups: { root: string; files: { path: string; content: string }[] }[],
+): Promise<{ overwrites: number; files: number }> {
   return invoke("mcp_prepare_output", { taskId, session, lease, groups });
 }
-export function mcpCommitOutput(taskId: string, overwrite: boolean): Promise<number> { return invoke("mcp_commit_output", { taskId, overwrite }); }
-export function mcpDiscardOutput(taskId: string): Promise<void> { return invoke("mcp_discard_output", { taskId }); }
+export function mcpCommitOutput(taskId: string, overwrite: boolean): Promise<number> {
+  return invoke("mcp_commit_output", { taskId, overwrite });
+}
+export function mcpDiscardOutput(taskId: string): Promise<void> {
+  return invoke("mcp_discard_output", { taskId });
+}
 import type { ScriptEvent, ScriptLimits, ScriptResult, ScriptSnapshot } from "../types/script";
 import { SCRIPT_ZH_CN as scriptText } from "../i18n/script.zh-CN";
 
-export function scriptLibraryDirectory(): Promise<string> { return invoke("script_library_directory"); }
-export function deleteScriptFile(id: string): Promise<void> { return invoke("delete_script_file", { id }); }
+export function scriptLibraryDirectory(): Promise<string> {
+  return invoke("script_library_directory");
+}
+export function deleteScriptFile(id: string): Promise<void> {
+  return invoke("delete_script_file", { id });
+}
 export async function selectScriptFile(): Promise<string | null> {
-  const path = await open({ multiple: false, filters: [{ name: scriptText.scriptFile, extensions: ["lua"] }] });
+  const path = await open({
+    multiple: false,
+    filters: [{ name: scriptText.scriptFile, extensions: ["lua"] }],
+  });
   return typeof path === "string" ? path : null;
 }
 export async function selectScriptExportPath(name: string): Promise<string | null> {
-  const path = await save({ defaultPath: name, filters: [{ name: scriptText.scriptFile, extensions: ["lua"] }] });
+  const path = await save({
+    defaultPath: name,
+    filters: [{ name: scriptText.scriptFile, extensions: ["lua"] }],
+  });
   return typeof path === "string" ? path : null;
 }
 
-export function scriptHostAvailable(): Promise<boolean> { return invoke("script_host_available"); }
-export function loadScriptResourceLimits(): Promise<ScriptLimits> { return invoke("load_script_resource_limits"); }
-export function saveScriptResourceLimits(value: ScriptLimits): Promise<void> { return invoke("save_script_resource_limits", { value }); }
-export function runScript(runId: string, snapshot: ScriptSnapshot, source: string, onEvent: (event: ScriptEvent) => void): Promise<ScriptResult[]> {
+export function scriptHostAvailable(): Promise<boolean> {
+  return invoke("script_host_available");
+}
+export function loadScriptResourceLimits(): Promise<ScriptLimits> {
+  return invoke("load_script_resource_limits");
+}
+export function saveScriptResourceLimits(value: ScriptLimits): Promise<void> {
+  return invoke("save_script_resource_limits", { value });
+}
+export function runScript(
+  runId: string,
+  snapshot: ScriptSnapshot,
+  source: string,
+  onEvent: (event: ScriptEvent) => void,
+): Promise<ScriptResult[]> {
   const channel = new Channel<ScriptEvent>();
   channel.onmessage = onEvent;
   return invoke("run_script", { runId, snapshot, source, onEvent: channel });
 }
-export function cancelScript(runId: string): Promise<void> { return invoke("cancel_script", { runId }); }
+export function cancelScript(runId: string): Promise<void> {
+  return invoke("cancel_script", { runId });
+}
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { ProjectVideo, VideoImportResult, VideoProject } from "../types/video";
 import { VIDEO_ZH_CN as videoText } from "../i18n/video.zh-CN";

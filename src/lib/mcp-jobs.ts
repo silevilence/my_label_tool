@@ -84,8 +84,22 @@ export class McpJobs {
         operation.complete(text.completed);
       })
       .catch((error: unknown) => {
-        job.code = error instanceof McpError ? error.code : "TASK_FAILED";
-        job.message = error instanceof McpError ? error.message : text.taskFailed;
+        const reason =
+          abort.signal.aborted && abort.signal.reason instanceof McpError
+            ? abort.signal.reason
+            : error;
+        job.code =
+          reason instanceof McpError
+            ? reason.code
+            : abort.signal.aborted
+              ? "CANCELLED"
+              : "TASK_FAILED";
+        job.message =
+          reason instanceof McpError
+            ? reason.message
+            : abort.signal.aborted
+              ? text.cancelled
+              : text.taskFailed;
         job.status = abort.signal.aborted || job.code === "CANCELLED" ? "cancelled" : "failed";
         if (job.status === "cancelled") operation.complete(job.message, "warning");
         else operation.fail(error);
@@ -111,6 +125,7 @@ export class McpJobs {
     return { taskId, accepted: job.status === "running" };
   }
   revoke() {
-    for (const job of this.jobs.values()) if (job.status === "running") job.abort.abort();
+    for (const job of this.jobs.values())
+      if (job.status === "running") job.abort.abort(new McpError("CONTROL_REVOKED", text.revoked));
   }
 }

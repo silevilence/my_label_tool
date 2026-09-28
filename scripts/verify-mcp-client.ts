@@ -6,27 +6,52 @@ import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-const file = process.env.MCP_CONFIG ?? join(process.env.APPDATA ?? "", "com.mylabeltool.app", "mcp.json");
-const config = JSON.parse(await readFile(file, "utf8")) as { address: string; port: number; token: string };
+const file =
+  process.env.MCP_CONFIG ?? join(process.env.APPDATA ?? "", "com.mylabeltool.app", "mcp.json");
+const config = JSON.parse(await readFile(file, "utf8")) as {
+  address: string;
+  port: number;
+  token: string;
+};
 assert.ok(config.address === "127.0.0.1" || config.address === "::1");
 const address = config.address.includes(":") ? `[${config.address}]` : config.address;
 const url = new URL(`http://${address}:${config.port}/mcp`);
 const client = new Client({ name: "my-label-tool-sdk-verification", version: "1.0.0" });
-const transport = new StreamableHTTPClientTransport(url, { requestInit: { headers: { Authorization: `Bearer ${config.token}` } } });
+const transport = new StreamableHTTPClientTransport(url, {
+  requestInit: { headers: { Authorization: `Bearer ${config.token}` } },
+});
 try {
   await client.connect(transport);
   const tools = await client.listTools();
-  assert.ok(tools.tools.some(tool => tool.name === "app_state"));
+  assert.ok(tools.tools.some((tool) => tool.name === "app_state"));
   const state = await client.callTool({ name: "app_state", arguments: {} });
   assert.notEqual(state.isError, true);
   if (process.env.MCP_EXPECT_LOCKED === "1") {
-    const request = await client.callTool({ name: "control_request", arguments: {
-      projectId: (state.structuredContent as { projectId: string }).projectId, permissions: ["annotations"],
-    } });
+    const request = await client.callTool({
+      name: "control_request",
+      arguments: {
+        projectId: (state.structuredContent as { projectId: string }).projectId,
+        permissions: ["annotations"],
+      },
+    });
     assert.equal(request.isError, true);
     assert.equal((request.structuredContent as { code: string }).code, "CONTROL_LOCKED");
   }
   await client.ping();
-  console.log(JSON.stringify({ client: "official TypeScript SDK", server: client.getServerVersion(), tools: tools.tools.map(t => t.name), state, passed: true }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        client: "official TypeScript SDK",
+        server: client.getServerVersion(),
+        tools: tools.tools.map((t) => t.name),
+        state,
+        passed: true,
+      },
+      null,
+      2,
+    ),
+  );
   await transport.terminateSession();
-} finally { await client.close(); }
+} finally {
+  await client.close();
+}

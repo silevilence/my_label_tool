@@ -84,7 +84,7 @@ HTTP 层：400 非法协议/缺失会话，401 鉴权，403 来源，404 会话�
 413 请求过大，429 限流，503 宿主未就绪。JSON-RPC 使用 -32700/-32600/-32601/-32602。
 领域失败用工具 `isError: true` 与 `{code, message}`：INVALID_ARGUMENT、NOT_READY、
 NOT_FOUND、PERMISSION_DENIED、CONTROL_PENDING、CONTROL_DENIED、CONTROL_REVOKED、
-CONTROL_LOCKED、CONFLICT、BUSY、TIMEOUT、CANCELLED、INTERNAL_ERROR。
+CONTROL_LOCKED、CONFLICT、BUSY、TIMEOUT、CANCELLED、TASK_FAILED、INTERNAL_ERROR。
 客户端不得对冲突/超时盲目重放写操作，先读取状态确认结果，再重新申请/提交。
 
 ## 连接与操作步骤
@@ -112,8 +112,10 @@ CONTROL_LOCKED、CONFLICT、BUSY、TIMEOUT、CANCELLED、INTERNAL_ERROR。
 导出支持 JSON、COCO、VOC、YOLO、custom（使用界面中现有字段映射）；YOLO 拒绝非矩形标注。
 导出不改变当前项目的保存位置。保存同时写标注及当前项目配置，保留原有配置扩展字段。
 
-文件输出最多 10000 个文件、64 MiB 文本，仅 JSON/XML/TXT；暂存与目标位于同一文件系统。
+文件输出最多 10000 个文件、64 MiB 文本，仅 JSON/XML/TXT；已有文件备份总量同样最多 64 MiB，
+目录句柄最多 16384 个；暂存与目标位于同一文件系统。
 Windows 通过无重解析点的目录句柄阻止父目录重命名逃逸，提交前重新核对目标内容摘要。
+本版安全磁盘输出仅支持 Windows；其他系统的 MCP 保存/导出明确失败，不退化为缺少路径竞争保护的写入。
 文件变化后需重新请求；导出已有文件另行显示覆盖确认，取消/超时会移除该确认。
 每个文件原子替换；普通提交失败回滚已经替换的文件。多文件提交不承诺断电时的整批事务性。
 权限撤销、会话删除、服务关闭与磁盘提交在宿主互斥区排序；撤销之前已完成的提交保留。
@@ -145,6 +147,6 @@ Windows 通过无重解析点的目录句柄阻止父目录重命名逃逸，提
 - [x] 人工批准、拒绝、申请超时、收回、锁定、到期、续租、断连释放可重复验证（UI + 自动化）。
 - [x] 原子增删改与单步撤销/重做、界面和导出一致；过期版本/非法坐标/标签不匹配不写入。
 - [x] 保存/导出/预打标按权限执行，覆盖确认、路径逃逸、任务取消、迟到结果和退出均覆盖；预打标编排采用确定性推理桩。
-- [ ] 类型检查、lint、覆盖率、Rust clippy/test 通过；完整审核后无阻塞项。
+- [x] 类型检查、lint、覆盖率、Rust clippy/test 通过；完整审核后无阻塞项。
 
 验收记录保存在 `docs/verification/mcp.md`，未执行的人工项不得标成已通过。
