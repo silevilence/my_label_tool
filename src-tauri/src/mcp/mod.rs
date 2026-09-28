@@ -29,10 +29,12 @@ pub fn catalog() -> Value {
     Value::Array(
         all.into_iter()
             .filter(|v| {
-                v["name"] == "app_state"
-                    || v["name"]
-                        .as_str()
-                        .is_some_and(|n| n.starts_with("control_"))
+                matches!(
+                    v["name"].as_str(),
+                    Some("app_state" | "project_read" | "annotations_read" | "annotations_apply")
+                ) || v["name"]
+                    .as_str()
+                    .is_some_and(|n| n.starts_with("control_"))
             })
             .collect(),
     )

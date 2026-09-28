@@ -6,6 +6,7 @@ import { ANNOTATION_ZH_CN as text } from "../i18n/annotation.zh-CN";
 export function validateAnnotationCore(
   value: unknown,
   labels?: readonly LabelConfig[],
+  exactCoordinates = false,
 ): asserts value is Omit<AnnotationShape, "id"> & { id?: string } {
   if (!value || typeof value !== "object") throw new Error(text.invalidAnnotation);
   const shape = value as Record<string, unknown>;
@@ -22,6 +23,16 @@ export function validateAnnotationCore(
     !Array.isArray(shape.points) ||
     shape.points.length < minimum ||
     !shape.points.every((point: unknown) => typeof point === "number" && Number.isFinite(point))
+  )
+    throw new Error(text.invalidCoordinates);
+  // External domain requests are not format importers: reject ambiguous coordinates instead
+  // of normalizing them. Existing import/plugin callers retain their normalization contract.
+  if (
+    exactCoordinates &&
+    ((shape.type === "rect" &&
+      (shape.points.length !== 4 || shape.points[2] <= 0 || shape.points[3] <= 0)) ||
+      (shape.type === "point" && shape.points.length !== 2) ||
+      (shape.type === "polygon" && shape.points.length % 2 !== 0))
   )
     throw new Error(text.invalidCoordinates);
 }

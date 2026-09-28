@@ -1,4 +1,5 @@
 export const MCP_ZH_CN = {
+  invalidAnnotationId: "标注 ID 不存在", duplicateAnnotationId: "标注 ID 已存在",
   openProject: "打开项目",
   locked: "工具写操作已锁定",
   controlBusy: "已有控制申请或正在操作的客户端",

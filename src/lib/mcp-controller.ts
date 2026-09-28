@@ -7,6 +7,8 @@ import { useOverlayStore } from "../store/useOverlayStore";
 import { MCP_ZH_CN as text } from "../i18n/mcp.zh-CN";
 import type { McpCall, McpPermission, McpResult, McpStatus } from "../types/mcp";
 import type { LabelConfig } from "../types/annotation";
+import type { PrelabelModelLibrary } from "../types/prelabel";
+import { McpAnnotations } from "./mcp-annotations";
 
 const ajv = new Ajv({ strict: false, allErrors: false });
 const validators = new Map(catalog.map((tool) => [tool.name, ajv.compile(tool.inputSchema)]));
@@ -14,6 +16,7 @@ export interface McpContext {
   folderPath: string;
   labels: LabelConfig[];
   canGrant: () => boolean;
+  library?: PrelabelModelLibrary;
 }
 export function mcpResult(value: Record<string, unknown>, isError = false): McpResult {
   return {
@@ -23,6 +26,8 @@ export function mcpResult(value: Record<string, unknown>, isError = false): McpR
   };
 }
 export class McpController {
+  readonly annotations = new McpAnnotations();
+  private storeSnapshot = useAnnotationStore.getState();
   readonly control: McpControl;
   projectId: string | null = null;
   revision = 0;
@@ -46,12 +51,21 @@ export class McpController {
       this.control.revoke();
       this.folder = context.folderPath;
       this.projectId = context.folderPath ? crypto.randomUUID() : null;
+      this.annotations.reset();
       this.revision++;
     }
     if (context.labels !== this.labels) {
       this.labels = context.labels;
       this.revision++;
     }
+    const state = useAnnotationStore.getState();
+    if (
+      state.images !== this.storeSnapshot.images ||
+      state.annotationsByImage !== this.storeSnapshot.annotationsByImage ||
+      state.frameIndices !== this.storeSnapshot.frameIndices
+    )
+      this.revision++;
+    this.storeSnapshot = state;
     return context;
   }
   changed() {
@@ -75,6 +89,15 @@ export class McpController {
     if (!this.projectId) throw new McpError("NOT_READY", text.noProject);
     if (id !== this.projectId) throw new McpError("CONFLICT", text.conflict);
   }
+  assertWrite(call: McpCall, permission: McpPermission) {
+    this.sync();
+    this.assertProject(call.arguments.projectId);
+    this.control.assert(call.sessionId, call.arguments.leaseId, permission);
+    if (call.arguments.expectedRevision !== this.revision)
+      throw new McpError("CONFLICT", text.conflict);
+    if (!useOperations.getState().canStart("project-annotations", "operation", "mcp"))
+      throw new McpError("BUSY", text.busy);
+  }
   handle = (call: McpCall, status: McpStatus): McpResult => {
     try {
       this.observe(status);
@@ -85,6 +108,38 @@ export class McpController {
       if (!validate || !validate(call.arguments)) throw new McpError("INVALID_ARGUMENT");
       const a = call.arguments;
       switch (call.name) {
+        case "project_read": {
+          this.assertProject(this.projectId);
+          return mcpResult({
+            projectId: this.projectId,
+            revision: this.revision,
+            labels: this.context().labels.map((label) => ({ ...label })),
+            images: this.annotations.images(),
+            models: (this.context().library?.models ?? []).map((model) => ({
+              id: model.id,
+              name: model.name,
+              format: model.format,
+              classNames: model.classNames,
+            })),
+          });
+        }
+        case "annotations_read":
+          this.assertProject(a.projectId);
+          return mcpResult({
+            projectId: this.projectId,
+            revision: this.revision,
+            imageId: a.imageId,
+            annotations: this.annotations.read(a.imageId),
+          });
+        case "annotations_apply": {
+          this.assertWrite(call, "annotations");
+          const result = this.annotations.apply(
+            a.changes as Parameters<McpAnnotations["apply"]>[0],
+            this.context().labels,
+          );
+          this.sync();
+          return mcpResult({ ...result, projectId: this.projectId, revision: this.revision });
+        }
         case "app_state":
           return mcpResult({
             ready: true,

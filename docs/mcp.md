@@ -51,6 +51,8 @@ projectId 标识一次打开的项目，imageId 是项目内图片的稳定标�
 add/update 的 annotation 为完整 AnnotationShape，update/delete 必须指向已有 ID。
 同次请求依次作用于暂存快照，全部通过共享校验后一次提交；单项无效时全部不写入。
 一次调用为一个可撤销事务，沿用原图像素、标签图形约束与 bindFrame 源帧号语义。
+MCP 使用共享 `validateAnnotationCore` 的精确坐标入口：矩形恰好四项且宽高为正，
+关键点恰好两项，多边形至少三对坐标。既有导入/插件调用保留原有格式归一化契约。
 不改变 AnnotationShape、LabelConfig、ProjectConfig、插件 schema 或任何插件版本。
 内置 JSON/COCO/VOC/YOLO/custom 导出复用现有序列化；不开放安装插件、下载、任意命令或删图。
 
