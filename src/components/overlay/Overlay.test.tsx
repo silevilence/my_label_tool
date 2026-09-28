@@ -81,6 +81,24 @@ it("traps focus and restores the opener", () => {
   expect(document.activeElement).toBe(opener);
   opener.remove();
 });
+it("lets a child consume Tab before applying the focus cycle", () => {
+  act(() =>
+    root.render(
+      <Overlay onClose={() => {}}>
+        <input
+          onKeyDown={(event) => {
+            if (event.key === "Tab") event.preventDefault();
+          }}
+        />
+        <button>last</button>
+      </Overlay>,
+    ),
+  );
+  const input = document.querySelector("input");
+  expect(document.activeElement).toBe(input);
+  key("Tab");
+  expect(document.activeElement).toBe(input);
+});
 
 it("cancels shortcut recording before closing its nested settings overlay", () => {
   const outer = vi.fn(),

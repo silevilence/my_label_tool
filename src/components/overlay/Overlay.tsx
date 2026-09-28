@@ -121,24 +121,29 @@ function MountedOverlay({
         const allowed = latest.current.canDismiss;
         if (event.type === "keydown" && (typeof allowed === "function" ? allowed() : allowed))
           latest.current.onClose();
-      } else if (event.key === "Tab" && kind === "blocking" && event.type === "keydown") {
-        const elements = focusTargets(panel.current);
-        const index = elements.indexOf(document.activeElement as HTMLElement);
-        event.preventDefault();
-        const next =
-          index < 0
-            ? event.shiftKey
-              ? elements.length - 1
-              : 0
-            : (index + (event.shiftKey ? -1 : 1) + elements.length) % elements.length;
-        (elements[next] ?? panel.current)?.focus();
       } else if (
         latest.current.pointerOnly &&
+        !(event.key === "Tab" && kind === "blocking" && event.type === "keydown") &&
         !(event.type === "keyup" && ["Control", "Shift", "Alt", "Meta"].includes(event.key))
       ) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }
+    }
+    // Editors may consume Tab (e.g. accepting a completion). Move focus only
+    // after the target has had a chance to handle the key.
+    function tab(event: KeyboardEvent) {
+      if (!isTop() || event.defaultPrevented || event.key !== "Tab" || kind !== "blocking") return;
+      const elements = focusTargets(panel.current);
+      const index = elements.indexOf(document.activeElement as HTMLElement);
+      event.preventDefault();
+      const next =
+        index < 0
+          ? event.shiftKey
+            ? elements.length - 1
+            : 0
+          : (index + (event.shiftKey ? -1 : 1) + elements.length) % elements.length;
+      (elements[next] ?? panel.current)?.focus();
     }
     function focus(event: FocusEvent) {
       if (kind === "blocking" && isTop() && !panel.current?.contains(event.target as Node))
@@ -146,6 +151,7 @@ function MountedOverlay({
     }
     window.addEventListener("keydown", key, true);
     window.addEventListener("keyup", key, true);
+    window.addEventListener("keydown", tab);
     function outside(event: PointerEvent) {
       if (!isTop() || panel.current?.contains(event.target as Node)) return;
       // 锚定菜单（light）点击外部即关；居中对话框需显式声明 closeOnBackdrop。
@@ -163,6 +169,7 @@ function MountedOverlay({
       store.unregister(id);
       window.removeEventListener("keydown", key, true);
       window.removeEventListener("keyup", key, true);
+      window.removeEventListener("keydown", tab);
       document.removeEventListener("focusin", focus);
       document.removeEventListener("pointerdown", outside);
       if (wasTop && previous instanceof HTMLElement && previous.isConnected) previous.focus();

@@ -1,5 +1,10 @@
 import { EditorView } from "@codemirror/view";
-import { startCompletion, completionStatus, acceptCompletion } from "@codemirror/autocomplete";
+import {
+  startCompletion,
+  completionStatus,
+  acceptCompletion,
+  currentCompletions,
+} from "@codemirror/autocomplete";
 import { undo, redo } from "@codemirror/commands";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -171,6 +176,139 @@ it("uses Escape to close completion before dismissing the panel", async () => {
     view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   });
   expect(close).toHaveBeenCalledOnce();
+});
+it("accepts a visible completion with Tab without leaving the editor", async () => {
+  const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  await act(async () => {
+    view.focus();
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: "annotool.im" },
+      selection: { anchor: 11 },
+    });
+    startCompletion(view);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  expect(completionStatus(view.state)).toBe("active");
+  await act(async () => {
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }),
+    );
+  });
+  expect(view.state.doc.toString()).toBe("annotool.images");
+  expect(document.activeElement).toBe(view.contentDOM);
+  await act(async () => {
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }),
+    );
+  });
+  expect(view.state.doc.toString()).toBe("annotool.images\t");
+  expect(document.activeElement).toBe(view.contentDOM);
+});
+it("refreshes variable completion to members when typing a dot and keeps Shift+Tab in the editor", async () => {
+  const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  const doc =
+    "local shapes = annotool.annotations({imagePath = image.path})\nfor _, shape in ipairs(shapes) do\nshap";
+  await act(async () => {
+    view.focus();
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: doc },
+      selection: { anchor: doc.length },
+    });
+    startCompletion(view);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }),
+    );
+    view.dispatch({
+      changes: { from: view.state.doc.length, insert: "." },
+      selection: { anchor: view.state.doc.length + 1 },
+      userEvent: "input.type",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  expect(view.state.doc.toString()).toBe(doc + "e.");
+  expect(currentCompletions(view.state).map((item) => item.label)).toContain("attributes");
+  await act(async () => {
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }),
+    );
+  });
+  expect(document.activeElement).toBe(view.contentDOM);
+  expect(view.state.doc.toString()).toBe(doc + "e.");
+});
+it.each([
+  ["", 0, 0, "\t"],
+  ["local x = 1", 5, 5, "local\t x = 1"],
+  ["local x = 1\nlocal y = 2", 0, 23, "\tlocal x = 1\n\tlocal y = 2"],
+] as const)(
+  "inserts or indents with Tab without completions: %s",
+  async (doc, anchor, head, expected) => {
+    const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+    await act(async () => {
+      view.focus();
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: doc },
+        selection: { anchor, head },
+      });
+      view.contentDOM.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", keyCode: 9, bubbles: true, cancelable: true }),
+      );
+    });
+    expect(view.state.doc.toString()).toBe(expected);
+    expect(document.activeElement).toBe(view.contentDOM);
+    await act(async () => {
+      expect(undo(view)).toBe(true);
+    });
+    expect(view.state.doc.toString()).toBe(doc);
+    await act(async () => {
+      expect(redo(view)).toBe(true);
+    });
+    expect(view.state.doc.toString()).toBe(expected);
+  },
+);
+it("unindents selected lines with Shift+Tab and allows explicit keyboard focus navigation", async () => {
+  const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  const doc = "\tlocal x = 1\n\tlocal y = 2";
+  await act(async () => {
+    view.focus();
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: doc },
+      selection: { anchor: 0, head: doc.length },
+    });
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Tab",
+        keyCode: 9,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  expect(view.state.doc.toString()).toBe("local x = 1\nlocal y = 2");
+  expect(document.activeElement).toBe(view.contentDOM);
+  await act(async () => {
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "m", ctrlKey: true, bubbles: true, cancelable: true }),
+    );
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", keyCode: 9, bubbles: true, cancelable: true }),
+    );
+  });
+  expect(document.activeElement?.textContent).toBe(text.commandReference);
+});
+it("does not insert indentation into a read-only example", async () => {
+  await selectScript("builtin:images");
+  const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  const original = view.state.doc.toString();
+  await act(async () => {
+    view.focus();
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", keyCode: 9, bubbles: true, cancelable: true }),
+    );
+  });
+  expect(view.state.doc.toString()).toBe(original);
+  expect(document.activeElement?.textContent).toBe(text.commandReference);
 });
 it("keeps cancellation visible and discards even a late successful result", async () => {
   let resolve!: (results: ScriptResult[]) => void;

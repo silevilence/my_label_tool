@@ -1,10 +1,15 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Annotation, Compartment, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { defaultKeymap, history, historyKeymap, indentLess, insertTab } from "@codemirror/commands";
+import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { LUA_LANGUAGE } from "../../lib/lua-language";
-import { autocompletion, closeCompletion, completionKeymap } from "@codemirror/autocomplete";
+import {
+  acceptCompletion,
+  autocompletion,
+  closeCompletion,
+  completionKeymap,
+} from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
 import { luaCompletions } from "../../lib/lua-completion";
 import { SCRIPT_ZH_CN as text } from "../../i18n/script.zh-CN";
@@ -48,9 +53,20 @@ export const LuaEditor = forwardRef<
           lineNumbers(),
           history(),
           LUA_LANGUAGE,
+          indentUnit.of("\t"),
           EditorState.phrases.of(text.editorPhrases),
           autocompletion({ override: [luaCompletions], defaultKeymap: false }),
-          keymap.of([...completionKeymap, ...defaultKeymap, ...historyKeymap]),
+          keymap.of([
+            { key: "Tab", run: acceptCompletion },
+            {
+              key: "Tab",
+              run: (view) => !view.state.readOnly && insertTab(view),
+              shift: indentLess,
+            },
+            ...completionKeymap,
+            ...defaultKeymap,
+            ...historyKeymap,
+          ]),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({
             "aria-label": text.editor,

@@ -24,6 +24,73 @@ function complete(doc: string, explicit = false, readOnly = false) {
   );
 }
 describe("Lua completions", () => {
+  it("completes annotation members after a dot on an ipairs item", () => {
+    const doc =
+      "local shapes = annotool.annotations({imagePath = image.path})\nfor _, shape in ipairs(shapes) do\nshape.";
+    const result = complete(doc)!;
+    expect(result.from).toBe(doc.length);
+    expect(result.options.map((option) => option.label)).toEqual(
+      expect.arrayContaining(["id", "type", "labelId", "points", "attributes", "frameIndex"]),
+    );
+  });
+  it.each([
+    [
+      "local images = annotool.images()\nfor _, image in ipairs(images) do\nimage.",
+      ["path", "name"],
+    ],
+    [
+      "for _, item in ipairs(annotool.annotations({imagePath = image.path})) do\nitem.",
+      ["attributes", "points"],
+    ],
+    [
+      "local entries = annotool.annotations({imagePath = image.path})\nlocal item = entries[1]\nlocal alias = item\nalias.",
+      ["attributes", "labelId"],
+    ],
+    ["local entries = annotool.annotations({imagePath = image.path})\nentries[1].", ["points"]],
+    [
+      'local label = annotool.label({name = "car"})\nlabel.',
+      ["name", "color", "shapeType", "shortcut"],
+    ],
+    ["local size = annotool.size({imagePath = image.path})\nsize.", ["width", "height"]],
+    ["shape.attributes.sequence = 1\nshape.attributes.", ["sequence"]],
+    [
+      "local shapes = annotool.annotations({imagePath = image.path})\nfor _, s in pairs(shapes) do\ns.at",
+      ["attributes"],
+    ],
+  ])("suggests members for %s", (doc, names) => {
+    const result = complete(doc)!;
+    expect(result.options.map((option) => option.label)).toEqual(expect.arrayContaining(names));
+    expect(result.from).toBe(doc.lastIndexOf(".") + 1);
+    expect(result.validFor).toEqual(/^\w*$/);
+  });
+  it("does not invent members for unknown values or reuse name candidates after a dot", () => {
+    expect(complete("local shape = 1\nshape.")).toBeNull();
+    expect(
+      complete(
+        "local label = annotool.label({})\nlocal values = label.toString\nfor _, value in ipairs(values) do\nvalue.",
+      ),
+    ).toBeNull();
+    expect(
+      complete(
+        "local shapes = annotool.annotations({})\nlocal shape = shapes[1]\nshape = other()\nshape.",
+      ),
+    ).toBeNull();
+    expect(complete("local shape = annotool.unknown()\nshape.")).toBeNull();
+    expect(complete("local values = {}\nfor _, item in ipairs(values) do\nitem.")).toBeNull();
+    expect(complete('local message = "shape.fake = 1"\n-- shape.ghost = 1\nshape.')).toBeNull();
+    expect(complete("local shape = 1\nshap")!.validFor).toEqual(/^\w*$/);
+    expect(
+      complete("shape.attributes.sequence = 1\nshape.")!.options.map((option) => option.label),
+    ).toEqual(["attributes"]);
+    expect(
+      complete("shape.id = 1\nshape.id\nshape.")!.options.map((option) => option.label),
+    ).toEqual(["id"]);
+  });
+  it("does not treat comparisons and another object's field writes as variable assignments", () => {
+    const doc =
+      "local shape = annotool.annotations({})\nlocal item = shape[1]\nif item == nil then\nend\nother.item = 1\nitem.";
+    expect(complete(doc)!.options.map((option) => option.label)).toContain("attributes");
+  });
   it("classifies Lua 5.4 keywords and supported library names", () => {
     const state = EditorState.create({
       doc: 'goto finish\nmath.tointeger(1)\nutf8.len("中")',

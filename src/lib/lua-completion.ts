@@ -1,6 +1,7 @@
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";
 import { SCRIPT_COMMANDS } from "./script-commands";
+import { luaMemberCompletions } from "./lua-members";
 
 import { keywords, functions, constants } from "./lua-builtins";
 
@@ -8,7 +9,7 @@ export function luaCompletions(context: CompletionContext): CompletionResult | n
   if (context.state.readOnly) return null;
   const node = syntaxTree(context.state).resolveInner(context.pos, -1);
   if (/string|comment/i.test(node.name)) return null;
-  const word = context.matchBefore(/[\w.]*/);
+  const word = context.matchBefore(/[\w.[\]]*/);
   if (!word || (!word.text && !context.explicit)) return null;
   // Mask strings/comments before discovering local declarations and parameters.
   const chars = context.state.sliceDoc(0, context.pos).split("");
@@ -21,6 +22,17 @@ export function luaCompletions(context: CompletionContext): CompletionResult | n
     },
   });
   const code = chars.join("");
+  const dot = word.text.lastIndexOf(".");
+  if (dot >= 0) {
+    const receiver = word.text.slice(0, dot);
+    const library =
+      receiver === "annotool" ||
+      [...functions, ...constants].some((name) => name.startsWith(`${receiver}.`));
+    if (!library) {
+      const options = luaMemberCompletions(code.slice(0, word.from), receiver);
+      return options.length ? { from: word.from + dot + 1, options, validFor: /^\w*$/ } : null;
+    }
+  }
   const locals = new Set<string>();
   for (const match of code.matchAll(
     /\blocal\s+(?:function\s+)?([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)|\bfor\s+([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)\s*(?:=|in\b)/g,
@@ -46,5 +58,6 @@ export function luaCompletions(context: CompletionContext): CompletionResult | n
       info: `${command.description}\n${command.errors}`,
     })),
   ];
-  return { from: word.from, options, validFor: /^[\w.]*$/ };
+  // A dot changes from variable-name completion to member completion.
+  return { from: word.from, options, validFor: /^\w*$/ };
 }
