@@ -129,6 +129,11 @@ export class McpControl {
   }
   view(session: string): Record<string, unknown> {
     this.tick();
-    return { ...this.state, leaseId: this.state.sessionId === session ? this.state.leaseId : null };
+    const owner = this.state.sessionId === session;
+    return {
+      ...this.state,
+      sessionId: owner ? this.state.sessionId : null,
+      leaseId: owner ? this.state.leaseId : null,
+    };
   }
 }

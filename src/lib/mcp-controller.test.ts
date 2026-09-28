@@ -42,6 +42,7 @@ it("dispatches strict control tools and rejects unauthorized, unknown or expired
       .structuredContent.mode,
   ).toBe("pending");
   controller.approve(["annotations"]);
+  expect(controller.control.view("other")).toMatchObject({ sessionId: null, leaseId: null });
   const leaseId = call("control_status").structuredContent.leaseId;
   expect(call("control_renew", { leaseId }).isError).toBe(false);
   expect(call("control_release", { leaseId }).structuredContent.mode).toBe("human");
@@ -67,19 +68,19 @@ it("blocks manual state and operation writes while allowing validated MCP transa
   expect(useOperations.getState().canEditAnnotations()).toBe(true);
 });
 it("does not grant during overlays, existing operations, gestures or unready initialization", () => {
-  call("control_request", { projectId: controller.projectId, permissions: ["save"] });
+  call("control_request", { projectId: controller.projectId, permissions: ["annotations"] });
   context.canGrant = () => false;
-  expect(() => controller.approve(["save"])).toThrow();
+  expect(() => controller.approve(["annotations"])).toThrow();
   context.canGrant = () => true;
   useOverlayStore.getState().register({ id: "modal", parentId: null, kind: "blocking" });
-  expect(() => controller.approve(["save"])).toThrow();
+  expect(() => controller.approve(["annotations"])).toThrow();
   useOverlayStore.getState().unregister("modal");
   const operation = useOperations
     .getState()
     .begin({ label: "busy", resource: "project-annotations" });
-  expect(() => controller.approve(["save"])).toThrow();
+  expect(() => controller.approve(["annotations"])).toThrow();
   operation.complete();
-  expect(() => controller.approve(["save"])).not.toThrow();
+  expect(() => controller.approve(["annotations"])).not.toThrow();
   controller.dispose();
 });
 it("invalidates project identity and revokes control when projects change", () => {

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { McpController } from "../../lib/mcp-controller";
 import type { McpControlState, McpPermission } from "../../types/mcp";
 import { MCP_ZH_CN as text } from "../../i18n/mcp.zh-CN";
 import { MCP_LIMITS } from "../../lib/defaults/mcp";
+import { selectExportFolder } from "../../lib/tauri-api";
 
 export function McpControlBar({
   controller,
@@ -14,6 +15,12 @@ export function McpControlBar({
   const [minutes, setMinutes] = useState<number>(MCP_LIMITS.lockMinutes);
   const [error, setError] = useState("");
   const [excluded, setExcluded] = useState<McpPermission[]>([]);
+  const [directory, setDirectory] = useState("");
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   const button =
     "rounded border border-slate-600 px-2 py-1 hover:border-sky-400 focus-visible:outline focus-visible:outline-sky-400";
   function perform(action: () => void) {
@@ -24,7 +31,7 @@ export function McpControlBar({
       setError(String(error));
     }
   }
-  const seconds = Math.max(0, Math.ceil((state.expiresAt - Date.now()) / 1000));
+  const seconds = Math.max(0, Math.ceil((state.expiresAt - now) / 1000));
   return (
     <div className="flex flex-wrap items-center gap-2" data-mcp-control>
       <span role="status" className={state.mode === "mcp" ? "text-amber-300" : "text-slate-300"}>
@@ -39,6 +46,35 @@ export function McpControlBar({
       </span>
       {state.mode === "pending" && (
         <>
+          {state.permissions.includes("save") && (
+            <span
+              className="max-w-72 truncate"
+              title={controller.context().activeProjectConfig?.annotationPath}
+            >
+              {text.saveTarget}:{" "}
+              {controller.context().activeProjectConfig?.annotationPath ?? text.saveRequired}
+            </span>
+          )}
+          {state.permissions.includes("export") && (
+            <button
+              className={button}
+              title={directory}
+              onClick={() => {
+                const request = controller.control.state;
+                void selectExportFolder()
+                  .then((path) => {
+                    if (path && controller.control.state === request) {
+                      controller.exportDirectory = path;
+                      setDirectory(path);
+                    }
+                  })
+                  .catch((error) => setError(String(error)));
+              }}
+            >
+              {text.exportDirectory}
+              {controller.exportDirectory ? ` · ${controller.exportDirectory}` : ""}
+            </button>
+          )}
           <span className="max-w-40 truncate">{state.client}</span>
           {state.permissions.map((permission) => (
             <label className="flex items-center gap-1" key={permission}>

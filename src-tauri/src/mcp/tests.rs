@@ -50,6 +50,107 @@ async fn initialize(url: &str, token: &str, version: &str) -> String {
     );
     sid
 }
+
+#[tokio::test]
+async fn output_authority_revocation_cancellation_disconnect_and_shutdown() {
+    let (host, dir, url, token) = fixture().await;
+    let sid = initialize(&url, &token, VERSIONS[2]).await;
+    let groups = || {
+        serde_json::from_value(
+            json!([{"root": dir.path(), "files": [{"path":"out.json", "content":"new"}]}]),
+        )
+        .unwrap()
+    };
+    let authority = |epoch, lease: Option<&str>| output::Authority {
+        epoch,
+        session_id: Some(sid.clone()),
+        lease_id: lease.map(str::to_owned),
+        expires_at: now() + 30_000,
+    };
+    host.set_authority(authority(1, Some("lease"))).unwrap();
+    host.prepare_output("cancel".into(), sid.clone(), "lease".into(), groups())
+        .unwrap();
+    host.discard_output("cancel".into()).unwrap();
+    assert!(host.commit_output("cancel", false).is_err());
+    host.prepare_output("revoke".into(), sid.clone(), "lease".into(), groups())
+        .unwrap();
+    host.set_authority(authority(3, None)).unwrap();
+    host.set_authority(authority(2, Some("lease"))).unwrap(); // A late grant cannot supersede revocation.
+    assert!(host.commit_output("revoke", false).is_err());
+    assert!(!dir.path().join("out.json").exists());
+    host.set_authority(authority(4, Some("lease2"))).unwrap();
+    host.prepare_output("ok".into(), sid.clone(), "lease2".into(), groups())
+        .unwrap();
+    assert_eq!(host.commit_output("ok", false).unwrap(), 1);
+    host.prepare_output("disconnect".into(), sid.clone(), "lease2".into(), groups())
+        .unwrap();
+    host.lock()
+        .unwrap()
+        .sessions
+        .get_mut(&sid)
+        .unwrap()
+        .last_seen = now() - 60_001;
+    assert!(host.commit_output("disconnect", true).is_err());
+    host.shutdown();
+    assert!(host
+        .prepare_output("exit".into(), sid.clone(), "lease2".into(), groups())
+        .is_err());
+}
+
+#[tokio::test]
+async fn rejects_oversize_malformed_messages_and_cancels_only_queued_calls() {
+    let (host, _dir, url, token) = fixture().await;
+    let sid = initialize(&url, &token, VERSIONS[2]).await;
+    for body in [
+        "{bad".to_string(),
+        "[]".to_string(),
+        json!({"jsonrpc":"2.0","id":null,"method":"ping"}).to_string(),
+    ] {
+        let response = request(&url, &token, json!({}))
+            .header("mcp-session-id", &sid)
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+    assert_eq!(
+        request(&url, &token, json!({}))
+            .header("mcp-session-id", &sid)
+            .body("x".repeat(2 * 1024 * 1024 + 1))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    let request = request(
+        &url,
+        &token,
+        json!({"jsonrpc":"2.0","id":"queued","method":"tools/call","params":{"name":"app_state"}}),
+    )
+    .header("mcp-session-id", &sid);
+    let running = tokio::spawn(async move { request.send().await.unwrap() });
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while host.lock().unwrap().pending.is_empty() {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    host.cancel_queued("other-session", &json!("queued"));
+    assert_eq!(host.lock().unwrap().pending.len(), 1);
+    host.cancel_queued(&sid, &json!("queued"));
+    assert!(running
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap()
+        .contains("CANCELLED"));
+    assert!(host.poll().unwrap().calls.is_empty());
+    host.shutdown();
+}
 #[tokio::test]
 async fn auth_origin_session_discovery_and_real_bridge_roundtrip() {
     let (host, _dir, url, token) = fixture().await;

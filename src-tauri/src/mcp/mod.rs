@@ -1,6 +1,7 @@
 //! Desktop-only MCP gateway. No plugin capabilities or arbitrary command dispatch.
 mod config;
 mod http;
+pub mod output;
 #[cfg(test)]
 mod tests;
 use crate::i18n::mcp_zh_cn as text;
@@ -23,21 +24,8 @@ pub fn now() -> u64 {
         .as_millis() as u64
 }
 pub fn catalog() -> Value {
-    // Only completed capabilities are advertised. Expanded as domain handlers are installed.
-    let all: Vec<Value> =
-        serde_json::from_str(include_str!("../../../docs/mcp-tools.json")).unwrap_or_default();
-    Value::Array(
-        all.into_iter()
-            .filter(|v| {
-                matches!(
-                    v["name"].as_str(),
-                    Some("app_state" | "project_read" | "annotations_read" | "annotations_apply")
-                ) || v["name"]
-                    .as_str()
-                    .is_some_and(|n| n.starts_with("control_"))
-            })
-            .collect(),
-    )
+    serde_json::from_str(include_str!("../../../docs/mcp-tools.json"))
+        .expect("bundled MCP tool catalog must be valid JSON")
 }
 pub fn failure(code: &str, message: &str) -> Value {
     let body = json!({"code":code,"message":message});
@@ -67,6 +55,7 @@ pub struct Call {
     pub deadline: u64,
 }
 struct Pending {
+    rpc_id: Value,
     call: Call,
     sender: oneshot::Sender<Value>,
     delivered: bool,
@@ -97,6 +86,7 @@ pub struct Poll {
     pub calls: Vec<Call>,
 }
 pub(super) struct Inner {
+    outputs: output::Outputs,
     config: Option<Config>,
     path: Option<PathBuf>,
     running: bool,
@@ -111,6 +101,7 @@ pub(super) struct Inner {
 }
 impl Inner {
     fn sweep(&mut self) {
+        self.outputs.sweep();
         let time = now();
         self.sessions
             .retain(|_, s| time.saturating_sub(s.last_seen) < 60_000);
@@ -147,6 +138,7 @@ impl Inner {
         }
     }
     fn invalidate(&mut self) {
+        self.outputs.invalidate();
         self.running = false;
         self.generation += 1;
         self.sessions.clear();
@@ -164,6 +156,7 @@ impl Default for Host {
     fn default() -> Self {
         Self {
             inner: Mutex::new(Inner {
+                outputs: output::Outputs::default(),
                 config: None,
                 path: None,
                 running: false,
@@ -181,6 +174,11 @@ impl Default for Host {
     }
 }
 impl Host {
+    pub fn initialization_error(&self, error: impl std::fmt::Display) {
+        if let Ok(mut inner) = self.lock() {
+            inner.error = Some(text::failed(error));
+        }
+    }
     pub async fn initialize_owned(self: Arc<Self>, path: PathBuf) {
         self.initialize(path).await;
     }
@@ -275,12 +273,22 @@ impl Host {
         };
         let (tx, rx) = oneshot::channel();
         let router = http::router(self.clone());
+        let owner = Arc::downgrade(self);
+        let generation = self.lock()?.generation;
         let task = tokio::spawn(async move {
-            let _ = axum::serve(listener, router)
+            let result = axum::serve(listener, router)
                 .with_graceful_shutdown(async {
                     let _ = rx.await;
                 })
                 .await;
+            if let (Err(error), Some(owner)) = (result, owner.upgrade()) {
+                if let Ok(mut inner) = owner.lock() {
+                    if inner.generation == generation {
+                        inner.invalidate();
+                        inner.error = Some(text::failed(error));
+                    }
+                }
+            }
         });
         let mut inner = self.lock()?;
         inner.stop = Some(tx);
@@ -329,7 +337,22 @@ impl Host {
         }
         Ok(())
     }
-    async fn call(&self, session: &str, name: &str, arguments: Value) -> Value {
+    fn cancel_queued(&self, session: &str, rpc_id: &Value) {
+        if let Ok(mut inner) = self.lock() {
+            let id = inner
+                .pending
+                .iter()
+                .find(|(_, p)| !p.delivered && p.call.session_id == session && &p.rpc_id == rpc_id)
+                .map(|(id, _)| id.clone());
+            if let Some(id) = id {
+                if let Some(p) = inner.pending.remove(&id) {
+                    inner.record(session, &p.call.name, "CANCELLED");
+                    let _ = p.sender.send(failure("CANCELLED", text::OUTPUT_CANCELLED));
+                }
+            }
+        }
+    }
+    async fn call(&self, session: &str, name: &str, arguments: Value, rpc_id: Value) -> Value {
         let Ok(id) = config::secret() else {
             return failure("INTERNAL_ERROR", text::INTERNAL);
         };
@@ -347,6 +370,7 @@ impl Host {
             inner.pending.insert(
                 id.clone(),
                 Pending {
+                    rpc_id,
                     call: Call {
                         id: id.clone(),
                         session_id: session.into(),

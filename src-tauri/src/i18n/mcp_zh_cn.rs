@@ -11,3 +11,10 @@ pub const METHOD: &str = "MCP 方法不存在或不支持";
 pub fn failed(error: impl std::fmt::Display) -> String {
     format!("MCP 服务失败：{error}")
 }
+pub const OUTPUT_PATH: &str = "MCP 输出路径无效，或经过符号链接/重解析点";
+pub const OUTPUT_CANCELLED: &str = "MCP 输出已取消或操作权限失效";
+pub const OUTPUT_CHANGED: &str = "MCP 输出文件已变化或尚未确认覆盖，请重新执行";
+pub const OUTPUT_ROLLBACK: &str = "MCP 文件写入失败且回滚未全部成功，请检查目标目录";
+pub fn output_rollback(paths: &[std::path::PathBuf]) -> String {
+    format!("{}：{:?}", OUTPUT_ROLLBACK, paths)
+}

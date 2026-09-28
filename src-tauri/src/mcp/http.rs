@@ -258,6 +258,11 @@ async fn handle(State(host): State<Arc<Host>>, request: Request<Body>) -> Respon
     }
     if id.is_null() {
         // Cancellation notifications cancel the queued request only; domain tasks use task_cancel.
+        if name == "notifications/cancelled" {
+            if let Some(request_id) = value["params"].get("requestId") {
+                host.cancel_queued(&sid, request_id);
+            }
+        }
         return StatusCode::ACCEPTED.into_response();
     }
     let result = match name {
@@ -280,7 +285,7 @@ async fn handle(State(host): State<Arc<Host>>, request: Request<Body>) -> Respon
             if !args.is_object() {
                 failure("INVALID_ARGUMENT", text::INVALID)
             } else {
-                host.call(&sid, tool, args).await
+                host.call(&sid, tool, args, id.clone()).await
             }
         }
         _ => return error(StatusCode::OK, -32601, text::METHOD, id),

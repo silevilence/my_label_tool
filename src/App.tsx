@@ -756,7 +756,9 @@ function App() {
   });
 
   usePanTermination(isPanning, panStateRef, suppressContextMenuRef, endPan);
-  const mcp = useMcpWorkspace({ folderPath, labels, library: prelabelModels.library, canGrant: () => labelsLoaded.current && gesture.state === "idle" });
+  const mcp = useMcpWorkspace({ folderPath, labels, library: prelabelModels.library, videos,
+    activeProjectConfig, activeProjectConfigPath, customMappingText, onSaved: setActiveProjectConfig,
+    canGrant: () => labelsLoaded.current && gesture.state === "idle" });
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">

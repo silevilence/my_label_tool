@@ -20,12 +20,15 @@ pub fn run() {
         .setup(|app| {
             text_read::initialize();
             use tauri::Manager;
-            if let Ok(directory) = app.path().app_data_dir() {
+            match app.path().app_data_dir() {
+              Ok(directory) => {
                 tauri::async_runtime::spawn(
                     mcp::host()
                         .clone()
                         .initialize_owned(directory.join("mcp.json")),
                 );
+              }
+              Err(error) => mcp::host().initialization_error(error),
             }
             #[cfg(desktop)]
             app.handle()
@@ -38,6 +41,10 @@ pub fn run() {
             commands::mcp_token,
             commands::mcp_configure,
             commands::mcp_resolve,
+            commands::mcp_set_authority,
+            commands::mcp_prepare_output,
+            commands::mcp_commit_output,
+            commands::mcp_discard_output,
             commands::run_acp_agent,
             commands::cancel_acp_agent,
             commands::respond_acp_permission,

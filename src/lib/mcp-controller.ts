@@ -5,10 +5,14 @@ import { useOperations } from "../store/useOperations";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import { useOverlayStore } from "../store/useOverlayStore";
 import { MCP_ZH_CN as text } from "../i18n/mcp.zh-CN";
-import type { McpCall, McpPermission, McpResult, McpStatus } from "../types/mcp";
+import type { McpCall, McpControlState, McpPermission, McpResult, McpStatus } from "../types/mcp";
 import type { LabelConfig } from "../types/annotation";
 import type { PrelabelModelLibrary } from "../types/prelabel";
 import { McpAnnotations } from "./mcp-annotations";
+import { McpJobs } from "./mcp-jobs";
+import { runMcpOutput, runMcpPrelabel } from "./mcp-project";
+import type { ProjectConfig } from "./importers";
+import type { LoadedProjectVideo } from "./project-media";
 
 const ajv = new Ajv({ strict: false, allErrors: false });
 const validators = new Map(catalog.map((tool) => [tool.name, ajv.compile(tool.inputSchema)]));
@@ -17,6 +21,11 @@ export interface McpContext {
   labels: LabelConfig[];
   canGrant: () => boolean;
   library?: PrelabelModelLibrary;
+  videos?: LoadedProjectVideo[];
+  activeProjectConfig?: ProjectConfig | null;
+  activeProjectConfigPath?: string;
+  customMappingText?: string;
+  onSaved?: (config: ProjectConfig) => void;
 }
 export function mcpResult(value: Record<string, unknown>, isError = false): McpResult {
   return {
@@ -26,6 +35,9 @@ export function mcpResult(value: Record<string, unknown>, isError = false): McpR
   };
 }
 export class McpController {
+  readonly jobs = new McpJobs();
+  exportDirectory = "";
+  private authorityReady: Promise<void> = Promise.resolve();
   readonly annotations = new McpAnnotations();
   private storeSnapshot = useAnnotationStore.getState();
   readonly control: McpControl;
@@ -33,9 +45,23 @@ export class McpController {
   revision = 0;
   private folder = "";
   private labels: LabelConfig[] | null = null;
+  private configuration: unknown[] = [];
   private listeners = new Set<() => void>();
-  constructor(readonly context: () => McpContext) {
+  constructor(
+    readonly context: () => McpContext,
+    authority?: (state: McpControlState) => Promise<void>,
+  ) {
     this.control = new McpControl(() => {
+      if (this.control.state.mode !== "mcp") this.jobs.revoke();
+      if (authority)
+        this.authorityReady = authority(this.control.state).catch((error) => {
+          this.jobs.revoke();
+          if (this.control.state.mode === "mcp") this.control.revoke();
+          useOperations.getState().pushError(text.title, text.authorityFailed);
+          throw error;
+        });
+      // The rejection is also consumed here when no task is waiting for authority.
+      void this.authorityReady.catch(() => {});
       useOperations.setState({ mcpControlled: this.control.state.mode === "mcp" });
       this.listeners.forEach((listener) => listener());
     });
@@ -52,12 +78,24 @@ export class McpController {
       this.folder = context.folderPath;
       this.projectId = context.folderPath ? crypto.randomUUID() : null;
       this.annotations.reset();
+      this.exportDirectory = "";
       this.revision++;
     }
     if (context.labels !== this.labels) {
       this.labels = context.labels;
       this.revision++;
     }
+    const configuration = [
+      context.library,
+      context.videos,
+      context.customMappingText,
+      context.activeProjectConfigPath,
+      context.activeProjectConfig?.annotationPath,
+      context.activeProjectConfig?.format,
+      context.activeProjectConfig?.prelabelMappings,
+    ];
+    if (configuration.some((value, index) => value !== this.configuration[index])) this.revision++;
+    this.configuration = configuration;
     const state = useAnnotationStore.getState();
     if (
       state.images !== this.storeSnapshot.images ||
@@ -83,6 +121,13 @@ export class McpController {
       useOperations.getState().operations.some((op) => op.status === "running")
     )
       throw new McpError("BUSY", text.busy);
+    if (
+      permissions.includes("save") &&
+      (!this.context().activeProjectConfig || !this.context().activeProjectConfigPath)
+    )
+      throw new McpError("NOT_READY", text.saveRequired);
+    if (permissions.includes("export") && !this.exportDirectory)
+      throw new McpError("NOT_READY", text.exportRequired);
     this.control.approve(permissions);
   }
   assertProject(id: unknown) {
@@ -108,6 +153,53 @@ export class McpController {
       if (!validate || !validate(call.arguments)) throw new McpError("INVALID_ARGUMENT");
       const a = call.arguments;
       switch (call.name) {
+        case "task_status":
+          return mcpResult(this.jobs.status(call.sessionId, a.taskId));
+        case "task_cancel":
+          return mcpResult(this.jobs.cancel(call.sessionId, a.taskId));
+        case "project_save":
+        case "project_export":
+        case "prelabel_start": {
+          const permission =
+            call.name === "project_save"
+              ? "save"
+              : call.name === "project_export"
+                ? "export"
+                : "prelabel";
+          this.assertWrite(call, permission);
+          const context = this.context();
+          const paths =
+            call.name === "prelabel_start"
+              ? (a.imageIds as string[]).map((id) => this.annotations.path(id))
+              : [];
+          if (new Set(paths).size !== paths.length) throw new McpError("INVALID_ARGUMENT");
+          const target = this.exportDirectory;
+          const authority = this.authorityReady;
+          return mcpResult(
+            this.jobs.start(
+              call.sessionId,
+              `MCP · ${text.permissions[permission]}`,
+              ["project-annotations", permission === "prelabel" ? "onnx-runtime" : "export-dir"],
+              () => {
+                this.sync();
+                this.assertProject(a.projectId);
+                this.control.assert(call.sessionId, a.leaseId, permission);
+                if (this.revision !== a.expectedRevision)
+                  throw new McpError("CONFLICT", text.conflict);
+              },
+              async (job) => {
+                await authority;
+                job.check();
+                const result =
+                  permission === "prelabel"
+                    ? await runMcpPrelabel(context, call, paths, job)
+                    : await runMcpOutput(context, call, target, job);
+                this.sync();
+                return { ...result, revision: this.revision };
+              },
+            ),
+          );
+        }
         case "project_read": {
           this.assertProject(this.projectId);
           return mcpResult({
@@ -164,7 +256,7 @@ export class McpController {
       return mcpResult(
         {
           code: error instanceof McpError ? error.code : "INTERNAL_ERROR",
-          message: error instanceof Error ? error.message : text.error,
+          message: error instanceof McpError ? error.message : text.error,
         },
         true,
       );

@@ -7,6 +7,7 @@ import { mcpResult } from "../lib/mcp-controller";
 export function useMcpConnection(
   handler?: (call: McpCall, status: McpStatus) => McpResult,
   onStatus?: (status: McpStatus) => void,
+  onFailure?: () => void,
 ) {
   const [status, setStatus] = useState<McpStatus | null>(null);
   const [error, setError] = useState("");
@@ -14,6 +15,8 @@ export function useMcpConnection(
   handlerRef.current = handler;
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
+  const onFailureRef = useRef(onFailure);
+  onFailureRef.current = onFailure;
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -34,11 +37,11 @@ export function useMcpConnection(
             else if (call.name === "app_state" && Object.keys(call.arguments).length === 0)
               result = mcpResult({ ready: true, control: "human", project: null });
             else result = mcpResult({ code: "INVALID_ARGUMENT", message: text.invalid }, true);
-          } catch (error) {
+          } catch {
             result = mcpResult(
               {
                 code: "INTERNAL_ERROR",
-                message: error instanceof Error ? error.message : text.error,
+                message: text.error,
               },
               true,
             );
@@ -46,7 +49,10 @@ export function useMcpConnection(
           await mcpResolve(call.id, result);
         }
       } catch (error) {
-        if (!stopped) setError(String(error));
+        if (!stopped) {
+          setError(String(error));
+          onFailureRef.current?.();
+        }
       } finally {
         if (!stopped) timer = setTimeout(() => void poll(), 200);
       }

@@ -42,6 +42,7 @@ export function McpPanel({
   }
   return (
     <section
+      data-mcp-control
       className="relative z-40 shrink-0 border-b border-slate-700 bg-slate-900 text-slate-100"
       aria-label={text.title}
     >

@@ -54,6 +54,14 @@ export function mcpConfigure(enabled: boolean, address: string, port: number, ro
   return invoke("mcp_configure", { enabled, address, port, rotate });
 }
 export function mcpResolve(id: string, result: McpResult): Promise<void> { return invoke("mcp_resolve", { id, result }); }
+export function mcpSetAuthority(authority: { epoch: number; sessionId: string | null; leaseId: string | null; expiresAt: number }): Promise<void> {
+  return invoke("mcp_set_authority", { authority });
+}
+export function mcpPrepareOutput(taskId: string, session: string, lease: string, groups: { root: string; files: { path: string; content: string }[] }[]): Promise<{ overwrites: number; files: number }> {
+  return invoke("mcp_prepare_output", { taskId, session, lease, groups });
+}
+export function mcpCommitOutput(taskId: string, overwrite: boolean): Promise<number> { return invoke("mcp_commit_output", { taskId, overwrite }); }
+export function mcpDiscardOutput(taskId: string): Promise<void> { return invoke("mcp_discard_output", { taskId }); }
 import type { ScriptEvent, ScriptLimits, ScriptResult, ScriptSnapshot } from "../types/script";
 import { SCRIPT_ZH_CN as scriptText } from "../i18n/script.zh-CN";
 

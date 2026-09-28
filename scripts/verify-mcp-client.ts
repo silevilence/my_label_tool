@@ -19,6 +19,13 @@ try {
   assert.ok(tools.tools.some(tool => tool.name === "app_state"));
   const state = await client.callTool({ name: "app_state", arguments: {} });
   assert.notEqual(state.isError, true);
+  if (process.env.MCP_EXPECT_LOCKED === "1") {
+    const request = await client.callTool({ name: "control_request", arguments: {
+      projectId: (state.structuredContent as { projectId: string }).projectId, permissions: ["annotations"],
+    } });
+    assert.equal(request.isError, true);
+    assert.equal((request.structuredContent as { code: string }).code, "CONTROL_LOCKED");
+  }
   await client.ping();
   console.log(JSON.stringify({ client: "official TypeScript SDK", server: client.getServerVersion(), tools: tools.tools.map(t => t.name), state, passed: true }, null, 2));
   await transport.terminateSession();

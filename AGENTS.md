@@ -143,6 +143,8 @@ my_label_tool/
 | 命令 | 作用 |
 | --- | --- |
 | `list_image_files` | 列出文件夹下可加载图片（校验扩展名 + 文件头签名，跳过空文件） |
+| `mcp_poll` / `mcp_resolve` / `mcp_token` / `mcp_configure` | 宿主 MCP 桥接、持久令牌与监听设置；HTTP 仅开放 docs/mcp-tools.json 的领域工具，不能调用 Tauri commands |
+| `mcp_set_authority` / `mcp_prepare_output` / `mcp_commit_output` / `mcp_discard_output` | 宿主 MCP 租约镜像、输出暂存与提交/取消；只接受前端确认的目标，不向 HTTP 客户端或插件开放路径接口 |
 | `generate_image_thumbnail` | 宿主专用：按需生成 ≤256px 长边缩略图并缓存（键 = 路径/mtime/大小哈希），返回缓存路径；不向插件开放 |
 | `list_label_samples` / `preview_label_sample` / `prepare_label_samples` / `finish_label_samples` / `open_label_sample_directory` | 宿主专用标签样例图：读取项目 `icon/`、预览所选图片、准备保存与提交/回滚、打开目录；不修改标签/项目数据模型，不向插件或 Lua 开放，见 docs/label-samples.md |
 | `preview_project_label_sample` / `create_label_sample_crop` / `discard_label_sample_crop` | 宿主专用项目标注裁剪：生成内存预览、选中时写出临时 PNG、按已登记的临时路径安全清理；不向插件或 Lua 开放 |

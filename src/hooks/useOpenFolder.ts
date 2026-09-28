@@ -31,8 +31,14 @@ export function useOpenFolder({
   setProjectVideos?: (videos: ProjectVideo[]) => void;
 }) {
   async function openFolder(requestedPath?: string) {
-    const operation = tryBeginOperation({ label: mcpText.openProject, resource: "project-annotations" });
-    if (!operation) { setError(mcpText.busy); return false; }
+    const operation = tryBeginOperation({
+      label: mcpText.openProject,
+      resource: "project-annotations",
+    });
+    if (!operation) {
+      setError(mcpText.busy);
+      return false;
+    }
     setError("");
 
     try {
@@ -65,6 +71,7 @@ export function useOpenFolder({
       await maybeLoadProjectConfig(path, nextImages);
       return true;
     } catch (caughtError: unknown) {
+      operation.fail(caughtError);
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
       return false;
     } finally {
