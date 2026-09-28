@@ -30,6 +30,8 @@
 | 构建工具         | **Vite 7**                                                      | 前端打包，开发服务器端口固定 1420                                                                                                      |
 | 后端逻辑（Rust） | **Tauri commands**                                              | 负责文件系统读写、导出格式序列化、预打标推理（ONNX Runtime 动态加载）、视频抽帧（随包分发的 `ffmpeg` / `ffprobe`）、脚本进程编排       |
 | 脚本宿主         | **独立 Lua 5.4 进程**（`src-tauri/script-host`，mlua vendored） | NDJSON stdio 协议交换快照与结果，无文件与网络能力；不依赖 Tauri、不属于插件层，随桌面包以 `script-tools/` 资源交付，也可构建为容器镜像 |
+| 脚本编辑器       | **CodeMirror 6**                                                | 脚本面板内 Lua 语法高亮、输入补全与「宿主命令说明」；补全词表与命令文档取自宿主命令注册表，不另建第二份提示文本                                                     |
+| AI 辅助编写（可选） | **ACP 本机 Agent 子进程**（`src-tauri/src/acp`）                | 用户自备的本机 Agent，经 stdio 交换会话、流式回复与逐次权限请求；独立于插件与 Lua 协议，不提供文件、项目数据与终端接口                                   |
 | 配置持久化       | 本地 JSON/TOML 文件（标签模板、快捷键配置、导出模板）           | 不引入数据库，保持轻量                                                                                                                 |
 
 **明确不使用：** Python 相关打包工具（PyInstaller/Nuitka）、Electron（体积/启动速度不达标）、任何需要联网才能运行的组件。
@@ -70,9 +72,12 @@ cargo clippy --locked --manifest-path src-tauri/script-host/Cargo.toml --all-tar
 
 # 脚本 runner 集成测试（桩进程覆盖超时、崩溃、行上限与取消）
 cargo test --manifest-path src-tauri/Cargo.toml --test script_conformance
+
+# ACP 客户端集成测试（桩进程覆盖协议协商、会话、流式回复、权限往返、崩溃与取消）
+cargo test --manifest-path src-tauri/Cargo.toml --test acp_conformance
 ```
 
-**AI 助手在提交代码前必须执行**：`npm run typecheck`、`npm run lint`、`cargo clippy`，三者任一报错不得视为任务完成。触及 `src-tauri/script-host/**`、`examples/scripts/**` 或脚本协议时，还必须跑上面的宿主测试与 clippy（带 `--locked`）以及 `scripts/verify-script-host.ps1`。
+**AI 助手在提交代码前必须执行**：`npm run typecheck`、`npm run lint`、`cargo clippy`，三者任一报错不得视为任务完成。触及 `src-tauri/script-host/**`、`examples/scripts/**` 或脚本协议时，还必须跑上面的宿主测试与 clippy（带 `--locked`）以及 `scripts/verify-script-host.ps1`。触及 `src-tauri/src/acp/**` 时必须跑 `acp_conformance` 与 `src/hooks/useAcpSession.test.tsx`、`src/lib/script-assistance.test.ts`；真实 Agent 验收用 `scripts/verify-acp-agent.ps1` 显式运行，常规测试不得调用模型服务。
 
 ---
 
@@ -85,33 +90,36 @@ my_label_tool/
 │   │   ├── operations/             # 按操作归属的进度、取消与终态消息
 │   │   ├── overlay/                # 自注册遮罩、输入门禁、焦点与视口滚动
 │   │   ├── canvas/                 # Konva 画布（CanvasChrome）、几何计算（geometry）、交互类型
-│   │   ├── settings/               # 导出面板、标签设置（弹窗）与标签样例图选择、预打标设置/执行浮窗、PT 转换弹窗、ONNX 结构查看弹窗、快捷键设置、插件管理、Lua 脚本面板（ScriptPanel / ScriptResourceLimits / ScriptDiffPreview）
+│   │   ├── settings/               # 导出面板、标签设置（弹窗）与标签样例图选择、预打标设置/执行浮窗、PT 转换弹窗、ONNX 结构查看弹窗、快捷键设置、插件管理、Lua 脚本面板（ScriptPanel / ScriptResourceLimits / ScriptDiffPreview）、脚本编辑器（LuaEditor）、AI 辅助编写（ScriptAssistant / AcpPermissionDialog）、文本读取适配器设置（TextReadSettings）
 │   │   ├── sidebar/                # 应用侧边栏（AppSidebar）、图片搜索弹窗（ImageSearchDialog）、图片列表右键菜单（ImageListContextMenu）
 │   │   └── toolbar/                # 工具栏（预留，当前仅 .gitkeep）
-│   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态、useOverlayStore 遮罩栈、useShortcutStore 动作注册与键位、useOperations 资源互斥注册表）
-│   ├── types/                      # 核心类型（annotation、export、prelabel、plugin、video、script、label-sample、project-settings）
+│   ├── store/                      # Zustand 状态（标注数据+撤销重做、全局状态、useOverlayStore 遮罩栈、useShortcutStore 动作注册与键位、useOperations 资源互斥注册表、useTextReadStore 读取修订号）
+│   ├── types/                      # 核心类型（annotation、export、prelabel、plugin、video、script、label-sample、acp、text-read、project-settings）
 │   ├── lib/                        # tauri-api 封装、导入导出、插件契约、工具函数
-│   │   ├── defaults/               # 导出模板、标签、快捷键、显示设置、脚本资源上限默认值
+│   │   ├── defaults/               # 导出模板、标签、快捷键、显示设置、脚本资源上限与 ACP 会话默认值
 │   │   ├── exporters/              # COCO / VOC / YOLO / 自定义导出
 │   │   ├── annotation-validation.ts# 共享标注核心校验：导入、store 编辑与脚本提交共用同一实现
 │   │   ├── importers.ts            # 多格式导入 + 项目配置（ProjectConfig）解析
 │   │   ├── image-search.ts         # 图片表达式搜索语法解析与匹配
 │   │   ├── prelabel-*.ts           # 预打标模型库 / 类别映射 / 执行
-│   │   ├── script-*.ts             # 脚本库、执行编排、资源上限、操作注册
+│   │   ├── script-*.ts             # 脚本库、执行编排、资源上限、操作注册、AI 草稿与提示词
+│   │   ├── lua-*.ts                # 宿主命令注册表解析、Lua 词表与语法、补全与字段提示
 │   │   ├── label-sample*.ts        # 标签样例图目录约定与项目标注裁剪
 │   │   ├── plugin-*.ts             # 插件契约：配置迁移 / 预置标签 / 导出与预打标来源
 │   │   ├── tauri-api.ts            # 所有 Tauri command 调用封装
 │   │   └── app-utils.ts            # 路径、图片尺寸、项目配置等工具函数
-│   ├── i18n/                       # 前端用户可见文案（prelabel / plugin / project / image-deletion / display / onnx-graph / script / label-sample / annotation 等 .zh-CN.ts）
-│   └── hooks/                      # 画布交互、图片加载与删除、预打标、脚本库与运行、标签样例图、标签/项目/快捷键等 hooks
+│   ├── i18n/                       # 前端用户可见文案（prelabel / plugin / project / image-deletion / display / onnx-graph / script / acp / text-read / label-sample / annotation 等 .zh-CN.ts）
+│   └── hooks/                      # 画布交互、图片加载与删除、预打标、脚本库与运行、脚本 AI 会话与读取失败恢复、标签样例图、标签/项目/快捷键等 hooks
 ├── src-tauri/                      # Rust 后端
-│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs、script*.rs、label_samples.rs、image_deletion.rs）、models、bin（插件校验/测试桩、inspect_onnx_graph 开发 CLI）
+│   ├── src/                        # 入口、commands（含 prelabel*.rs、plugin.rs、script*.rs、text_read.rs、acp.rs、label_samples.rs、image_deletion.rs）、models、bin（插件校验/测试桩、acp-conformance-stub、inspect_onnx_graph 开发 CLI）
 │   │   ├── media/                  # 图像/视频/模型处理：onnx_metadata.rs、onnx_wire.rs、onnx_graph/（结构解析与静态形状推导）、pt_conversion.rs、prelabel/（runtime、pipeline、inference）、video.rs + video_reextract.rs（ffmpeg 抽帧）、thumbnail.rs、image_deletion.rs + image_recycle_windows.rs（回收站删除）、label_samples.rs + label_sample_crops.rs（标签样例图与项目标注裁剪）
 │   │   ├── scripting/              # 脚本进程编排：runner（快照分块、NDJSON 收发、取消）与运行注册表
 │   │   ├── acp/                    # 宿主 ACP 客户端：JSON-RPC 会话、流式事件、逐次权限确认与进程回收
+│   │   ├── text_read/              # 宿主文本读取唯一入口：模式注册表（原生 / Python / 命令）、Unicode 自检、外部进程读取与取消
+│   │   ├── process_control/        # 子进程基础设施：管道收发、Job Object 回收与 AppContainer 隔离（插件与 ACP 共用启动件）
 │   │   ├── plugins/                # 插件框架：manifest、protocol、runtime、permissions、registry、config
-│   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs）
-│   ├── tests/                      # 集成测试（plugin_conformance.rs、script_conformance.rs）
+│   │   └── i18n/                   # Rust 端用户可见文案（zh_cn.rs、text_read_zh_cn.rs）
+│   ├── tests/                      # 集成测试（plugin_conformance.rs、script_conformance.rs、acp_conformance.rs、acp_real_agent.rs）
 │   ├── capabilities/               # Tauri 权限（core/dialog/process/updater:default）
 │   ├── script-host/                # 独立 Lua 5.4 crate：commands.rs 命令注册表、protocol.rs NDJSON 信封与版本协商、vm.rs / limits.rs、tests/host.rs；不依赖 Tauri，不属于插件
 │   ├── script-tools/               # 构建时放入的 Lua 宿主二进制与第三方许可（二进制不入库），随桌面资源交付
@@ -120,9 +128,9 @@ my_label_tool/
 ├── examples/plugins/               # 插件开发示例（label-preset-demo / exporter-labelme-demo / prelabel-demo）
 ├── examples/scripts/               # Lua 内置示例源文件与 catalog.json：逐命令示例及组合用法，前端与验收脚本共用
 ├── containers/                     # 独立脚本宿主容器（script-host.Dockerfile；完整服务端仍在计划区）
-├── scripts/                        # 打包/验收脚本（package-plugin.mjs、prepare-script-host.ps1、prepare-video-tools.ps1、verify-plugin-*.ps1、verify-script-host.ps1、verify-video-support.ps1、verify-onnx-graph.py、i18n/plugin-tools.zh-CN.mjs）
+├── scripts/                        # 打包/验收脚本（package-plugin.mjs、prepare-script-host.ps1、prepare-video-tools.ps1、verify-plugin-*.ps1、verify-script-host.ps1、verify-acp-agent.ps1、verify-video-support.ps1、verify-onnx-graph.py、i18n/plugin-tools.zh-CN.mjs）
 ├── .github/workflows/              # GitHub Actions：ci.yml、script-host.yml、official-models.yml、release.yml
-├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、frontend-interaction.md、video-annotation.md、onnx-graph.md、label-samples.md、scripting.md、scripting-user.md、script-protocol.md、prelabel-resource-limits.md、架构评审报告目录、插件/项目 JSON Schema、research/、verification/、adr/）
+├── docs/                           # 文档（build.md、plugins.md、plugin-protocol.md、plugin-api-versioning.md、frontend-interaction.md、video-annotation.md、onnx-graph.md、label-samples.md、scripting.md、scripting-user.md、script-protocol.md、acp.md、text-read-adapter.md、prelabel-resource-limits.md、架构评审报告目录、插件/项目 JSON Schema、research/、verification/、adr/）
 ├── ROADMAP.md                      # 产品路线图
 ├── AGENTS.md
 └── package.json
@@ -229,7 +237,11 @@ interface LabelTemplate {
 
 **标签样例图（LabelSample）**：宿主专用的目录约定，不写入 `LabelConfig`、`LabelTemplate` 或 `ProjectConfig`——图片按标签名存放在项目 `icon/` 目录，`LabelSampleChange` 只在标签草稿中流转，点「保存」才提交；候选来自项目内同标签的既有标注（矩形按框、多边形取外接矩形、关键点取周围 64×64 像素，见 `src/lib/label-sample-crops.ts` 与 `media/label_samples.rs`）。样例图不参与标注导出，不提供插件与 Lua 接口，名称清洗与冲突规则见 `docs/label-samples.md`。
 
-**Lua 脚本（ScriptSnapshot / ScriptResult）**：类型定义在 `src/types/script.ts`，与 `src-tauri/script-host/src/protocol.rs` 的段落、事件与错误码一一对应；脚本协议版本独立编号（当前为 1，由宿主 `VERSION` 常量参与启动协商），不随主程序版本号变化。命令注册表 `src-tauri/script-host/src/commands.rs` 是脚本命令的唯一事实源，新增命令必须同时补 `examples/scripts/` 示例、界面文案与用户文档；脚本读写的标注与原图像素坐标约定一致，提交结果必须过 `src/lib/annotation-validation.ts` 的共享校验，宿主不另建一份共同约束。
+**Lua 脚本（ScriptSnapshot / ScriptResult）**：类型定义在 `src/types/script.ts`，与 `src-tauri/script-host/src/protocol.rs` 的段落、事件与错误码一一对应；脚本协议版本独立编号（当前为 1，由宿主 `VERSION` 常量参与启动协商），不随主程序版本号变化。命令注册表 `src-tauri/script-host/src/commands.rs` 是脚本命令的唯一事实源，新增命令必须同时补 `examples/scripts/` 示例、界面文案与用户文档；脚本读写的标注与原图像素坐标约定一致，提交结果必须过 `src/lib/annotation-validation.ts` 的共享校验，宿主不另建一份共同约束。前端补全与「宿主命令说明」直接解析同一份注册表（`src/lib/script-commands.ts`，构建期 `?raw` 导入），注册表布局变化必须显式失败，不得退化为静默过期的提示文本。
+
+**AI 辅助编写（ACP）**：宿主专用通道，类型定义在 `src/types/acp.ts`，Rust 实现在 `src-tauri/src/acp/`。每次运行启动全新会话、独立临时目录、空 MCP 服务列表；客户端不声明文件与终端能力，`fs/*` 与 `terminal/*` 一律拒绝；`session/request_permission` 逐次转发前端确认，仅 `allow_once` 或拒绝，未确认不落地，任一次拒绝使本轮回复不能成为可应用草稿。上下文只含当前 Lua 源码、公开命令说明与用户指令，不含项目图片、标注与路径；回复只有正常结束且恰含一个完整 Lua 代码块时才是候选，确认后另存为新脚本，不覆盖现有脚本。ACP 通道独立于插件注册表、权限与版本面，不修改标注模型、ProjectConfig 或插件 Schema，见 docs/acp.md。
+
+**宿主文本读取（Read Adapter）**：`src-tauri/src/text_read/` 是宿主读取文本内容的唯一入口，对外只暴露 `read` / `read_many`，模式注册表在 `adapters.rs` 集中声明各模式的元数据、校验与自检方式；默认为原生模式，非受控环境行为与直接读取一致。读取覆盖标签文件、导入来源、项目配置、视频清单、应用数据目录配置、脚本库以及插件 `fs.read` 的 UTF-8 请求；图片、模型、ZIP 等二进制读取不经适配器。写入侧保持原生，受控环境下不承诺写入后回读校验。适配器不可用时必须显式失败，禁止静默回退原生读取；配置存机器级（Windows 为 HKCU），不进入项目、不向插件开放，见 docs/text-read-adapter.md。
 
 ---
 
@@ -248,6 +260,8 @@ interface LabelTemplate {
 - 文件路径处理统一用 `std::path::PathBuf`，不手动拼接字符串路径。
 - 图像/视频/模型处理逻辑独立成 `src-tauri/src/media/` 模块（如 `onnx_metadata.rs`、`pt_conversion.rs`、`image_deletion.rs`、`prelabel/` 下的 runtime / pipeline / inference），不要塞进 `commands/` 里；command 只做参数校验与结果转发。
 - 脚本宿主代码只放 `src-tauri/script-host/`，禁止依赖 Tauri 或 `src-tauri/src/`（保持可独立构建、测试与容器交付）；`src-tauri/src/scripting/` 只做进程编排（启动宿主、分块传输、结果缓冲、取消与回收），不复制宿主的协议或校验逻辑。
+- 宿主读取文本内容必须经 `crate::text_read::read` / `read_many`（图片、模型、压缩包等二进制读取除外），禁止直接 `fs::read_to_string`；新增读取模式只新增 `Adapter` 实现与 `adapters.rs` 注册表条目，不改调用方、不引入第二条读取路径；适配器不可用时必须显式返回错误，禁止静默回退原生读取。
+- ACP 客户端只放 `src-tauri/src/acp/`，进程启动走独立构造入口（与插件共用的管道 / Job Object / AppContainer 基础设施在 `src-tauri/src/process_control/`）；不得为 ACP 放宽插件的 AppContainer 隔离与白名单环境，也不得把 ACP 并入插件注册表、权限或版本面。
 
 ### 通用
 
@@ -264,7 +278,11 @@ interface LabelTemplate {
 
 - **Lua 脚本**：开发者规格 `docs/scripting.md`、用户指南 `docs/scripting-user.md`、内部协议 `docs/script-protocol.md`、验证记录 `docs/verification/lua-host.md`。独立宿主测试运行 `cargo test --locked --manifest-path src-tauri/script-host/Cargo.toml`，runner 集成测试 `cargo test --manifest-path src-tauri/Cargo.toml --test script_conformance`；桌面/容器真实示例通过 `scripts/verify-script-host.ps1` 验证。脚本不进入插件注册表、权限或版本面。前端共享校验位于 `src/lib/annotation-validation.ts`；运行编排/脚本库位于 `src/lib/script-*.ts` 与 `src/hooks/useScript*.ts`，进程编排位于 `src-tauri/src/scripting/`，整轮撤销以独立历史条目实现，不能改变普通批量操作逐图撤销语义。宿主与容器交付都按 `--locked` 构建（CI `script-host.yml` 在 Windows / Ubuntu 双平台跑测试与 clippy），容器形态用 `scripts/verify-script-host.ps1 -Container` 验收。
 
-- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、图片回收站删除、ONNX 元数据解析、预打标推理管线、PT 转换等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、图片删除流程与入口、预打标模型库/类别映射/执行、插件契约（`src/types/plugin*.test.ts`、`src/lib/plugin-*.test.ts`）与插件管理 UI（`plugin-ui.acceptance.test.tsx`）等纯逻辑。插件协议集成测试：`cargo test --manifest-path src-tauri/Cargo.toml --test plugin_conformance`（独立桩进程覆盖握手、全部错误码、进度、取消与行上限）；插件改动的快速验证脚本：`scripts/verify-plugin-system.ps1`、`scripts/verify-plugin-sdk.ps1`。标签样例图的 Rust 侧测试在 `src-tauri/src/media/label_samples_tests.rs` 与 `label_sample_crops_tests.rs`，前端覆盖 `src/lib/label-sample*.test.ts`、`src/hooks/useLabelSamples.test.tsx` 与 `src/components/settings/LabelSettings.samples.test.tsx`；脚本侧前端覆盖 `src/lib/script-*.test.ts`、`src/hooks/useScriptRun.test.tsx` 与 `src/components/settings/script-ui.acceptance.test.tsx`；导入/编辑/脚本共用的约束由 `src/lib/annotation-validation.test.ts` 与 `src/lib/importers.test.ts` 守护。人工验证记录见 `docs/verification/label-samples.md`、`docs/verification/lua-host.md`。
+- **AI 辅助编写（ACP）**：客户端契约见 `docs/acp.md`，验证记录 `docs/verification/acp-agent.md`。桩进程集成测试 `cargo test --manifest-path src-tauri/Cargo.toml --test acp_conformance`（桩件 `src-tauri/src/bin/acp-conformance-stub.rs`，覆盖协议协商、会话、流式输出、权限往返与未确认、文件请求拒绝、崩溃、断连、超时、非法消息、超限与取消）；前端覆盖 `src/lib/script-assistance.test.ts`、`src/hooks/useAcpSession.test.tsx` 与 `src/components/settings/script-ui.acceptance.test.tsx`。真实 Agent 验收由 `src-tauri/tests/acp_real_agent.rs` 与 `scripts/verify-acp-agent.ps1` 显式运行（默认 `#[ignore]`，避免常规测试消费模型额度）；取消、失败、拒绝权限与迟到结果都必须保持当前脚本、AI 草稿与脚本库不变。
+
+- **文本读取适配器**：契约见 `docs/text-read-adapter.md`。宿主侧测试在 `src-tauri/src/text_read/tests.rs`；前端覆盖 `src/lib/text-read.test.ts`、`src/components/settings/TextReadSettings.test.tsx`、`src/hooks/text-read-recovery.test.tsx` 与 `src/hooks/useScriptRecovery.test.tsx`。受控环境的核实清单 `docs/verification/dlp-encrypted-text-read-adapter.md` 供使用者在自有环境自查，不作为开发前置条件。
+
+- **当前状态**：Rust 端已有单元测试（`src-tauri/src/commands/` 与 `src-tauri/src/media/` 下的 `#[cfg(test)]` 模块，覆盖图片识别、JSON 导出、文本文件导出/列举、图片回收站删除、ONNX 元数据解析、预打标推理管线、PT 转换、文本读取适配器等）。前端使用 Vitest 覆盖导入/导出、store、几何计算、标签模板同步、图片表达式搜索、图片删除流程与入口、预打标模型库/类别映射/执行、插件契约（`src/types/plugin*.test.ts`、`src/lib/plugin-*.test.ts`）与插件管理 UI（`plugin-ui.acceptance.test.tsx`）与 Lua 编辑器的补全 / 命令文档 / 字段提示（`src/lib/lua-completion.test.ts`）等纯逻辑。插件协议集成测试：`cargo test --manifest-path src-tauri/Cargo.toml --test plugin_conformance`（独立桩进程覆盖握手、全部错误码、进度、取消与行上限）；插件改动的快速验证脚本：`scripts/verify-plugin-system.ps1`、`scripts/verify-plugin-sdk.ps1`。标签样例图的 Rust 侧测试在 `src-tauri/src/media/label_samples_tests.rs` 与 `label_sample_crops_tests.rs`，前端覆盖 `src/lib/label-sample*.test.ts`、`src/hooks/useLabelSamples.test.tsx` 与 `src/components/settings/LabelSettings.samples.test.tsx`；脚本侧前端覆盖 `src/lib/script-*.test.ts`、`src/hooks/useScriptRun.test.tsx` 与 `src/components/settings/script-ui.acceptance.test.tsx`；导入/编辑/脚本共用的约束由 `src/lib/annotation-validation.test.ts` 与 `src/lib/importers.test.ts` 守护。人工验证记录见 `docs/verification/label-samples.md`、`docs/verification/lua-host.md`、`docs/verification/acp-agent.md`、`docs/verification/text-read-adapter.md`。
 - 预打标真实模型验收：`.github/workflows/official-models.yml` 在 CI 下载官方 YOLOv5n / YOLOv8n / YOLO11n 权重并导出 ONNX，运行被 `#[ignore]` 隔离的元数据、运行时、真实推理与 `.pt` 转换测试；仅当预打标模块、Rust 依赖或工作流本身变化时触发，也可手动触发。涉及预打标推理改动时，先确认这些测试仍能通过。
 - **覆盖率目标**：前端可黑盒测试的纯逻辑层（导入/导出、store、几何计算、配置解析等）通过 `npm run test:coverage` 保持 90% 以上行覆盖率；Tauri API 封装、更新器、UI 组件、纯默认配置等特殊文件可在覆盖率配置中排除，但新增复杂逻辑时必须补测。
 - 新功能必须补充相关测试；问题修复尽可能补充回归测试，避免只修当前手动路径。
