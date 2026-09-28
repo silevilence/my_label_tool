@@ -27,6 +27,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+axum = "0.8"
+getrandom = "0.3"
 label-script-host = { path = "script-host", default-features = false }
 tauri = { version = "2", features = ["protocol-asset"] }
 serde = { version = "1", features = ["derive"] }
@@ -36,7 +38,7 @@ tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.1"
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "load-dynamic", "api-24"] }
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "stream"] }
-tokio = { version = "1", features = ["sync", "time", "rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "rt-multi-thread", "macros", "net"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 sha2 = "0.10"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }

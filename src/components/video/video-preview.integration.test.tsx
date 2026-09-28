@@ -38,6 +38,7 @@ vi.mock("../../hooks/useImageLoader", () => {
 vi.mock("../../lib/tauri-api", async (original) => ({
   ...(await original<typeof import("../../lib/tauri-api")>()),
   loadLabelConfigs: vi.fn().mockResolvedValue([]),
+  mcpPoll: vi.fn().mockResolvedValue({ status: { running: false, enabled: false, address: "127.0.0.1", port: 1421, generation: 0, error: null, sessions: [], audit: [] }, calls: [] }),
   loadLabelTemplates: vi.fn().mockResolvedValue([]),
   loadShortcuts: vi.fn().mockResolvedValue({}),
   loadPluginLabelPresets: vi.fn().mockResolvedValue({ presets: [] }),

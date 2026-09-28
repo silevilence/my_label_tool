@@ -1,6 +1,7 @@
 pub mod acp;
 mod commands;
 mod i18n;
+pub mod mcp;
 mod media;
 // Read-only developer verification seam; not a plugin API.
 #[cfg(feature = "onnx-graph-dev")]
@@ -18,6 +19,14 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             text_read::initialize();
+            use tauri::Manager;
+            if let Ok(directory) = app.path().app_data_dir() {
+                tauri::async_runtime::spawn(
+                    mcp::host()
+                        .clone()
+                        .initialize_owned(directory.join("mcp.json")),
+                );
+            }
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
@@ -25,6 +34,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::mcp_poll,
+            commands::mcp_token,
+            commands::mcp_configure,
+            commands::mcp_resolve,
             commands::run_acp_agent,
             commands::cancel_acp_agent,
             commands::respond_acp_permission,
@@ -113,6 +126,7 @@ pub fn run() {
                 tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
             ) {
                 commands::cancel_all_pt_conversions_and_wait();
+                mcp::host().shutdown();
                 text_read::shutdown();
                 scripting::registry::shutdown();
                 acp::registry::shutdown();

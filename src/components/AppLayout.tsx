@@ -425,7 +425,7 @@ export function AppLayout({
       : "";
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <main className="flex h-full flex-col overflow-hidden bg-slate-950 text-slate-100">
       <div
         className={`flex min-h-0 flex-1 ${annotationsBusy ? "pointer-events-none opacity-60" : ""}`}
       >

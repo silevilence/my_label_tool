@@ -50,6 +50,7 @@ vi.mock("../lib/prompts", async (importOriginal) => ({
 vi.mock("../lib/tauri-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tauri-api")>()),
   loadLabelConfigs: vi.fn().mockResolvedValue([]),
+  mcpPoll: vi.fn().mockResolvedValue({ status: { running: false, enabled: false, address: "127.0.0.1", port: 1421, generation: 0, error: null, sessions: [], audit: [] }, calls: [] }),
   loadLabelTemplates: vi.fn().mockResolvedValue([]),
   loadShortcuts: vi.fn().mockResolvedValue({}),
   loadPrelabelResourceLimits: vi

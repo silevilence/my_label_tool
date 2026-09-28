@@ -1,4 +1,6 @@
 import { useTextReadStore } from "./store/useTextReadStore";
+import { useMcpConnection } from "./hooks/useMcpConnection";
+import { McpPanel } from "./components/settings/McpPanel";
 import { useVideoFrameNavigation } from "./hooks/useVideoFrameNavigation";
 import { useDraftKeyboard } from "./hooks/useDraftKeyboard";
 import { usePanTermination } from "./hooks/usePanTermination";
@@ -82,6 +84,7 @@ import { updateProjectPrelabelMappings } from "./lib/prelabel-mapping";
 import "./App.css";
 
 function App() {
+  const mcp = useMcpConnection();
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const selectedRectRef = useRef<KonvaRect | null>(null);
   const transformerRef = useRef<KonvaTransformer | null>(null);
@@ -754,7 +757,9 @@ function App() {
   usePanTermination(isPanning, panStateRef, suppressContextMenuRef, endPan);
 
   return (
-    <>
+    <div className="flex h-screen flex-col overflow-hidden">
+      <McpPanel status={mcp.status} error={mcp.error} />
+      <div className="min-h-0 flex-1">
       <AppLayout
         labelSamples={labelSamples}
         reextractVideo={
@@ -958,6 +963,7 @@ function App() {
         zoomFromKeyboard={zoomFromKeyboard}
       />
       <ProjectVideoDialogs actions={videoImport} settings={projectSettings} folder={folderPath} />
+      </div>
       <PromptHost />
       {imageDeletion.target && (
         <DeleteImageDialog
@@ -969,7 +975,7 @@ function App() {
           onConfirm={() => void imageDeletion.confirm()}
         />
       )}
-    </>
+    </div>
   );
 }
 

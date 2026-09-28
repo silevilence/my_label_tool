@@ -46,6 +46,13 @@ export async function selectLabelSample(): Promise<string | null> {
 }
 import { extractionSettings } from "./project-settings";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import type { McpPoll, McpResult, McpStatus } from "../types/mcp";
+export function mcpPoll(): Promise<McpPoll> { return invoke("mcp_poll"); }
+export function mcpToken(): Promise<string> { return invoke("mcp_token"); }
+export function mcpConfigure(enabled: boolean, address: string, port: number, rotate = false): Promise<McpStatus> {
+  return invoke("mcp_configure", { enabled, address, port, rotate });
+}
+export function mcpResolve(id: string, result: McpResult): Promise<void> { return invoke("mcp_resolve", { id, result }); }
 import type { ScriptEvent, ScriptLimits, ScriptResult, ScriptSnapshot } from "../types/script";
 import { SCRIPT_ZH_CN as scriptText } from "../i18n/script.zh-CN";
 

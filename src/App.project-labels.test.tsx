@@ -16,6 +16,7 @@ const tauriMocks = vi.hoisted(() => ({
   listProjectVideos: vi.fn().mockResolvedValue([]),
   listTextFiles: vi.fn(),
   loadLabelConfigs: vi.fn(),
+  mcpPoll: vi.fn().mockResolvedValue({ status: { running: false, enabled: false, address: "127.0.0.1", port: 1421, generation: 0, error: null, sessions: [], audit: [] }, calls: [] }),
   loadLabelTemplates: vi.fn(),
   loadPluginExportFormats: vi.fn(),
   loadPluginLabelPresets: vi.fn(),
