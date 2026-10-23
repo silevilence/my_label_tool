@@ -712,44 +712,76 @@ mod tests {
         }
     }
 
-    fn cancellation_timeouts() -> DownloadTimeouts {
-        // Cancellation tests must not race the 30ms deadline used by timeout tests.
-        DownloadTimeouts {
-            connect: Duration::from_secs(10),
-            headers: Duration::from_secs(10),
-            chunk: Duration::from_secs(10),
-        }
+    fn freeze_timeout_clock() -> tokio::task::JoinHandle<()> {
+        tokio::time::pause();
+        // Keep Tokio from auto-advancing past the deadline while real socket I/O
+        // is still starting. The test releases this guard at the intended phase;
+        // the wall-clock bound also prevents a broken fixture from hanging forever.
+        tokio::spawn(async {
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            while std::time::Instant::now() < deadline {
+                tokio::task::yield_now().await;
+            }
+        })
+    }
+
+    async fn assert_timeout_clock_released(clock: tokio::task::JoinHandle<()>) {
+        assert!(
+            matches!(clock.await, Err(error) if error.is_cancelled()),
+            "HTTP fixture did not reach the intended phase before its watchdog expired"
+        );
     }
 
     #[tokio::test]
     async fn header_stall_is_interrupted_by_timeout() {
-        let (url, server) = spawn_http_server(|stream| {
-            // Hold the accepted connection without reading: the client may time out
-            // before sending a request under load, so a blocking read could hang join.
-            thread::sleep(Duration::from_millis(150));
-            drop(stream);
+        let clock = freeze_timeout_clock();
+        let (ready, request_received) = tokio::sync::oneshot::channel();
+        let (release, hold) = std::sync::mpsc::channel::<()>();
+        let (url, server) = spawn_http_server(move |mut stream| {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            // Startup slower than the 30ms budget must not expire the test timer.
+            thread::sleep(Duration::from_millis(100));
+            read_request(&mut stream);
+            ready.send(()).unwrap();
+            let _ = hold.recv_timeout(Duration::from_secs(10));
         });
-        let error = download_checked_asset_from_url(
-            &AsyncCancellation::new(),
-            &test_asset(),
-            &url,
-            &Default::default(),
-            short_timeouts(),
-            |_| {},
-        )
-        .await
-        .unwrap_err();
+        let handle = AsyncCancellation::new();
+        let asset = test_asset();
+        let proxy = Default::default();
+        let (outcome, ()) = tokio::join!(
+            download_checked_asset_from_url(
+                &handle,
+                &asset,
+                &url,
+                &proxy,
+                short_timeouts(),
+                |_| {},
+            ),
+            async {
+                let received = request_received.await;
+                clock.abort();
+                received.unwrap();
+            }
+        );
+        assert_timeout_clock_released(clock).await;
+        drop(release);
         server.join().unwrap();
 
-        assert!(error.contains("超时"));
+        assert!(outcome.unwrap_err().contains("超时"));
     }
 
     #[tokio::test]
     async fn header_stall_is_interrupted_by_cancellation() {
+        let clock = freeze_timeout_clock();
         let handle = Arc::new(AsyncCancellation::new());
         let wake = Arc::clone(&handle);
         let (release, hold) = std::sync::mpsc::channel::<()>();
         let (url, server) = spawn_http_server(move |mut stream| {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
             read_request(&mut stream);
             // Model scheduling latency beyond the separate timeout tests' budget.
             thread::sleep(Duration::from_millis(100));
@@ -761,10 +793,12 @@ mod tests {
             &test_asset(),
             &url,
             &Default::default(),
-            cancellation_timeouts(),
+            short_timeouts(),
             |_| {},
         )
         .await;
+        clock.abort();
+        assert_timeout_clock_released(clock).await;
         drop(release);
         server.join().unwrap();
 
@@ -773,35 +807,52 @@ mod tests {
 
     #[tokio::test]
     async fn body_stall_is_interrupted_by_timeout() {
-        let (url, server) = spawn_http_server(|mut stream| {
+        let clock = freeze_timeout_clock();
+        let (release, hold) = std::sync::mpsc::channel::<()>();
+        let (url, server) = spawn_http_server(move |mut stream| {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            thread::sleep(Duration::from_millis(100));
             read_request(&mut stream);
             stream
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n")
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\na")
                 .unwrap();
             stream.flush().unwrap();
-            thread::sleep(Duration::from_millis(150));
+            let _ = hold.recv_timeout(Duration::from_secs(10));
         });
+        let mut received_body = false;
         let error = download_checked_asset_from_url(
             &AsyncCancellation::new(),
             &test_asset(),
             &url,
             &Default::default(),
             short_timeouts(),
-            |_| {},
+            |_| {
+                received_body = true;
+                clock.abort();
+            },
         )
         .await
         .unwrap_err();
+        assert_timeout_clock_released(clock).await;
+        drop(release);
         server.join().unwrap();
 
+        assert!(received_body, "must reach the body phase before timing out");
         assert!(error.contains("超时"));
     }
 
     #[tokio::test]
     async fn body_stall_is_interrupted_by_cancellation() {
+        let clock = freeze_timeout_clock();
         let handle = Arc::new(AsyncCancellation::new());
         let wake = Arc::clone(&handle);
         let (release, hold) = std::sync::mpsc::channel::<()>();
         let (url, server) = spawn_http_server(move |mut stream| {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
             // Regress the slow-server case that previously lost to the 30ms deadline.
             thread::sleep(Duration::from_millis(100));
             read_request(&mut stream);
@@ -817,7 +868,7 @@ mod tests {
             &test_asset(),
             &url,
             &Default::default(),
-            cancellation_timeouts(),
+            short_timeouts(),
             |_| {
                 // Cancel only after the client enters the body-reading path.
                 received_body = true;
@@ -825,6 +876,8 @@ mod tests {
             },
         )
         .await;
+        clock.abort();
+        assert_timeout_clock_released(clock).await;
         drop(release);
         server.join().unwrap();
 

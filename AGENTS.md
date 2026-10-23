@@ -294,6 +294,7 @@ interface LabelTemplate {
 - 预打标真实模型验收：`.github/workflows/official-models.yml` 在 CI 下载官方 YOLOv5n / YOLOv8n / YOLO11n 权重并导出 ONNX，运行被 `#[ignore]` 隔离的元数据、运行时、真实推理与 `.pt` 转换测试；仅当预打标模块、Rust 依赖或工作流本身变化时触发，也可手动触发。涉及预打标推理改动时，先确认这些测试仍能通过。
 - **覆盖率目标**：前端可黑盒测试的纯逻辑层（导入/导出、store、几何计算、配置解析等）通过 `npm run test:coverage` 保持 90% 以上行覆盖率；Tauri API 封装、更新器、UI 组件、纯默认配置等特殊文件可在覆盖率配置中排除，但新增复杂逻辑时必须补测。
 - 新功能必须补充相关测试；问题修复尽可能补充回归测试，避免只修当前手动路径。
+- 进程内的异步超时与取消测试，先用事件同步确认请求/数据已到达目标阶段，再用可控时钟推进业务超时；不得用几十毫秒的墙钟窗口判断机器调度是否及时。固定 `sleep` 只可用于故障注入，不作就绪判断；墙钟截止仅作测试失控兜底。发现计时竞态须消除其同步缺口，不得只放宽时间窗口或失败后反复重跑。
 - 任务完成前必须运行测试并通过：改动较小时可跑新增/相关测试，提交前至少跑 `npm run typecheck`、`npm run lint`、`npm run test:coverage`、`cargo clippy --manifest-path src-tauri/Cargo.toml`；涉及 Rust 逻辑时同时跑 `cargo test --manifest-path src-tauri/Cargo.toml`。
 - Rust 端：核心导出逻辑（`exporters` 对应的 Rust 序列化部分）必须有单元测试，覆盖至少一个真实标注样例的输入输出。
 - 前端：标注数据的增删改（store actions）需要有基本的单元测试（Vitest），画布交互允许暂缓自动化测试，但需手动验证清单（见下）。
