@@ -76,11 +76,14 @@ fn gateway_redirects(detect_direct: bool) -> Policy {
         let Some(first) = attempt.previous().first() else {
             return attempt.stop();
         };
+        // Release manifests may contain API asset URLs; these also redirect to
+        // GitHub's asset CDN. Classify by the first URL, never the redirect target.
         let direct = detect_direct
             && matches!(
                 first.host_str(),
                 Some(
                     "github.com"
+                        | "api.github.com"
                         | "raw.githubusercontent.com"
                         | "release-assets.githubusercontent.com"
                         | "objects.githubusercontent.com"

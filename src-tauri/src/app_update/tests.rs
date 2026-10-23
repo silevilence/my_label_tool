@@ -28,11 +28,62 @@ fn app() -> tauri::App<tauri::test::MockRuntime> {
 }
 
 fn manifest() -> Vec<u8> {
+    manifest_for(ASSET_URL)
+}
+
+fn manifest_for(url: &str) -> Vec<u8> {
     serde_json::to_vec(&serde_json::json!({
-        "version": "99.0.0", "notes": "### 更新说明", "url": ASSET_URL,
+        "version": "99.0.0", "notes": "### 更新说明", "url": url,
         "signature": include_str!("fixtures/payload.txt.sig").trim()
     }))
     .unwrap()
+}
+
+#[tokio::test]
+async fn direct_github_and_api_asset_redirects_download_and_verify_signature() {
+    // Resolve GitHub to loopback only in this test; exercise the real updater's
+    // HTTP redirect callback and signature verification without internet access.
+    for host in ["github.com", "api.github.com"] {
+        let app = app();
+        let webview = app.get_webview_window("main").unwrap().as_ref().clone();
+        let (payload, payload_server) = gateway(PAYLOAD.to_vec(), "/gateway");
+        let path = if host == "api.github.com" {
+            "/repos/owner/app/releases/assets/668271883"
+        } else {
+            "/owner/app/releases/download/V99/update.exe"
+        };
+        let (asset, asset_server) = redirect(&payload.url, path);
+        let local = reqwest::Url::parse(&asset.url).unwrap();
+        let address = format!("127.0.0.1:{}", local.port().unwrap())
+            .parse::<std::net::SocketAddr>()
+            .unwrap();
+        let url = format!("http://{host}:{}{path}", address.port());
+        let (manifest, manifest_server) = gateway(manifest_for(&url), "/gateway");
+        let update = webview
+            .updater_builder()
+            .configure_client(move |builder| {
+                github_proxy::routing::updater_client(builder.no_proxy().resolve(host, address))
+            })
+            .endpoints(vec![manifest.url.parse().unwrap()])
+            .unwrap()
+            .build()
+            .unwrap()
+            .check()
+            .await
+            .unwrap()
+            .unwrap();
+        manifest_server.join().unwrap();
+        let cached = register(&webview, update);
+        let prepared = prepare_with_settings(&webview, cached.rid, &Default::default()).unwrap();
+        let download = webview
+            .resources_table()
+            .get::<Update>(prepared.rid)
+            .unwrap();
+        let bytes = download.download(|_, _| {}, || {}).await;
+        asset_server.join().unwrap();
+        assert_eq!(bytes.unwrap(), PAYLOAD, "download from {host}");
+        payload_server.join().unwrap();
+    }
 }
 
 #[tokio::test]
@@ -91,12 +142,18 @@ async fn gateway_redirect_cannot_bypass_the_proxy_during_check_or_download() {
         .unwrap()
         .unwrap();
     server.join().unwrap();
-    let (settings, server) = redirect(ASSET_URL, ASSET_PATH);
-    let attempt = prepare_with_settings(&webview, cached.rid, &settings).unwrap();
-    let update = webview
-        .resources_table()
-        .get::<Update>(attempt.rid)
-        .unwrap();
-    assert!(update.download(|_, _| {}, || {}).await.is_err());
-    server.join().unwrap();
+    for target in [
+        ASSET_URL,
+        "https://api.github.com/repos/owner/app/releases/assets/668271883",
+        "https://release-assets.githubusercontent.com/asset",
+    ] {
+        let (settings, server) = redirect(target, ASSET_PATH);
+        let attempt = prepare_with_settings(&webview, cached.rid, &settings).unwrap();
+        let update = webview
+            .resources_table()
+            .get::<Update>(attempt.rid)
+            .unwrap();
+        assert!(update.download(|_, _| {}, || {}).await.is_err());
+        server.join().unwrap();
+    }
 }

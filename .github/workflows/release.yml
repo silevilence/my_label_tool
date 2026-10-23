@@ -150,6 +150,25 @@ jobs:
             runtime-assets/DirectML.dll `
             --clobber
 
+      # tauri-action v1 emits API asset URLs. Resource gateways require the
+      # standard github.com release paths; normalize while the release is draft
+      # so installed clients can also download the version containing this fix.
+      - name: Normalize updater download URLs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          New-Item -ItemType Directory -Force updater-manifest | Out-Null
+          gh release download "$env:GITHUB_REF_NAME" --pattern latest.json --dir updater-manifest --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Could not download the updater manifest." }
+          gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:GITHUB_REF_NAME" |
+            Set-Content -LiteralPath updater-manifest/release.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "Could not read release assets." }
+          node scripts/normalize-update-manifest.ts updater-manifest/latest.json updater-manifest/release.json
+          if ($LASTEXITCODE -ne 0) { throw "Updater manifest validation failed." }
+          gh release upload "$env:GITHUB_REF_NAME" updater-manifest/latest.json --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Could not upload the normalized updater manifest." }
+
       - name: Publish complete release
         shell: pwsh
         env:
