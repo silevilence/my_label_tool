@@ -55,6 +55,7 @@ export function ProjectMediaList({
   onVideoMenu,
 }: MediaProps) {
   const annotationsByImage = useAnnotationStore((state) => state.annotationsByImage);
+  const selectionRevealRevision = useAnnotationStore((state) => state.selectionRevealRevision);
   const framePaths = useMemo(
     () => new Set(videos.flatMap((video) => video.images.map((image) => image.path))),
     [videos],
@@ -92,7 +93,7 @@ export function ProjectMediaList({
   const range = visibleRows(offsets, scrollTop, viewportHeight, OVERSCAN_ROWS);
 
   // 选中定位：按索引计算 scrollTop（替代原行内 scrollIntoView）；
-  // 只在选中路径变化时对齐，标注编辑不回拉滚动位置。键盘导航与右键菜单行为不变。
+  // 选中路径变化或显式定位时对齐，标注编辑不回拉滚动位置。
   useEffect(() => {
     if (!selectedPath) return;
     const scroller = scrollerRef.current;
@@ -111,8 +112,8 @@ export function ProjectMediaList({
       scroller.clientHeight,
       contentTop,
     );
-    // 仅随选中变化对齐：rows/offsets 取当次渲染值，故意不进依赖数组。
-  }, [selectedPath]);
+    // rows/offsets 取当次渲染值，故意不进依赖数组。
+  }, [selectedPath, selectionRevealRevision]);
 
   return (
     <div ref={scrollerRef} className="scrollbar-dark relative min-h-0 flex-1 overflow-auto p-2">
@@ -201,6 +202,7 @@ function VideoItem({
   onVideoMenu: MediaProps["onVideoMenu"];
 }) {
   const navigation = useVideoFrameNavigation(video.scopedVideo, video.images, selectedPath);
+  const selectionRevealRevision = useAnnotationStore((state) => state.selectionRevealRevision);
   const active = navigation.currentIndex >= 0;
   const done = useMemo(
     () => navigation.frames.filter((frame) => frame.annotated).length,
@@ -225,8 +227,8 @@ function VideoItem({
       scroller.scrollTop,
       scroller.clientHeight,
     );
-    // 仅随选中帧变化对齐：frames/offsets 取当次渲染值，故意不进依赖数组。
-  }, [navigation.currentIndex]);
+    // frames/offsets 取当次渲染值，故意不进依赖数组。
+  }, [navigation.currentIndex, selectionRevealRevision]);
 
   return (
     <div className="flex h-full flex-col">

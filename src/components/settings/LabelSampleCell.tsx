@@ -9,10 +9,13 @@ export function LabelSampleCell({
   label,
   samples,
   conflict,
+  onLocateImage,
 }: {
   label: LabelConfig;
   samples?: LabelSamples;
   conflict: boolean;
+  /** 从候选右键菜单跳转到图片后关闭外层「管理模板和标签」弹窗，让画布可见。 */
+  onLocateImage?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -58,7 +61,12 @@ export function LabelSampleCell({
         </button>
       </div>
       {picking && samples && (
-        <LabelSamplePicker label={label} samples={samples} onClose={() => setPicking(false)} />
+        <LabelSamplePicker
+          label={label}
+          samples={samples}
+          onLocateImage={onLocateImage}
+          onClose={() => setPicking(false)}
+        />
       )}
       {expanded && preview && (
         <Overlay label={text.preview(label.name)} onClose={() => setExpanded(false)} size="wide">

@@ -2,7 +2,10 @@ use std::process::{Command, Stdio};
 
 use crate::i18n::zh_cn as text;
 
-#[cfg(all(windows, test))]
+// 该守卫只用于串行化会修改进程环境变量的测试，逻辑与平台无关；
+// 但 plugins::runtime 的测试模块在非 Windows 平台也会调用它，
+// 因此不能只按 windows 门控，否则 macOS/Linux 的 lib test 目标无法编译。
+#[cfg(test)]
 pub(crate) fn windows_isolation_test_guard() -> std::sync::MutexGuard<'static, ()> {
     static TEST_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     TEST_LOCK

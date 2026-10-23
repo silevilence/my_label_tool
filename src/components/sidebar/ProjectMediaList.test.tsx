@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ProjectMediaList } from "./ProjectMediaList";
 import { generateImageThumbnail } from "../../lib/tauri-api";
 import { IMAGE_ROW_HEIGHT, VIDEO_HEADER_HEIGHT } from "./ProjectMediaList";
+import { useAnnotationStore } from "../../store/useAnnotationStore";
 import type { ImageFile } from "../../lib/tauri-api";
 import type { LoadedProjectVideo } from "../../lib/project-media";
 import type { VideoProject } from "../../types/video";
@@ -276,6 +277,33 @@ it("subscribes to scrolling each time a previously collapsed video is expanded",
     renderList({ videos: [video] });
     expect(scroller().querySelector(".overflow-auto")).toBeNull();
   }
+});
+
+it("reveals the current frame on explicit locate without pulling back ordinary annotation edits", () => {
+  const video = videoFixture(1000);
+  useAnnotationStore.getState().setImages(video.images);
+  const selectedPath = video.images[0].path;
+  renderList({ videos: [video], selectedPath });
+  const nested = scroller().querySelector<HTMLDivElement>(".overflow-auto")!;
+  Object.defineProperty(nested, "clientHeight", { value: 192, configurable: true });
+  act(() => {
+    nested.scrollTop = 500 * 32;
+    nested.dispatchEvent(new Event("scroll"));
+  });
+  expect(nested.querySelector(`[data-frame-path="${selectedPath}"]`)).toBeNull();
+  act(() =>
+    useAnnotationStore.getState().addAnnotation(selectedPath, {
+      id: "new",
+      type: "point",
+      labelId: "person",
+      points: [1, 2],
+    }),
+  );
+  expect(nested.scrollTop).toBe(500 * 32);
+  act(() => useAnnotationStore.getState().select(selectedPath, { reveal: true }));
+  expect(nested.scrollTop).toBe(0);
+  act(() => nested.dispatchEvent(new Event("scroll")));
+  expect(nested.querySelector(`[data-frame-path="${selectedPath}"]`)).not.toBeNull();
 });
 
 it("revalidates a thumbnail after its row leaves and reenters the virtual window", async () => {

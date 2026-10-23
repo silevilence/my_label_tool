@@ -126,7 +126,8 @@ useOperations() → {
 ```ts
 selectedPath: string
 scopeStack: Scope[]              // 栈底恒为 { kind: "project" }
-select(path: string): void
+select(path: string, options?: { reveal?: boolean }): void
+selectionRevealRevision: number           // 显式定位请求：支持重复定位当前图片
 pushScope(scope: { kind: "search" | "video"; ids: string[]; label: string }): void
 popScope(): void
 selectAdjacent(delta: 1 | -1): void        // 在栈顶作用域内移动
@@ -139,7 +140,7 @@ removeImages(paths: string[]): void        // 删除 + 接续 + 标注清理 + �
 - 删除与接续由 store 原子完成：一起更新图片、标注、历史与作用域；失效选择回退到有效邻项，避免画布误清空。
 - 作用域栈顶决定「上一张 / 下一张 / 下一个未标注」：项目序（图片与视频帧按项目序合并）→ 搜索结果 → 单个视频的帧序。`←/→`（全项目序）、`PageUp/PageDown`（当前视频帧序）与确认后的搜索结果使用同一模型。搜索面板仅保存临时候选序号，确认前不修改编辑对象或作用域。
 - 作用域必须**常驻可见、可退出**（侧栏作用域条，如「搜索结果：含 person 的 37 张 ✕」）；`ProjectMediaList` 的 `remembered` 影子游标与 `ImageSearchDialog` 的 `candidatePath` 随之删除。
-- 列表行模块自己持有 ref 并在选中时滚入视口，App 不再向多个渲染器传递共享 selectedImageButtonRef。
+- 虚拟列表按索引计算滚动位置，App 不再向多个渲染器传递共享 selectedImageButtonRef；`select(path, { reveal: true })` 同步递增定位修订号，图片列表与视频帧子列表均响应，重复定位当前图片也生效。普通标注编辑不触发定位。
 
 **测试面**：索引数学与夹取（越界、首尾、删除末张、删除当前张）、作用域 push/pop 后「下一张」的落点、搜索结果集内相邻、视频帧序内相邻。
 

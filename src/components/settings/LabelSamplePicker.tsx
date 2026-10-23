@@ -1,23 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LabelConfig } from "../../types/annotation";
+import type { LabelSampleCandidate } from "../../types/label-sample";
 import type { LabelSamples } from "../../hooks/useLabelSamples";
 import { useAnnotationStore } from "../../store/useAnnotationStore";
+import { useOperations } from "../../store/useOperations";
 import { labelSampleCandidates, SAMPLE_CANDIDATES_PER_PAGE } from "../../lib/label-sample-crops";
 import { LABEL_SAMPLE_ZH_CN as text } from "../../i18n/label-sample.zh-CN";
 import { Overlay } from "../overlay/Overlay";
+import { LabelSampleContextMenu } from "./LabelSampleContextMenu";
 
 export function LabelSamplePicker({
   label,
   samples,
   onClose,
+  onLocateImage,
 }: {
   label: LabelConfig;
   samples: LabelSamples;
   onClose: () => void;
+  /** 跳转到候选所在图片后关闭外层的标签管理弹窗。 */
+  onLocateImage?: () => void;
 }) {
   const images = useAnnotationStore((state) => state.images);
   const annotations = useAnnotationStore((state) => state.annotationsByImage);
   const selectedPath = useAnnotationStore((state) => state.selectedPath);
+  const selectImage = useAnnotationStore((state) => state.select);
+  const deleteAnnotation = useAnnotationStore((state) => state.deleteAnnotation);
+  const canEditAnnotations = useOperations((state) => state.canEditAnnotations());
   const candidates = useMemo(
     () => labelSampleCandidates(images, annotations, label.id, selectedPath),
     [images, annotations, label.id, selectedPath],
@@ -34,6 +43,11 @@ export function LabelSamplePicker({
     [candidates, currentPage],
   );
   const [previews, setPreviews] = useState<Record<string, { src?: string; error?: string }>>({});
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    candidate: LabelSampleCandidate;
+  } | null>(null);
   const previewCandidate = samples.previewCandidate;
   useEffect(() => {
     let cancelled = false;
@@ -115,17 +129,27 @@ export function LabelSamplePicker({
                   candidate.imageName,
                   currentPage * SAMPLE_CANDIDATES_PER_PAGE + index + 1,
                 );
+                // 预览未就绪或操作进行中时不可选取；右键菜单仍要能打开，因此用 aria-disabled
+                // 而不是原生 disabled（原生 disabled 会吞掉 contextmenu 事件）。
+                const unavailable = samples.busy || !entry?.src;
                 return (
                   <button
                     key={`${candidate.imagePath}:${candidate.annotationId}`}
                     type="button"
                     aria-label={name}
                     title={candidate.imagePath}
-                    disabled={samples.busy || !entry?.src}
+                    aria-disabled={unavailable}
                     onClick={async () => {
+                      if (unavailable) return;
                       if (await samples.chooseCrop(label.id, candidate)) onClose();
                     }}
-                    className="overflow-hidden rounded-lg border border-slate-700 bg-slate-950 text-left enabled:hover:border-sky-400 enabled:focus-visible:outline-sky-400 disabled:opacity-50"
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (samples.busy) return;
+                      setMenu({ x: event.clientX, y: event.clientY, candidate });
+                    }}
+                    className={`overflow-hidden rounded-lg border border-slate-700 bg-slate-950 text-left ${unavailable ? "opacity-50" : "hover:border-sky-400 focus-visible:outline-sky-400"}`}
                   >
                     <div className="flex h-32 items-center justify-center p-2">
                       {entry?.src ? (
@@ -163,6 +187,24 @@ export function LabelSamplePicker({
               </button>
             </div>
           </>
+        )}
+        {menu && (
+          <LabelSampleContextMenu
+            x={menu.x}
+            y={menu.y}
+            disabled={samples.busy || !canEditAnnotations}
+            onJumpToImage={() => {
+              if (samples.busy || !useOperations.getState().canEditAnnotations()) return;
+              selectImage(menu.candidate.imagePath, { reveal: true });
+              onClose();
+              onLocateImage?.();
+            }}
+            onDeleteAnnotation={() => {
+              if (samples.busy || !useOperations.getState().canEditAnnotations()) return;
+              deleteAnnotation(menu.candidate.imagePath, menu.candidate.annotationId);
+            }}
+            onClose={() => setMenu(null)}
+          />
         )}
       </section>
     </Overlay>

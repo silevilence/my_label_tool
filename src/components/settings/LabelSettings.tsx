@@ -329,7 +329,12 @@ export function LabelSettings({
                     aria-label="标签名称"
                     onChange={(event) => patchLabel(label.id, { name: event.target.value })}
                   />
-                  <LabelSampleCell label={label} samples={samples} conflict={!!sampleConflict} />
+                  <LabelSampleCell
+                    label={label}
+                    samples={samples}
+                    conflict={!!sampleConflict}
+                    onLocateImage={() => setIsManageOpen(false)}
+                  />
                   <input
                     className="h-8 w-10 rounded border border-slate-700 bg-slate-950"
                     type="color"

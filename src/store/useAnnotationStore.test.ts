@@ -4,6 +4,27 @@ import { useAnnotationStore } from "./useAnnotationStore";
 const rect = { id: "r1", type: "rect" as const, labelId: "person", points: [1, 2, 3, 4] };
 
 describe("annotation store", () => {
+  it("only requests reveal for an explicit valid selection, including a repeated selection", () => {
+    const store = useAnnotationStore.getState();
+    store.setImages([
+      { path: "a.jpg", name: "a.jpg" },
+      { path: "b.jpg", name: "b.jpg" },
+    ]);
+    store.select("a.jpg");
+    const revision = useAnnotationStore.getState().selectionRevealRevision;
+    store.select("a.jpg");
+    store.select("missing.jpg", { reveal: true });
+    expect(useAnnotationStore.getState().selectionRevealRevision).toBe(revision);
+    store.pushScope({ kind: "search", ids: ["b.jpg"], label: "b" });
+    store.select("a.jpg", { reveal: true });
+    expect(useAnnotationStore.getState()).toMatchObject({
+      selectedPath: "a.jpg",
+      scopeStack: [{ kind: "project" }],
+      selectionRevealRevision: revision + 1,
+    });
+    store.select("a.jpg", { reveal: true });
+    expect(useAnnotationStore.getState().selectionRevealRevision).toBe(revision + 2);
+  });
   it("validates replacement and batch input atomically against the supplied labels", () => {
     const labels = [{ id: "person", name: "person", color: "#fff", shapeType: "rect" as const }];
     const store = useAnnotationStore.getState();
@@ -62,6 +83,10 @@ describe("annotation store", () => {
   });
   beforeEach(() => {
     useAnnotationStore.setState({
+      images: [],
+      selectedPath: "",
+      scopeStack: [{ kind: "project" }],
+      selectionRevealRevision: 0,
       annotationsByImage: {},
       selectedShapeId: null,
       undoStack: [],

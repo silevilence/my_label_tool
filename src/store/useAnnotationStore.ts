@@ -16,9 +16,11 @@ export function scopePaths(state: { images: ImageFile[]; scopeStack: Scope[] }):
 interface AnnotationState {
   images: ImageFile[];
   selectedPath: string;
+  /** Explicit locate requests also reveal an already selected image in virtual lists. */
+  selectionRevealRevision: number;
   scopeStack: Scope[];
   setImages: (images: ImageFile[]) => void;
-  select: (path: string) => void;
+  select: (path: string, options?: { reveal?: boolean }) => void;
   pushScope: (scope: Exclude<Scope, { kind: "project" }>) => void;
   popScope: () => void;
   selectAdjacent: (delta: number) => void;
@@ -90,6 +92,7 @@ export const useAnnotationStore = create<AnnotationState>((setState, get) => {
   return {
     images: [],
     selectedPath: "",
+    selectionRevealRevision: 0,
     scopeStack: [{ kind: "project" }],
     setImages: (images) =>
       set((state) => ({
@@ -100,7 +103,7 @@ export const useAnnotationStore = create<AnnotationState>((setState, get) => {
           : (images[0]?.path ?? ""),
         selectedShapeId: null,
       })),
-    select: (path) =>
+    select: (path, options) =>
       set((state) => {
         if (!state.images.some((image) => image.path === path)) return state;
         const scopeStack = [...state.scopeStack];
@@ -108,6 +111,7 @@ export const useAnnotationStore = create<AnnotationState>((setState, get) => {
           scopeStack.pop();
         return {
           selectedPath: path,
+          selectionRevealRevision: state.selectionRevealRevision + (options?.reveal ? 1 : 0),
           scopeStack,
           selectedShapeId: path === state.selectedPath ? state.selectedShapeId : null,
         };

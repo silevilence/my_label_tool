@@ -298,6 +298,27 @@ fn fingerprint(path: &Path) -> Result<Option<Vec<u8>>, String> {
         }
     }
 }
+/// 输出根的加锁基准路径。
+///
+/// `lock_directory` 会从文件系统根开始逐级 `O_NOFOLLOW` 打开每一段路径，因此
+/// 平台标准路径里本来就存在的符号链接会让它误判为逃逸：macOS 的 `/var` 是指向
+/// `/private/var` 的符号链接，而 `$TMPDIR` 正位于 `/var/folders/...` 下，直接
+/// 打开 `/var` 会返回 ELOOP。Unix 上先把输出根解析为真实路径，再逐级加锁；
+/// 输出根内部（含目标文件本身）仍按 `O_NOFOLLOW` 逐段校验。
+///
+/// Windows 保持原路径不变：那里用 `\\?\` 前缀做 canonicalize 会改变持久化路径，
+/// 而目录句柄已能阻止重命名，没有对应问题。
+fn output_root(root: &Path) -> Result<PathBuf, String> {
+    #[cfg(windows)]
+    {
+        Ok(root.to_path_buf())
+    }
+    #[cfg(not(windows))]
+    {
+        fs::canonicalize(root).map_err(text::failed)
+    }
+}
+
 fn stage(groups: Vec<OutputGroup>) -> Result<Prepared, String> {
     let count: usize = groups.iter().map(|g| g.files.len()).sum();
     let size: usize = groups
@@ -335,14 +356,10 @@ fn stage(groups: Vec<OutputGroup>) -> Result<Prepared, String> {
         }
     }
     for group in groups {
-        lock_directory(
-            &group.root,
-            false,
-            &mut prepared._directories,
-            &mut directories,
-        )?;
+        let root = output_root(&group.root)?;
+        lock_directory(&root, false, &mut prepared._directories, &mut directories)?;
         for file in group.files {
-            let target = group.root.join(file.path.replace('\\', "/"));
+            let target = root.join(file.path.replace('\\', "/"));
             let parent = target.parent().ok_or_else(unsafe_path)?;
             lock_directory(parent, true, &mut prepared._directories, &mut directories)?;
             let hash = fingerprint(&target)?;
@@ -493,6 +510,38 @@ mod tests {
         assert!(stage(group(dir.path(), &[("a.json", "a"), ("A.json", "b")])).is_err());
         fs::create_dir(dir.path().join("folder")).unwrap();
         assert!(stage(group(dir.path(), &[("folder", "x")])).is_err());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_platform_ancestor_of_the_root_is_resolved_before_locking() {
+        // macOS 的 $TMPDIR 位于 /var -> /private/var 之下；这里构造同样的形状，
+        // 确保祖先符号链接不会被 O_NOFOLLOW 误判成路径逃逸。
+        let base = tempfile::tempdir().unwrap();
+        let real = base.path().join("real");
+        fs::create_dir(&real).unwrap();
+        let alias = base.path().join("alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let staged = stage(group(&alias, &[("one.json", "new")])).unwrap();
+        assert_eq!(commit(staged, false).unwrap(), 1);
+        assert_eq!(fs::read(real.join("one.json")).unwrap(), b"new");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_target_inside_the_root_is_still_rejected() {
+        // 只放行输出根以上的平台符号链接，根内部的符号链接目标仍然拒绝。
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("secret.json"), "secret").unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("secret.json"),
+            dir.path().join("link.json"),
+        )
+        .unwrap();
+        assert!(stage(group(dir.path(), &[("link.json", "overwrite")])).is_err());
+        assert_eq!(
+            fs::read(outside.path().join("secret.json")).unwrap(),
+            b"secret"
+        );
     }
     #[test]
     fn bounds_total_backup_bytes_without_overwriting_existing_files() {
