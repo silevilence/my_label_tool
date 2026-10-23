@@ -161,7 +161,13 @@ jobs:
           New-Item -ItemType Directory -Force updater-manifest | Out-Null
           gh release download "$env:GITHUB_REF_NAME" --pattern latest.json --dir updater-manifest --clobber
           if ($LASTEXITCODE -ne 0) { throw "Could not download the updater manifest." }
-          gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:GITHUB_REF_NAME" |
+          # The REST tag endpoint does not resolve draft releases. The CLI can
+          # locate the draft and provides its stable release-ID API URL.
+          $releaseApiUrl = gh release view "$env:GITHUB_REF_NAME" --json apiUrl --jq .apiUrl
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($releaseApiUrl)) {
+            throw "Could not locate the draft release."
+          }
+          gh api "$releaseApiUrl" |
             Set-Content -LiteralPath updater-manifest/release.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "Could not read release assets." }
           node scripts/normalize-update-manifest.ts updater-manifest/latest.json updater-manifest/release.json

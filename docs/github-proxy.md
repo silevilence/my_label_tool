@@ -10,7 +10,7 @@
 
 代理服务须自行处理上游 GitHub/CDN 重定向，向客户端返回资源；代理响应跳转到其他源时会明确失败，避免绕过代理直接连接外网。更新器允许用户保存 HTTP 代理入口，因此启用了 HTTP 传输支持；默认更新源仍为 HTTPS，TLS 证书检查、更新安装包签名验证和 Runtime SHA-256 校验均保留。预打标模型仍须通过 ONNX 内容校验，才能写入受管模型目录。
 
-发布工作流在草稿发布期间执行 `scripts/normalize-update-manifest.ts`，将 `latest.json` 中所有平台的安装包地址按本次 Release 的资源元数据转换为 `browser_download_url`（`https://github.com/owner/repo/releases/download/tag/file`），保留签名、版本与更新说明。转换或上传失败时不发布该草稿，避免 API 安装包地址绕过资源代理；此清单也兼容已安装的旧客户端。未配置代理时，标准 GitHub 下载地址可正常跟随 CDN 跳转；客户端同时兼容旧清单中 `api.github.com` 的直连下载跳转。旧清单中的 API 地址仍不走资源代理，要让无法直连 GitHub API 的环境更新，须提供上述标准下载地址的清单。
+发布工作流在草稿发布期间执行 `scripts/normalize-update-manifest.ts`，将 `latest.json` 中所有平台的安装包地址按本次 Release 的资源元数据转换为标准下载链接（`https://github.com/owner/repo/releases/download/tag/file`），保留签名、版本与更新说明。草稿通过 CLI 定位并按 Release ID 读取资源；草稿的 `browser_download_url` 可能包含临时 `untagged-*` 路径，转换时替换为该 Release 的实际标签。转换或上传失败时不发布该草稿，避免 API 安装包地址绕过资源代理；此清单也兼容已安装的旧客户端。未配置代理时，标准 GitHub 下载地址可正常跟随 CDN 跳转；客户端同时兼容旧清单中 `api.github.com` 的直连下载跳转。旧清单中的 API 地址仍不走资源代理，要让无法直连 GitHub API 的环境更新，须提供上述标准下载地址的清单。
 
 检查更新后修改或清空代理，从「更新到 Vxxx」发起下载时即采用最新设置，不需要重新获取清单；原始下载地址不会被代理前缀覆盖。每次下载持有独立资源，失败或取消后释放该次下载数据，缓存版本仍可重试。Runtime 整组 DLL 在任务启动时读取一次设置，运行中的整组下载使用同一配置。
 

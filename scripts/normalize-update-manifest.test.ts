@@ -50,6 +50,26 @@ describe("release updater manifest", () => {
     ).toEqual({ version: "99.0.0", url: browser, signature: "sig" });
   });
 
+  it("uses the release tag instead of draft-only untagged download paths", () => {
+    const draftRelease = {
+      ...release,
+      draft: true,
+      assets: release.assets.map((asset) => ({
+        ...asset,
+        browser_download_url: asset.browser_download_url.replace("V99.0.0", "untagged-draft-id"),
+      })),
+    };
+    const result = normalizeUpdateManifest(manifest, draftRelease);
+    expect(result).toEqual(normalizeUpdateManifest(manifest, release));
+    expect(normalizeUpdateManifest(result, draftRelease)).toEqual(result);
+    expect(
+      normalizeUpdateManifest(
+        { version: "99.0.0", url: draftRelease.assets[0].browser_download_url, signature: "sig" },
+        draftRelease,
+      ),
+    ).toEqual({ version: "99.0.0", url: browser, signature: "sig" });
+  });
+
   it("rejects stale assets, wrong release versions, empty manifests and missing signatures", () => {
     expect(() => normalizeUpdateManifest(manifest, { ...release, assets: [] })).toThrow(/absent/);
     expect(() => normalizeUpdateManifest(manifest, { ...release, tag_name: "V98.0.0" })).toThrow(
