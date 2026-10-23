@@ -712,6 +712,15 @@ mod tests {
         }
     }
 
+    fn cancellation_timeouts() -> DownloadTimeouts {
+        // Cancellation tests must not race the 30ms deadline used by timeout tests.
+        DownloadTimeouts {
+            connect: Duration::from_secs(10),
+            headers: Duration::from_secs(10),
+            chunk: Duration::from_secs(10),
+        }
+    }
+
     #[tokio::test]
     async fn header_stall_is_interrupted_by_timeout() {
         let (url, server) = spawn_http_server(|stream| {
@@ -739,24 +748,27 @@ mod tests {
     async fn header_stall_is_interrupted_by_cancellation() {
         let handle = Arc::new(AsyncCancellation::new());
         let wake = Arc::clone(&handle);
+        let (release, hold) = std::sync::mpsc::channel::<()>();
         let (url, server) = spawn_http_server(move |mut stream| {
             read_request(&mut stream);
+            // Model scheduling latency beyond the separate timeout tests' budget.
+            thread::sleep(Duration::from_millis(100));
             wake.cancel();
-            thread::sleep(Duration::from_millis(150));
+            let _ = hold.recv_timeout(Duration::from_secs(10));
         });
         let outcome = download_checked_asset_from_url(
             &handle,
             &test_asset(),
             &url,
             &Default::default(),
-            short_timeouts(),
+            cancellation_timeouts(),
             |_| {},
         )
-        .await
-        .unwrap();
+        .await;
+        drop(release);
         server.join().unwrap();
 
-        assert!(outcome.is_none());
+        assert!(outcome.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -788,28 +800,36 @@ mod tests {
     async fn body_stall_is_interrupted_by_cancellation() {
         let handle = Arc::new(AsyncCancellation::new());
         let wake = Arc::clone(&handle);
+        let (release, hold) = std::sync::mpsc::channel::<()>();
         let (url, server) = spawn_http_server(move |mut stream| {
+            // Regress the slow-server case that previously lost to the 30ms deadline.
+            thread::sleep(Duration::from_millis(100));
             read_request(&mut stream);
             stream
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n")
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\na")
                 .unwrap();
             stream.flush().unwrap();
-            wake.cancel();
-            thread::sleep(Duration::from_millis(150));
+            let _ = hold.recv_timeout(Duration::from_secs(10));
         });
+        let mut received_body = false;
         let outcome = download_checked_asset_from_url(
             &handle,
             &test_asset(),
             &url,
             &Default::default(),
-            short_timeouts(),
-            |_| {},
+            cancellation_timeouts(),
+            |_| {
+                // Cancel only after the client enters the body-reading path.
+                received_body = true;
+                wake.cancel();
+            },
         )
-        .await
-        .unwrap();
+        .await;
+        drop(release);
         server.join().unwrap();
 
-        assert!(outcome.is_none());
+        assert!(outcome.unwrap().is_none());
+        assert!(received_body);
     }
 
     #[test]
