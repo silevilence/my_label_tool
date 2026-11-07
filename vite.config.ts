@@ -32,6 +32,7 @@ export default defineConfig(async () => ({
   },
   test: {
     environment: "jsdom",
+    setupFiles: ["./src/test/browser-storage.ts"],
     coverage: {
       provider: "v8",
       include: [
