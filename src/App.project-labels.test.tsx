@@ -15,8 +15,25 @@ const tauriMocks = vi.hoisted(() => ({
   loadVideoProject: vi.fn().mockResolvedValue(null),
   listProjectVideos: vi.fn().mockResolvedValue([]),
   listTextFiles: vi.fn(),
+  loadRecovery: vi.fn().mockResolvedValue(null),
+  lastRecoveryProject: vi.fn().mockResolvedValue(null),
+  saveRecovery: vi.fn().mockResolvedValue(1),
   loadLabelConfigs: vi.fn(),
-  mcpPoll: vi.fn().mockResolvedValue({ status: { running: false, enabled: false, address: "127.0.0.1", port: 1421, generation: 0, error: null, sessions: [], audit: [] }, calls: [] }),
+  mcpPoll: vi
+    .fn()
+    .mockResolvedValue({
+      status: {
+        running: false,
+        enabled: false,
+        address: "127.0.0.1",
+        port: 1421,
+        generation: 0,
+        error: null,
+        sessions: [],
+        audit: [],
+      },
+      calls: [],
+    }),
   loadLabelTemplates: vi.fn(),
   loadPluginExportFormats: vi.fn(),
   loadPluginLabelPresets: vi.fn(),

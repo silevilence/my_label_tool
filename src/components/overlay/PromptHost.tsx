@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Overlay } from "./Overlay";
-import { usePromptStore, type ConfirmRequest, type PromptRequest } from "../../lib/prompts";
+import {
+  usePromptStore,
+  type ConfirmRequest,
+  type PromptRequest,
+  type ChoiceRequest,
+} from "../../lib/prompts";
 import { PROMPTS_ZH_CN as text } from "../../i18n/prompts.zh-CN";
 
 // 应用内「确认」与「命名输入」原语的宿主：挂在 App 根部一次，
@@ -8,11 +13,47 @@ import { PROMPTS_ZH_CN as text } from "../../i18n/prompts.zh-CN";
 export function PromptHost() {
   const confirm = usePromptStore((state) => state.confirmQueue[0] ?? null);
   const prompt = usePromptStore((state) => state.promptQueue[0] ?? null);
+  const choice = usePromptStore((state) => state.choiceQueue[0] ?? null);
   return (
     <>
       {confirm && <ConfirmCard key={confirm.title + (confirm.message ?? "")} request={confirm} />}
       {prompt && <PromptCard key={prompt.title} request={prompt} />}
+      {choice && <ChoiceCard request={choice} />}
     </>
+  );
+}
+
+function ChoiceCard({ request }: { request: ChoiceRequest }) {
+  const settle = usePromptStore((state) => state.settleChoice);
+  return (
+    <Overlay kind="blocking" role="alertdialog" label={request.title} onClose={() => settle(null)}>
+      <section className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100">
+        <h2 className="text-base font-semibold">{request.title}</h2>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">
+          {request.message}
+        </p>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            autoFocus
+            onClick={() => settle(null)}
+            className="rounded border border-slate-600 px-3 py-2"
+          >
+            {text.cancel}
+          </button>
+          {request.choices.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              onClick={() => settle(choice.id)}
+              className="rounded border border-sky-700 bg-sky-950 px-3 py-2 text-sky-100"
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+      </section>
+    </Overlay>
   );
 }
 

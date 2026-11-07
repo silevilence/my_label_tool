@@ -49,8 +49,25 @@ vi.mock("../lib/prompts", async (importOriginal) => ({
 }));
 vi.mock("../lib/tauri-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tauri-api")>()),
+  loadRecovery: vi.fn().mockResolvedValue(null),
+  lastRecoveryProject: vi.fn().mockResolvedValue(null),
+  saveRecovery: vi.fn().mockResolvedValue(1),
   loadLabelConfigs: vi.fn().mockResolvedValue([]),
-  mcpPoll: vi.fn().mockResolvedValue({ status: { running: false, enabled: false, address: "127.0.0.1", port: 1421, generation: 0, error: null, sessions: [], audit: [] }, calls: [] }),
+  mcpPoll: vi
+    .fn()
+    .mockResolvedValue({
+      status: {
+        running: false,
+        enabled: false,
+        address: "127.0.0.1",
+        port: 1421,
+        generation: 0,
+        error: null,
+        sessions: [],
+        audit: [],
+      },
+      calls: [],
+    }),
   loadLabelTemplates: vi.fn().mockResolvedValue([]),
   loadShortcuts: vi.fn().mockResolvedValue({}),
   loadGitHubProxySettings: vi.fn().mockResolvedValue({ url: "" }),
@@ -212,7 +229,10 @@ describe("image deletion entry wiring", () => {
   it("keeps the cached update below check updates and reopens its dialog without a request", async () => {
     await openFixture();
     vi.mocked(checkAppUpdate).mockResolvedValueOnce({
-      version: "2.0.0", currentVersion: "1.0.0", body: "### 新功能\n- 更新说明", close: vi.fn().mockResolvedValue(undefined),
+      version: "2.0.0",
+      currentVersion: "1.0.0",
+      body: "### 新功能\n- 更新说明",
+      close: vi.fn().mockResolvedValue(undefined),
     } as unknown as NonNullable<Awaited<ReturnType<typeof checkAppUpdate>>>);
     await click("检查更新");
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain("V2.0.0");

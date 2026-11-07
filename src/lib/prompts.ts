@@ -24,8 +24,19 @@ export interface ConfirmRequest extends ConfirmOptions {
 export interface PromptRequest extends PromptOptions {
   resolve: (value: string | null) => void;
 }
+export interface ChoiceOptions {
+  title: string;
+  message: string;
+  choices: { id: string; label: string }[];
+}
+export interface ChoiceRequest extends ChoiceOptions {
+  resolve: (value: string | null) => void;
+}
 
 interface PromptStore {
+  choiceQueue: ChoiceRequest[];
+  requestChoice: (options: ChoiceOptions) => Promise<string | null>;
+  settleChoice: (value: string | null) => void;
   confirmQueue: ConfirmRequest[];
   promptQueue: PromptRequest[];
   requestConfirm: (options: ConfirmOptions) => Promise<boolean>;
@@ -36,6 +47,17 @@ interface PromptStore {
 
 // 同类请求 FIFO 排队，宿主每次只显示队首一个；Esc/取消解析为 false/null。
 export const usePromptStore = create<PromptStore>((set) => ({
+  choiceQueue: [],
+  requestChoice: (options) =>
+    new Promise((resolve) => {
+      set((state) => ({ choiceQueue: [...state.choiceQueue, { ...options, resolve }] }));
+    }),
+  settleChoice: (value) =>
+    set((state) => {
+      const [head, ...rest] = state.choiceQueue;
+      head?.resolve(value);
+      return { choiceQueue: rest };
+    }),
   confirmQueue: [],
   promptQueue: [],
   requestConfirm: (options) => {

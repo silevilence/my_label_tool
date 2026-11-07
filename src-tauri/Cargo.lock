@@ -2005,7 +2005,7 @@ dependencies = [
 
 [[package]]
 name = "my_label_tool"
-version = "0.13.2"
+version = "0.13.3"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -2027,6 +2027,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "tokio",
+ "webview2-com",
  "windows",
  "windows-core 0.61.2",
  "zip",

@@ -1,6 +1,6 @@
 [package]
 name = "my_label_tool"
-version = "0.13.2"
+version = "0.13.3"
 description = "Offline image and video annotation desktop tool"
 authors = ["you"]
 edition = "2021"
@@ -54,6 +54,7 @@ tokio = { version = "1", features = ["test-util"] }
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
+webview2-com = "0.38.2"
 windows-core = "0.61.2"
 dunce = "1"
 windows = { version = "0.61.3", features = [

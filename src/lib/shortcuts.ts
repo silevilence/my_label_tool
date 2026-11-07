@@ -1,6 +1,8 @@
 import { SHORTCUT_ACTIONS, type ShortcutMap } from "./defaults/shortcuts";
 import { normalizeLabelShortcut, normalizeShortcutKey } from "./shortcut-utils";
 import { SHORTCUT_ZH_CN as text } from "../i18n/shortcuts.zh-CN";
+import { isReservedReloadBinding } from "./reload-shortcuts";
+import { RECOVERY_TEXT as recoveryText } from "../i18n/recovery.zh-CN";
 
 export interface ShortcutActionMeta {
   id: string;
@@ -74,14 +76,16 @@ export function detectConflicts(
     if (key) groups.set(key, [...(groups.get(key) ?? []), entry]);
   }
   return [...groups.entries()]
-    .filter(([, group]) => group.length > 1)
+    .filter(([key, group]) => group.length > 1 || isReservedReloadBinding(key))
     .map(([key, group]) => ({
       key,
       ids: group.map((entry) => entry.id),
-      message: text.conflict(
-        key,
-        group.map((entry) => entry.label),
-      ),
+      message: isReservedReloadBinding(key)
+        ? recoveryText.reservedShortcut(key)
+        : text.conflict(
+            key,
+            group.map((entry) => entry.label),
+          ),
     }));
 }
 export function resolveShortcut(event: ShortcutEvent, ctx: ShortcutContext): string | null {

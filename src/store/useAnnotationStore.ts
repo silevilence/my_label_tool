@@ -14,6 +14,8 @@ export function scopePaths(state: { images: ImageFile[]; scopeStack: Scope[] }):
 }
 
 interface AnnotationState {
+  annotationRevision: number;
+  changedImagePaths: string[];
   images: ImageFile[];
   selectedPath: string;
   /** Explicit locate requests also reveal an already selected image in virtual lists. */
@@ -85,11 +87,29 @@ let nextHistoryGroupId = 1;
 export const useAnnotationStore = create<AnnotationState>((setState, get) => {
   const set = (
     next: Partial<AnnotationState> | ((state: AnnotationState) => Partial<AnnotationState>),
+    affectedPaths?: string[],
   ) => {
     assertManualMutationAllowed();
-    setState(next);
+    setState((state) => {
+      const patch = typeof next === "function" ? next(state) : next;
+      if (!patch.annotationsByImage || patch.annotationsByImage === state.annotationsByImage)
+        return patch;
+      // Single-image edits pass their path; only whole-project operations enumerate keys.
+      const paths = affectedPaths ?? [
+        ...new Set([
+          ...Object.keys(state.annotationsByImage),
+          ...Object.keys(patch.annotationsByImage),
+        ]),
+      ];
+      const changedImagePaths = paths.filter(
+        (path) => state.annotationsByImage[path] !== patch.annotationsByImage![path],
+      );
+      return { ...patch, changedImagePaths, annotationRevision: state.annotationRevision + 1 };
+    });
   };
   return {
+    annotationRevision: 0,
+    changedImagePaths: [],
     images: [],
     selectedPath: "",
     selectionRevealRevision: 0,
@@ -189,49 +209,63 @@ export const useAnnotationStore = create<AnnotationState>((setState, get) => {
     canUndo: false,
     canRedo: false,
     addAnnotation: (imagePath, annotation, labels) =>
-      set((state) =>
-        applyImageHistory(
-          state,
-          imagePath,
-          [...(state.annotationsByImage[imagePath] ?? []), annotation],
-          null,
-          undefined,
-          labels,
-        ),
+      set(
+        (state) =>
+          applyImageHistory(
+            state,
+            imagePath,
+            [...(state.annotationsByImage[imagePath] ?? []), annotation],
+            null,
+            undefined,
+            labels,
+          ),
+        [imagePath],
       ),
     updateAnnotation: (imagePath, annotationId, patch, labels) =>
-      set((state) => {
-        const before = state.annotationsByImage[imagePath] ?? [];
-        const after = before.map((annotation) => {
-          if (annotation.id !== annotationId) return annotation;
-          const updated = { ...annotation, ...patch };
-          if (
-            annotation.attributes?.videoInterpolated === true &&
-            (patch.points !== undefined || patch.labelId !== undefined)
-          ) {
-            updated.attributes = {
-              ...updated.attributes,
-              videoKeyframe: true,
-              videoInterpolated: false,
-            };
-          }
-          return updated;
-        });
-        return applyImageHistory(state, imagePath, after, state.selectedShapeId, undefined, labels);
-      }),
+      set(
+        (state) => {
+          const before = state.annotationsByImage[imagePath] ?? [];
+          const after = before.map((annotation) => {
+            if (annotation.id !== annotationId) return annotation;
+            const updated = { ...annotation, ...patch };
+            if (
+              annotation.attributes?.videoInterpolated === true &&
+              (patch.points !== undefined || patch.labelId !== undefined)
+            ) {
+              updated.attributes = {
+                ...updated.attributes,
+                videoKeyframe: true,
+                videoInterpolated: false,
+              };
+            }
+            return updated;
+          });
+          return applyImageHistory(
+            state,
+            imagePath,
+            after,
+            state.selectedShapeId,
+            undefined,
+            labels,
+          );
+        },
+        [imagePath],
+      ),
     deleteAnnotation: (imagePath, annotationId) =>
-      set((state) =>
-        applyImageHistory(
-          state,
-          imagePath,
-          (state.annotationsByImage[imagePath] ?? []).filter(
-            (annotation) => annotation.id !== annotationId,
+      set(
+        (state) =>
+          applyImageHistory(
+            state,
+            imagePath,
+            (state.annotationsByImage[imagePath] ?? []).filter(
+              (annotation) => annotation.id !== annotationId,
+            ),
+            state.selectedShapeId === annotationId ? null : state.selectedShapeId,
           ),
-          state.selectedShapeId === annotationId ? null : state.selectedShapeId,
-        ),
+        [imagePath],
       ),
     clearImageAnnotations: (imagePath) =>
-      set((state) => applyImageHistory(state, imagePath, [], null)),
+      set((state) => applyImageHistory(state, imagePath, [], null), [imagePath]),
     removeImage: (imagePath) => get().removeImages([imagePath]),
     removeImages: (imagePaths) =>
       set((state) => {

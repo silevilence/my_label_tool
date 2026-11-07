@@ -716,6 +716,9 @@ export function useProjectActions({
   }
 
   return {
+    invalidateProjectMigration: () => {
+      projectMigrationGenerationRef.current += 1;
+    },
     cancelActivePluginExport: async () => {
       if (exportOperation.current)
         await useOperations.getState().cancel(exportOperation.current.id);

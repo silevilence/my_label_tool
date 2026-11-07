@@ -1,4 +1,7 @@
 import { useTextReadStore } from "./store/useTextReadStore";
+import { useProjectRecovery } from "./hooks/useProjectRecovery";
+import { RecoverySettings } from "./components/settings/RecoverySettings";
+import { projectConfigTemplate } from "./lib/importers";
 import { useMcpWorkspace } from "./hooks/useMcpWorkspace";
 import { withActiveProjectTemplate } from "./lib/label-template-sync";
 import { McpPanel } from "./components/settings/McpPanel";
@@ -8,7 +11,7 @@ import { usePanTermination } from "./hooks/usePanTermination";
 import { useScopeEscape } from "./hooks/useScopeEscape";
 import { PromptHost } from "./components/overlay/PromptHost";
 import { useOperations } from "./store/useOperations";
-import { useOverlayStore } from "./store/useOverlayStore";
+import { useCanvasModifierKeys } from "./hooks/useCanvasModifierKeys";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import type { Rect as KonvaRect } from "konva/lib/shapes/Rect";
 import type { Transformer as KonvaTransformer } from "konva/lib/shapes/Transformer";
@@ -32,7 +35,7 @@ import type {
   InteractionMode,
   PanState,
 } from "./components/canvas/types";
-import { fitImageLayout, getInteractionMode, toCanvasPoints } from "./components/canvas/geometry";
+import { fitImageLayout, toCanvasPoints } from "./components/canvas/geometry";
 import { useAppUpdate } from "./hooks/useAppUpdate";
 import { useCanvasInteractions } from "./hooks/useCanvasInteractions";
 import { useExportFormatWarning } from "./hooks/useExportFormatWarning";
@@ -55,9 +58,8 @@ import { usePrelabelModels } from "./hooks/usePrelabelModels";
 import { usePrelabelExecution } from "./hooks/usePrelabelExecution";
 import { DEFAULT_CUSTOM_EXPORT_MAPPING } from "./lib/defaults/exports";
 import { DEFAULT_LABELS, DEFAULT_LABEL_TEMPLATES } from "./lib/defaults/labels";
-import { saveProjectConfig, isEditableTarget } from "./lib/app-utils";
+import { saveProjectConfig } from "./lib/app-utils";
 import { OPERATION_ZH_CN as operationText } from "./i18n/operations.zh-CN";
-import { shouldPanWithSpace } from "./lib/gestures";
 import {
   loadLabelConfigs,
   loadLabelTemplates,
@@ -361,6 +363,7 @@ function App() {
     cancelActivePluginExport,
     createProjectFromExternalYolo,
     exportSelectedFormat,
+    invalidateProjectMigration,
     exportError,
     importAnnotations,
     maybeLoadProjectConfig,
@@ -389,7 +392,24 @@ function App() {
     setProjectTemplateId,
     setSelectedExportFormatId,
   });
-  const { isSaving, saveWithFeedback, showSaveSuccess } = useSaveFeedback(saveProjectExport);
+  const recovery = useProjectRecovery({
+    folder: folderPath,
+    metadata: { labels, projectConfig: activeProjectConfig, configPath: activeProjectConfigPath },
+    report: setError,
+    notify: showMessage,
+    apply: (metadata) => {
+      invalidateProjectMigration();
+      setActiveProjectConfig(metadata.projectConfig);
+      setActiveProjectConfigPath(metadata.configPath);
+      const template = metadata.projectConfig?.template ?? projectConfigTemplate();
+      setProjectTemplateId(template.id);
+      applyProjectTemplate(template, metadata.labels);
+      setSelectedExportFormatId(metadata.projectConfig?.format ?? "json");
+    },
+  });
+  const { isSaving, saveWithFeedback, showSaveSuccess } = useSaveFeedback(() =>
+    recovery.manual(saveProjectExport, `save:${selectedExportFormatId}:${activeProjectConfigPath}`),
+  );
   const prelabelExecution = usePrelabelExecution({
     activeProjectConfig,
     annotationsByImage,
@@ -456,8 +476,13 @@ function App() {
     showLabelSwitchHint,
   });
   const openFolder = useOpenFolder({
+    folderPath,
+    projectVideos: videoEntries,
+    beforeOpen: recovery.beforeOpen,
+    onOpenFinished: recovery.openFinished,
     setProjectVideos: setVideoEntries,
-    maybeLoadProjectConfig,
+    maybeLoadProjectConfig: (folder, images) =>
+      recovery.load(folder, images, () => maybeLoadProjectConfig(folder, images)),
     setError,
     setFolderPath,
     setImages,
@@ -579,6 +604,7 @@ function App() {
         }
         if (!cancelled) {
           labelsLoaded.current = true;
+          void recovery.offerLast(openFolder);
           pluginPresetsRef.current = pluginSnapshot.presets;
           pluginTemplateIdsRef.current = merged.pluginTemplateIds;
           setPluginTemplateIds(merged.pluginTemplateIds);
@@ -652,68 +678,7 @@ function App() {
     setHighlightedShapeId(null);
   }, [cancelDraft, selectShape, selectedPath]);
 
-  useEffect(() => {
-    function updateMode(event: KeyboardEvent) {
-      if (event.type === "keyup" && !event.ctrlKey && !event.shiftKey) {
-        setInteractionMode("default");
-        return;
-      }
-      if (
-        useOverlayStore.getState().hasBlocking() ||
-        useOverlayStore.getState().hasLight() ||
-        !useOperations.getState().canEditAnnotations()
-      )
-        return;
-      setInteractionMode(getInteractionMode(event.ctrlKey, event.shiftKey));
-    }
-
-    function resetMode() {
-      setInteractionMode("default");
-    }
-
-    window.addEventListener("keydown", updateMode);
-    window.addEventListener("keyup", updateMode);
-    window.addEventListener("blur", resetMode);
-    return () => {
-      window.removeEventListener("keydown", updateMode);
-      window.removeEventListener("keyup", updateMode);
-      window.removeEventListener("blur", resetMode);
-    };
-  }, []);
-
-  useEffect(() => {
-    function enablePan(event: KeyboardEvent) {
-      if (
-        !shouldPanWithSpace(event, {
-          editableTarget: isEditableTarget(event.target),
-          overlayDepth: useOverlayStore.getState().depth(),
-          operationAvailable: useOperations.getState().canEditAnnotations(),
-        })
-      )
-        return;
-      event.preventDefault();
-      setSpacePanActive(true);
-    }
-
-    function disablePan(event: KeyboardEvent) {
-      if (event.key === " ") {
-        setSpacePanActive(false);
-      }
-    }
-
-    function resetPan() {
-      setSpacePanActive(false);
-    }
-
-    window.addEventListener("keydown", enablePan);
-    window.addEventListener("keyup", disablePan);
-    window.addEventListener("blur", resetPan);
-    return () => {
-      window.removeEventListener("keydown", enablePan);
-      window.removeEventListener("keyup", disablePan);
-      window.removeEventListener("blur", resetPan);
-    };
-  }, []);
+  useCanvasModifierKeys(setInteractionMode, setSpacePanActive);
 
   useEffect(() => {
     interruptDraft();
@@ -758,227 +723,242 @@ function App() {
   });
 
   usePanTermination(isPanning, panStateRef, suppressContextMenuRef, endPan);
-  const mcp = useMcpWorkspace({ folderPath, labels, library: prelabelModels.library, videos,
-    activeProjectConfig, activeProjectConfigPath, customMappingText, onSaved: setActiveProjectConfig,
-    canGrant: () => labelsLoaded.current && gesture.state === "idle" });
+  const mcp = useMcpWorkspace({
+    folderPath,
+    labels,
+    library: prelabelModels.library,
+    videos,
+    activeProjectConfig,
+    activeProjectConfigPath,
+    customMappingText,
+    onSaved: setActiveProjectConfig,
+    canGrant: () => labelsLoaded.current && gesture.state === "idle",
+  });
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <div ref={mcp.gateRef} className="min-h-0 flex-1">
-      <AppLayout
-        sidebarFooter={
-          <McpPanel
-            status={mcp.status}
-            error={mcp.error}
-            controller={mcp.controller}
-            state={mcp.control}
-          />
-        }
-        labelSamples={labelSamples}
-        reextractVideo={
-          !projectSettings.loading
-            ? (source) =>
-                videoImport.requestReextract(source, projectSettings.settings.videoExtraction)
-            : undefined
-        }
-        projectSettings={
-          isProjectSettingsOpen &&
-          activeProjectConfig && (
-            <ProjectSettingsDialog
-              folder={folderPath}
-              model={projectSettings}
-              pendingCount={videos.filter((asset) => !asset.video).length}
-              onClose={() => setIsProjectSettingsOpen(false)}
-              onBatch={
-                !imageDeletionBusy && videos.some((asset) => !asset.video)
-                  ? () => {
-                      setIsProjectSettingsOpen(false);
-                      void videoImport.startBatch(
-                        projectSettings.settings.videoExtraction,
-                        folderPath,
-                        videos.filter((asset) => !asset.video).map((asset) => asset.sourcePath),
-                      );
-                    }
-                  : undefined
-              }
-            />
-          )
-        }
-        interpolationShape={
-          interpolationPreview?.source === annotationsByImage &&
-          interpolationPreview.video === video
-            ? (interpolationPreview.plan.entries.find((entry) => entry.imagePath === selectedPath)
-                ?.generated ?? null)
-            : null
-        }
-        error={error}
-        onDismissError={() => setCanvasWarning("")}
-        openProjectSettings={
-          activeProjectConfig && activeProjectConfigPath && !imageDeletionBusy
-            ? () => setIsProjectSettingsOpen(true)
-            : undefined
-        }
-        videos={videos}
-        addVideo={(source) => {
-          if (!imageDeletionBusy && !imageDeletion.target) void addVideo(source);
-        }}
-        canvasFooter={
-          <>
-            {video && (
-              <VideoTimeline
-                frames={frameNavigation.frames}
-                currentIndex={frameNavigation.currentIndex}
-                totalFrames={video.totalFrames}
-                disabled={imageDeletionBusy}
-                onSelectFrame={frameNavigation.select}
+        <AppLayout
+          sidebarFooter={
+            <>
+              <RecoverySettings />
+              <McpPanel
+                status={mcp.status}
+                error={mcp.error}
+                controller={mcp.controller}
+                state={mcp.control}
               />
-            )}
-            {video && (
-              <VideoInterpolationPanel
-                key={selectedVideo?.sourcePath}
-                video={video}
-                images={selectedVideo?.images ?? []}
-                selectedPath={selectedPath}
-                selectedShape={selectedShape}
-                disabled={imageDeletionBusy}
-                onSelect={frameNavigation.select}
-                onError={setCanvasWarning}
-                onPreviewChange={setInterpolationPreview}
+            </>
+          }
+          labelSamples={labelSamples}
+          reextractVideo={
+            !projectSettings.loading
+              ? (source) =>
+                  videoImport.requestReextract(source, projectSettings.settings.videoExtraction)
+              : undefined
+          }
+          projectSettings={
+            isProjectSettingsOpen &&
+            activeProjectConfig && (
+              <ProjectSettingsDialog
+                folder={folderPath}
+                model={projectSettings}
+                pendingCount={videos.filter((asset) => !asset.video).length}
+                onClose={() => setIsProjectSettingsOpen(false)}
+                onBatch={
+                  !imageDeletionBusy && videos.some((asset) => !asset.video)
+                    ? () => {
+                        setIsProjectSettingsOpen(false);
+                        void videoImport.startBatch(
+                          projectSettings.settings.videoExtraction,
+                          folderPath,
+                          videos.filter((asset) => !asset.video).map((asset) => asset.sourcePath),
+                        );
+                      }
+                    : undefined
+                }
               />
-            )}
-          </>
-        }
-        canDeleteImage={!imageDeletionBusy && !imageDeletion.target}
-        requestDeleteImage={requestDeleteImage}
-        activeProjectConfig={activeProjectConfig}
-        annotationToDelete={annotationToDelete}
-        annotations={annotations}
-        annotationsByImage={annotationsByImage}
-        canRedo={canRedo}
-        canUndo={canUndo}
-        canvasHostRef={canvasHostRef}
-        canvasSize={canvasSize}
-        contextAnnotation={contextAnnotation}
-        contextMenu={contextMenu}
-        currentLabel={currentLabel}
-        currentShapeType={currentShapeType}
-        customMappingText={customMappingText}
-        draftPolygonPoints={draftPolygonPoints}
-        draftRect={draftRect}
-        folderPath={folderPath}
-        highlightedShapeId={highlightedShapeId}
-        helpDisplaySettings={helpDisplaySettings}
-        imageLayout={imageLayout}
-        imageLoadError={imageLoadError}
-        images={images}
-        interactionMode={interactionMode}
-        isImageLoading={isImageLoading}
-        isLabelDirty={isLabelDirty}
-        isPanning={isPanning}
-        spacePanActive={spacePanActive}
-        isSaving={isSaving}
-        isShortcutSettingsOpen={isShortcutSettingsOpen}
-        isPrelabelSettingsOpen={isPrelabelSettingsOpen}
-        isPrelabelExecutionOpen={isPrelabelExecutionOpen}
-        labelById={labelById}
-        labelDisplaySettings={labelDisplaySettings}
-        rectSizeDisplaySettings={rectSizeDisplaySettings}
-        labelShortcuts={labelShortcuts}
-        labelSwitchHint={labelSwitchHint}
-        labels={labels}
-        loadedImage={loadedImage}
-        projectTemplateId={projectTemplateId}
-        selectedExportFormatId={selectedExportFormatId}
-        selectedImage={selectedImage}
-        selectedPath={selectedPath}
-        selectedRectRef={selectedRectRef}
-        selectedShapeId={selectedShapeId}
-        selectedTemplateId={selectedTemplateId}
-        showSaveSuccess={showSaveSuccess}
-        transientMessage={transientMessage}
-        shortcuts={shortcuts}
-        templates={templates}
-        pluginExportFormats={pluginExportFormats}
-        pluginPrelabelSources={pluginPrelabelSources}
-        pluginExportProgress={pluginExportProgress}
-        pluginTemplateIds={pluginTemplateIds}
-        pluginTemplateSources={pluginTemplateSources}
-        transformerRef={transformerRef}
-        pendingUpdate={pendingUpdate}
-        isUpdateOpen={isUpdateOpen}
-        closeUpdateDialog={closeUpdateDialog}
-        openUpdateDialog={openUpdateDialog}
-        updateMessage={updateMessage}
-        updateStatus={updateStatus}
-        usedLabelIds={usedLabelIds}
-        cancelLabelChanges={cancelLabelChanges}
-        cancelPluginExport={() => void cancelActivePluginExport()}
-        changeAnnotationLabel={changeAnnotationLabel}
-        checkForUpdates={() => void checkForUpdates()}
-        clearCurrentImageAnnotations={clearCurrentImageAnnotations}
-        confirmDeleteAnnotation={confirmDeleteAnnotation}
-        createProjectFromExternalYolo={createProjectFromExternalYolo}
-        deleteContextAnnotation={deleteContextAnnotation}
-        deleteTemplate={deleteTemplate}
-        exportSelectedFormat={exportSelectedFormat}
-        exportError={exportError}
-        fitImageHeight={fitImageHeight}
-        fitImageWidth={fitImageWidth}
-        handleDragEnd={handleDragEnd}
-        handleStageMouseDown={handleStageMouseDown}
-        handleStageMouseMove={handleStageMouseMove}
-        handleStageMouseUp={handleStageMouseUp}
-        handleStageWheel={handleStageWheel}
-        handlePointDragEnd={handlePointDragEnd}
-        handleTransformEnd={handleTransformEnd}
-        handleVertexDragEnd={handleVertexDragEnd}
-        importAnnotations={importAnnotations}
-        installUpdate={() => void installUpdate()}
-        newTemplate={newTemplate}
-        openContextMenu={openContextMenu}
-        openFolder={() => {
-          if (
-            useOperations.getState().canStart(["project-annotations", "export-dir", "video-frames"])
-          )
-            void openFolder();
-        }}
-        redo={redo}
-        retryPluginConfigMigrations={retryPluginConfigMigrations}
-        refreshPluginLabelPresets={refreshPluginLabelPresets}
-        resetZoom={resetZoom}
-        saveProjectExport={saveWithFeedback}
-        savePrelabelMappings={savePrelabelMappings}
-        saveTemplate={saveTemplate}
-        saveTemplateAndUpdateAnnotations={saveTemplateAndUpdateAnnotations}
-        saveTemplateAs={saveTemplateAs}
-        selectAdjacentImage={selectAdjacentImage}
-        selectAdjacentUnannotatedImage={selectAdjacentUnannotatedImage}
-        selectCurrentLabel={changeCurrentLabel}
-        selectShape={selectShape}
-        selectShapeType={selectShapeType}
-        selectTemplate={selectTemplate}
-        setAnnotationToDelete={setAnnotationToDelete}
-        setContextMenu={setContextMenu}
-        setCustomMappingText={setCustomMappingText}
-        setHelpDisplaySetting={setHelpDisplaySetting}
-        setImageScale={setImageScale}
-        setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
-        setIsPrelabelSettingsOpen={setIsPrelabelSettingsOpen}
-        setIsPrelabelExecutionOpen={setIsPrelabelExecutionOpen}
-        prelabelModels={prelabelModels}
-        prelabelExecution={prelabelExecution}
-        setLabelDisplaySetting={setLabelDisplaySetting}
-        setRectSizeDisplaySetting={setRectSizeDisplaySetting}
-        setSelectedExportFormatId={changeExportFormat}
-        setSelectedPath={setSelectedPath}
-        setUpdateMessage={setUpdateMessage}
-        startPanning={startPanning}
-        undo={undo}
-        updateLabels={updateLabels}
-        updateShortcut={updateShortcut}
-        zoomFromKeyboard={zoomFromKeyboard}
-      />
-      <ProjectVideoDialogs actions={videoImport} settings={projectSettings} folder={folderPath} />
+            )
+          }
+          interpolationShape={
+            interpolationPreview?.source === annotationsByImage &&
+            interpolationPreview.video === video
+              ? (interpolationPreview.plan.entries.find((entry) => entry.imagePath === selectedPath)
+                  ?.generated ?? null)
+              : null
+          }
+          error={error}
+          onDismissError={() => setCanvasWarning("")}
+          openProjectSettings={
+            activeProjectConfig && activeProjectConfigPath && !imageDeletionBusy
+              ? () => setIsProjectSettingsOpen(true)
+              : undefined
+          }
+          videos={videos}
+          addVideo={(source) => {
+            if (!imageDeletionBusy && !imageDeletion.target) void addVideo(source);
+          }}
+          canvasFooter={
+            <>
+              {video && (
+                <VideoTimeline
+                  frames={frameNavigation.frames}
+                  currentIndex={frameNavigation.currentIndex}
+                  totalFrames={video.totalFrames}
+                  disabled={imageDeletionBusy}
+                  onSelectFrame={frameNavigation.select}
+                />
+              )}
+              {video && (
+                <VideoInterpolationPanel
+                  key={selectedVideo?.sourcePath}
+                  video={video}
+                  images={selectedVideo?.images ?? []}
+                  selectedPath={selectedPath}
+                  selectedShape={selectedShape}
+                  disabled={imageDeletionBusy}
+                  onSelect={frameNavigation.select}
+                  onError={setCanvasWarning}
+                  onPreviewChange={setInterpolationPreview}
+                />
+              )}
+            </>
+          }
+          canDeleteImage={!imageDeletionBusy && !imageDeletion.target}
+          requestDeleteImage={requestDeleteImage}
+          activeProjectConfig={activeProjectConfig}
+          annotationToDelete={annotationToDelete}
+          annotations={annotations}
+          annotationsByImage={annotationsByImage}
+          canRedo={canRedo}
+          canUndo={canUndo}
+          canvasHostRef={canvasHostRef}
+          canvasSize={canvasSize}
+          contextAnnotation={contextAnnotation}
+          contextMenu={contextMenu}
+          currentLabel={currentLabel}
+          currentShapeType={currentShapeType}
+          customMappingText={customMappingText}
+          draftPolygonPoints={draftPolygonPoints}
+          draftRect={draftRect}
+          folderPath={folderPath}
+          highlightedShapeId={highlightedShapeId}
+          helpDisplaySettings={helpDisplaySettings}
+          imageLayout={imageLayout}
+          imageLoadError={imageLoadError}
+          images={images}
+          interactionMode={interactionMode}
+          isImageLoading={isImageLoading}
+          isLabelDirty={isLabelDirty}
+          isPanning={isPanning}
+          spacePanActive={spacePanActive}
+          isSaving={isSaving || recovery.manualBusy}
+          isShortcutSettingsOpen={isShortcutSettingsOpen}
+          isPrelabelSettingsOpen={isPrelabelSettingsOpen}
+          isPrelabelExecutionOpen={isPrelabelExecutionOpen}
+          labelById={labelById}
+          labelDisplaySettings={labelDisplaySettings}
+          rectSizeDisplaySettings={rectSizeDisplaySettings}
+          labelShortcuts={labelShortcuts}
+          labelSwitchHint={labelSwitchHint}
+          labels={labels}
+          loadedImage={loadedImage}
+          projectTemplateId={projectTemplateId}
+          selectedExportFormatId={selectedExportFormatId}
+          selectedImage={selectedImage}
+          selectedPath={selectedPath}
+          selectedRectRef={selectedRectRef}
+          selectedShapeId={selectedShapeId}
+          selectedTemplateId={selectedTemplateId}
+          showSaveSuccess={showSaveSuccess}
+          transientMessage={transientMessage}
+          shortcuts={shortcuts}
+          templates={templates}
+          pluginExportFormats={pluginExportFormats}
+          pluginPrelabelSources={pluginPrelabelSources}
+          pluginExportProgress={pluginExportProgress}
+          pluginTemplateIds={pluginTemplateIds}
+          pluginTemplateSources={pluginTemplateSources}
+          transformerRef={transformerRef}
+          pendingUpdate={pendingUpdate}
+          isUpdateOpen={isUpdateOpen}
+          closeUpdateDialog={closeUpdateDialog}
+          openUpdateDialog={openUpdateDialog}
+          updateMessage={updateMessage}
+          updateStatus={updateStatus}
+          usedLabelIds={usedLabelIds}
+          cancelLabelChanges={cancelLabelChanges}
+          cancelPluginExport={() => void cancelActivePluginExport()}
+          changeAnnotationLabel={changeAnnotationLabel}
+          checkForUpdates={() => void checkForUpdates()}
+          clearCurrentImageAnnotations={clearCurrentImageAnnotations}
+          confirmDeleteAnnotation={confirmDeleteAnnotation}
+          createProjectFromExternalYolo={createProjectFromExternalYolo}
+          deleteContextAnnotation={deleteContextAnnotation}
+          deleteTemplate={deleteTemplate}
+          exportSelectedFormat={() =>
+            recovery.manual(exportSelectedFormat, `export:${selectedExportFormatId}`)
+          }
+          exportError={exportError}
+          fitImageHeight={fitImageHeight}
+          fitImageWidth={fitImageWidth}
+          handleDragEnd={handleDragEnd}
+          handleStageMouseDown={handleStageMouseDown}
+          handleStageMouseMove={handleStageMouseMove}
+          handleStageMouseUp={handleStageMouseUp}
+          handleStageWheel={handleStageWheel}
+          handlePointDragEnd={handlePointDragEnd}
+          handleTransformEnd={handleTransformEnd}
+          handleVertexDragEnd={handleVertexDragEnd}
+          importAnnotations={importAnnotations}
+          installUpdate={() => void installUpdate()}
+          newTemplate={newTemplate}
+          openContextMenu={openContextMenu}
+          openFolder={() => {
+            if (
+              useOperations
+                .getState()
+                .canStart(["project-annotations", "export-dir", "video-frames"])
+            )
+              void openFolder();
+          }}
+          redo={redo}
+          retryPluginConfigMigrations={retryPluginConfigMigrations}
+          refreshPluginLabelPresets={refreshPluginLabelPresets}
+          resetZoom={resetZoom}
+          saveProjectExport={saveWithFeedback}
+          savePrelabelMappings={savePrelabelMappings}
+          saveTemplate={saveTemplate}
+          saveTemplateAndUpdateAnnotations={saveTemplateAndUpdateAnnotations}
+          saveTemplateAs={saveTemplateAs}
+          selectAdjacentImage={selectAdjacentImage}
+          selectAdjacentUnannotatedImage={selectAdjacentUnannotatedImage}
+          selectCurrentLabel={changeCurrentLabel}
+          selectShape={selectShape}
+          selectShapeType={selectShapeType}
+          selectTemplate={selectTemplate}
+          setAnnotationToDelete={setAnnotationToDelete}
+          setContextMenu={setContextMenu}
+          setCustomMappingText={setCustomMappingText}
+          setHelpDisplaySetting={setHelpDisplaySetting}
+          setImageScale={setImageScale}
+          setIsShortcutSettingsOpen={setIsShortcutSettingsOpen}
+          setIsPrelabelSettingsOpen={setIsPrelabelSettingsOpen}
+          setIsPrelabelExecutionOpen={setIsPrelabelExecutionOpen}
+          prelabelModels={prelabelModels}
+          prelabelExecution={prelabelExecution}
+          setLabelDisplaySetting={setLabelDisplaySetting}
+          setRectSizeDisplaySetting={setRectSizeDisplaySetting}
+          setSelectedExportFormatId={changeExportFormat}
+          setSelectedPath={setSelectedPath}
+          setUpdateMessage={setUpdateMessage}
+          startPanning={startPanning}
+          undo={undo}
+          updateLabels={updateLabels}
+          updateShortcut={updateShortcut}
+          zoomFromKeyboard={zoomFromKeyboard}
+        />
+        <ProjectVideoDialogs actions={videoImport} settings={projectSettings} folder={folderPath} />
       </div>
       <PromptHost />
       {imageDeletion.target && (

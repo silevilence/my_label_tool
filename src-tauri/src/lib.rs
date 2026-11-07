@@ -11,8 +11,10 @@ pub use media::onnx_graph::inspect_file as inspect_onnx_graph_file;
 mod models;
 pub mod plugins;
 mod process_control;
+mod recovery;
 pub mod scripting;
 mod text_read;
+mod webview_shortcuts;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,6 +24,7 @@ pub fn run() {
         .setup(|app| {
             text_read::initialize();
             use tauri::Manager;
+            webview_shortcuts::configure(app)?;
             match app.path().app_data_dir() {
                 Ok(directory) => {
                     tauri::async_runtime::spawn(
@@ -39,6 +42,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::load_recovery,
+            commands::save_recovery,
+            commands::last_recovery_project,
+            commands::fork_recovery,
+            commands::open_recovery_directory,
             commands::check_app_update,
             commands::prepare_app_update_download,
             commands::load_github_proxy_settings,

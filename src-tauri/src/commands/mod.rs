@@ -1,4 +1,6 @@
 mod acp;
+mod recovery;
+pub use recovery::*;
 mod app_update;
 pub use app_update::*;
 mod github_proxy;

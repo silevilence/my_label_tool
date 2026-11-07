@@ -158,6 +158,7 @@ my_label_tool/
 | `reextract_video` | 宿主专用视频重抽帧：校验项目归属，新帧准备成功后回收旧帧；失败回滚，不向插件开放 |
 | `recycle_image_file` | 校验所选目录内的普通图片文件并移入 Windows 回收站；失败不永久删除，仅供宿主 UI 调用，不向插件开放 |
 | `export_annotations_json` | 将标注数据写入指定 JSON 文件 |
+| `load_recovery` / `save_recovery` / `last_recovery_project` / `fork_recovery` / `open_recovery_directory` | 宿主专用：本机逐图增量工作副本、原子提交与重启恢复；与导出分离，不向插件或 MCP 开放，见 docs/autosave.md |
 | `export_text_files` | 批量写入文本文件（VOC XML / YOLO txt），路径需为相对安全路径 |
 | `read_text_file` | 读取单个文本文件内容（导入用） |
 | `read_text_files` / `get_text_read_settings` / `preview_text_read` / `configure_text_read` / `cancel_text_read` | 宿主专用批量文本读取与原生/Python/命令适配器设置、命令预览、自检与取消；Windows 机器级启动配置存 HKCU，不写入项目、不向插件或 Lua 开放；见 docs/text-read-adapter.md |

@@ -43,8 +43,9 @@ export function OperationStatus({ children }: { children?: ReactNode }) {
       );
     return () => timers.forEach(window.clearTimeout);
   }, [operations, dismiss]);
-  if (!operations.length && !children) return null;
-  const hasLocalContent = operations.some((op) => !errorSlots[op.id]) || children;
+  const visible = operations.filter((op) => !op.quiet || op.status === "failed");
+  if (!visible.length && !children) return null;
+  const hasLocalContent = visible.some((op) => !errorSlots[op.id]) || children;
   const content = (
     <div
       role="region"
@@ -56,7 +57,7 @@ export function OperationStatus({ children }: { children?: ReactNode }) {
       }
     >
       {children}
-      {[...operations]
+      {[...visible]
         .reverse()
         .sort((a, b) => Number(b.status === "running") - Number(a.status === "running"))
         .map((op) => {

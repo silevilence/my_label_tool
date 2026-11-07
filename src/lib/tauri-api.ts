@@ -78,6 +78,22 @@ export async function selectLabelSample(): Promise<string | null> {
 }
 import { extractionSettings } from "./project-settings";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import type { RecoverySnapshot, RecoveryWrite } from "../types/recovery";
+export function loadRecovery(folder: string): Promise<RecoverySnapshot | null> {
+  return invoke("load_recovery", { folder });
+}
+export function saveRecovery(folder: string, update: RecoveryWrite): Promise<number> {
+  return invoke("save_recovery", { folder, update });
+}
+export function lastRecoveryProject(): Promise<string | null> {
+  return invoke("last_recovery_project");
+}
+export function forkRecovery(folder: string, update: RecoveryWrite): Promise<number> {
+  return invoke("fork_recovery", { folder, update });
+}
+export function openRecoveryDirectory(folder: string): Promise<void> {
+  return invoke("open_recovery_directory", { folder });
+}
 import { assertManualMutationAllowed } from "../store/useOperations";
 import type { McpPoll, McpResult, McpStatus } from "../types/mcp";
 export function mcpPoll(): Promise<McpPoll> {
@@ -272,7 +288,9 @@ export function loadGitHubProxySettings(): Promise<GitHubProxySettings> {
   return invoke("load_github_proxy_settings");
 }
 
-export function saveGitHubProxySettings(settings: GitHubProxySettings): Promise<GitHubProxySettings> {
+export function saveGitHubProxySettings(
+  settings: GitHubProxySettings,
+): Promise<GitHubProxySettings> {
   return invoke("save_github_proxy_settings", { settings });
 }
 

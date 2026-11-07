@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { OPERATION_ZH_CN as text } from "../i18n/operations.zh-CN";
 
 export type OperationResource =
+  | "recovery-copy"
   | "project-annotations"
   | "export-dir"
   | "video-frames"
@@ -24,6 +25,7 @@ export interface OperationView {
   cancelRequested: boolean;
   startedAt: number;
   allowAnnotationEditing?: boolean;
+  quiet?: boolean;
   finishedAt?: number;
   /** 同名操作失败的累计次数。 */
   failCount?: number;
@@ -37,6 +39,8 @@ export interface OperationHandle {
   setCancel(cancel?: () => void | Promise<void>): void;
 }
 interface OperationInput {
+  /** Background saves use their inline status; failures still appear in the operation panel. */
+  quiet?: boolean;
   owner?: "mcp";
   label: string;
   resource: Resources;
@@ -105,6 +109,7 @@ export const useOperations = create<Operations>((set, get) => ({
           cancelRequested: false,
           startedAt: Date.now(),
           allowAnnotationEditing: input.allowAnnotationEditing ?? false,
+          quiet: input.quiet ?? false,
         },
       ],
     }));

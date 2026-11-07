@@ -24,14 +24,43 @@ function button(label: string): HTMLButtonElement {
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  usePromptStore.setState({ confirmQueue: [], promptQueue: [] });
+  usePromptStore.setState({ confirmQueue: [], promptQueue: [], choiceQueue: [] });
   renderHost();
 });
 
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
-  usePromptStore.setState({ confirmQueue: [], promptQueue: [] });
+  usePromptStore.setState({ confirmQueue: [], promptQueue: [], choiceQueue: [] });
+});
+
+it("recovery choices focus cancel and Escape never chooses the original project", async () => {
+  let pending!: Promise<string | null>;
+  act(() => {
+    pending = usePromptStore.getState().requestChoice({
+      title: "恢复",
+      message: "有工作副本",
+      choices: [
+        { id: "original", label: "原项目" },
+        { id: "restore", label: "恢复副本" },
+      ],
+    });
+  });
+  expect(document.activeElement).toBe(button("取消"));
+  act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  await expect(pending).resolves.toBeNull();
+  act(() => {
+    pending = usePromptStore.getState().requestChoice({
+      title: "恢复",
+      message: "有工作副本",
+      choices: [
+        { id: "original", label: "原项目" },
+        { id: "restore", label: "恢复副本" },
+      ],
+    });
+  });
+  act(() => button("恢复副本").click());
+  await expect(pending).resolves.toBe("restore");
 });
 
 it("resolves confirm true on confirm, false on cancel and queues concurrent requests", async () => {
